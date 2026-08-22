@@ -1,0 +1,25 @@
+{
+  "schema": "ndabi-evidence-manifest-v1",
+  "campaign": "v3.0 PostgreSQL prepared-dataset campaign",
+  "status": "failed",
+  "reason": "Batch 128 measured 13.57% above native set execution.",
+  "artifacts": {
+    "binary": {"path": "target/release/ndabi_v30", "sha256": "eb2badc86902f4fb37ffa319e82e9998d7f8c8a7e6d5f0965811cae838d681b4"},
+    "core_source": {"path": "evidence/v28-accepted/source/src/core_v01.rs", "sha256": "dc3487b7764f5a9b3efa3e3b47544af0bb80ad246d6bce50274c5ed2c75f2cd9"},
+    "adapter_source": {"path": "evidence/v30-failed/source/src/v30/mod.rs", "sha256": "4ae263ec0a3b97b83bab5c3ea50986cd457cf1d81393a1aecd9cee2c759fe133"},
+    "binary_source": {"path": "evidence/v30-failed/source/src/bin/ndabi_v30.rs", "sha256": "a3db6b3e04709ec15a45bd1c55f0866445dd1bf5a7c069eab518ef899ce5e140"},
+    "cargo_manifest": {"path": "evidence/v30-failed/source/Cargo.toml", "sha256": "6503946ee6d2a9700e5da065fe15161a37e8009bb702f4046f1837345f2c0551"},
+    "cargo_lock": {"path": "evidence/v30-failed/source/Cargo.lock", "sha256": "393619b274a509c9df967b9ba54fa99bec4a00f032c7459ab702e918913a2b1d"},
+    "preregistration": {"path": "evidence/v30-failed/preregistration.md", "sha256": "841246f20527c65232deb6d7a546340427b3ba4d04546327f1d6f5678dae5087"},
+    "runner": {"path": "validation_suite_v30.py", "sha256": "596f0f85cbf68d83daba783833e50da76f1698453c67f521ad21a1bf985247e2"},
+    "summary": {"path": "results/v30/20260822T030106Z-1787367666030817000/summary.json", "sha256": "bb53bfd58dccbc87a799de660451661cb91a3366fd3fddf8decc957c8e3c31b1"},
+    "failed_process_stderr": {"path": "results/v30/20260822T030106Z-1787367666030817000/process-00.stderr", "sha256": "a9d669ea736b1032245112ba03828e095eb26032de6b13654b87683cd75e3779"}
+  },
+  "raw_results": [
+    {"path": "results/v30/20260822T030106Z-1787367666030817000/process-00.json", "sha256": "e5386f4266e7d57fe196fa936cba2a4f384c0f4a4389d426863a0c4996c04529"},
+    {"path": "results/v30/20260822T030106Z-1787367666030817000/process-01.json", "sha256": "365a6cbc00d9af28aecc50459e74e4270c149075bb139b4e68f449677378a7b9"},
+    {"path": "results/v30/20260822T030106Z-1787367666030817000/process-02.json", "sha256": "a23c4ebe420d04f25f7d6ffb6b7ff1d82ee94df2bb8a76cc9b57d6e3c2feb0a4"},
+    {"path": "results/v30/20260822T030106Z-1787367666030817000/process-03.json", "sha256": "007c2192918f8cb7c41634309b207b39f256517cf3e10d245ac1c1d0789af156"},
+    {"path": "results/v30/20260822T030106Z-1787367666030817000/process-04.json", "sha256": "8c72520b17123f1c26254107a73b94c7180a2b4aa746bcf697393f6876994311"}
+  ]
+}

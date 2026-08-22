@@ -1,0 +1,30 @@
+{
+  "schema": "ndabi-evidence-manifest-v1",
+  "campaign": "v4.1 PostgreSQL embedded campaign",
+  "status": "accepted",
+  "custody_complete": true,
+  "reproduced_binary_sha256": "684170c39c26db00d5cf61e4a427a9652e13fa159bc50e15476f03d2526bd76f",
+  "artifacts": {
+    "binary": {"path": "evidence/v41-accepted/ndabi_v41_linux_arm64", "sha256": "684170c39c26db00d5cf61e4a427a9652e13fa159bc50e15476f03d2526bd76f"},
+    "preregistration": {"path": "evidence/v41-accepted/preregistration.md", "sha256": "245ee2f04f049d5b0cef7b93dc3d69330e2d31b02d68f10ffb687e39d6c847c2"},
+    "runner": {"path": "evidence/v41-accepted/runner.py", "sha256": "bbce601b3fa45d105acd1398578a58fdf0b7dbcedf4174c0fd72718526c8773f"},
+    "dockerfile": {"path": "evidence/v41-accepted/source/docker/Dockerfile.v41", "sha256": "ab0801371f56805016a953b9655b45cdb82857882c5f373795ac41ac23220819"},
+    "cargo_manifest": {"path": "evidence/v41-accepted/source/docker/build-v41/Cargo.toml", "sha256": "953cfe1745508ee54ddada33719971e7228a9de5402fdd7c9a44665a7ce578f9"},
+    "cargo_lock": {"path": "evidence/v41-accepted/source/docker/build-v41/Cargo.lock", "sha256": "4d3272490cee6ae6b9662a9af003d8430dfeb6804cfcf73b44bf1d9777868b5d"},
+    "docker_library_source": {"path": "evidence/v41-accepted/source/docker/lib-v34.rs", "sha256": "fb83fd12e59192196f6d7ee7511f0e1dcaa50bfd5a10ba7954725dd3bc1e3a70"},
+    "allocator_source": {"path": "evidence/v41-accepted/source/src/alloc.rs", "sha256": "9d22e8c4e39c9dc66b09a8fe3fb4c7912c6b60d1cb64b27f8b4114052eeef453"},
+    "column_source": {"path": "evidence/v41-accepted/source/src/column_v03.rs", "sha256": "0f46244b17d18fbe6583d72a533d93ee4ad67515a5e1896ff600e0a71c7bb926"},
+    "replay_source": {"path": "evidence/v41-accepted/source/src/replay_v01.rs", "sha256": "834b3b716d42785d3f3c8dec9179490fc101c17d6a5b29557664efa9b54a4772"},
+    "session_source": {"path": "evidence/v41-accepted/source/src/session_v01.rs", "sha256": "ba2dd9244f9b62b16ac43475648db4e5963c3ed656e2092dc75ffa6b99569e13"},
+    "binary_source": {"path": "evidence/v41-accepted/source/src/bin/ndabi_v41.rs", "sha256": "21889d58ff04779cd382f33d82a8292209e0eb28a210971d561290b1d68dd56b"},
+    "adapter_source": {"path": "evidence/v41-accepted/source/src/v41/mod.rs", "sha256": "a284dee62f41c94384dcb76e861788adabc8a91d29b4857fd6c915cd29eaf2f0"},
+    "summary": {"path": "results/v41/20260822T092628Z-1787390788047173000/summary.json", "sha256": "ec555fcd4c35c0b1f928acff4d5dc6b7ae8e52b60056c3cbaec6c1182709ef9d"}
+  },
+  "raw_results": [
+    {"path": "results/v41/20260822T092628Z-1787390788047173000/process-00.json", "sha256": "dcd87580e5a2f0da0736b315844002fc6554e202b0d056ca9cc5ad51e0900733"},
+    {"path": "results/v41/20260822T092628Z-1787390788047173000/process-01.json", "sha256": "e1f4dbf9aaf4ea915d34bfd3dd741e2fddcd11b75541b1d63d2ce6d834db88a4"},
+    {"path": "results/v41/20260822T092628Z-1787390788047173000/process-02.json", "sha256": "889e85b6eb55c4b19621447906464d1d5edb12fd0fb2c8f91db6a4eb2dc53ca5"},
+    {"path": "results/v41/20260822T092628Z-1787390788047173000/process-03.json", "sha256": "1157ece739409c248f2f1a768f6a8e3fe5ef5e27d2fd165d3dde59baedeb52d6"},
+    {"path": "results/v41/20260822T092628Z-1787390788047173000/process-04.json", "sha256": "9127cf1f229d88bfd59f4f8514f66d24f218dbf161b094aa38cc2d2e7b9eb773"}
+  ]
+}

@@ -1,0 +1,10 @@
+[package]
+name = "ndabi-mongodb"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+mongodb = { version = "3.8", features = ["sync"] }
+ndabi-session = { path = "../ndabi-session" }
+serde = { version = "1", features = ["derive"] }

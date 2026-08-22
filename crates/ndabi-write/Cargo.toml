@@ -1,0 +1,9 @@
+[package]
+name = "ndabi-write"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+ndabi-session = { path = "../ndabi-session" }
+postgres = "0.19"

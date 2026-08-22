@@ -1,0 +1,25 @@
+{
+  "schema": "ndabi-evidence-manifest-v1",
+  "campaign": "v2.2 White Tree real engine",
+  "status": "failed",
+  "reason": "The session-native p95 distance was 0.8593 and missed the frozen 0.90 lower bound.",
+  "artifacts": {
+    "binary": {
+      "path": "ndabi_v22.gz",
+      "encoding": "gzip",
+      "sha256": "03b3493597b2972fcd3136d6a5b7a76b292c2830ac96bdc79fc482975b4cab71"
+    },
+    "source": {
+      "path": "source.rs",
+      "sha256": "01960a274ad22c53e36d901f9dd4b1f14cb838402db6c14c21ff6db44906d802"
+    },
+    "preregistration": {
+      "path": "preregistration.md",
+      "sha256": "2f4289b42c0fa2df68248483146d55f90295ff78f3770e9e1fbf649e7a1f3bb4"
+    },
+    "result": {
+      "path": "result.json",
+      "sha256": "230f8fb9da4c24f9d421d0ff2e7d4bbd436573ef0171ca0c96b4f87ed4f7db7c"
+    }
+  }
+}

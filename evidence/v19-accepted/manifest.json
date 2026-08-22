@@ -1,0 +1,36 @@
+{
+  "schema": "ndabi-v19-accepted-evidence-v0.1",
+  "campaign_id": "20260822T000251Z-1787356971264711000",
+  "campaign_summary": "results/v19/20260822T000251Z-1787356971264711000/summary.json",
+  "campaign_summary_sha256": "ed0481bc05336ddfab73b6d4c8406bfe76abcb042ebe7ae81137bd2328b45ebe",
+  "release_binary": "evidence/v19-accepted/ndabi_v19_linux_arm64",
+  "archived_source_root": "evidence/v19-accepted/source",
+  "source_fingerprint_blake3": "e1f0f344a64ad4f436a202bb0ef9815ecffe0470ae35d1ed93b17e8753cf1b21",
+  "release_binary_sha256": "1d739281aef6cad096721b84aa8096e70b66655b5048274f199fb54bf6b1b5e9",
+  "docker_image_id": "sha256:e53d6883eff9c1c52cf8001f7b534edd96f0e6ff9447f694456a2c0f5847722e",
+  "source_sha256": {
+    "specs/ndabi_poc_literal_lossless_campaign_v1_9.md": "543df792618150d8e9621b54dc586474dd91c3d8bcab452c3dd38ffa0688e5da",
+    "docker/Dockerfile.v19": "0ec5e06c1c73dab91ddb776ad0a44fdb5592d41e94c186cc3125b9b378a62929",
+    "docker/build-v19/Cargo.lock": "ff075510a97f72ff4b3cc55ad102c2d7a6379e4c35f65f0a75597ad07f83e30f",
+    "docker/build-v19/Cargo.toml": "de06c0ea69e27b31ae8a4bde70422d2c2e1630e7a0f7c3cc079280c18ca7f09b",
+    "src/alloc.rs": "9d22e8c4e39c9dc66b09a8fe3fb4c7912c6b60d1cb64b27f8b4114052eeef453",
+    "src/bin/ndabi_v19.rs": "a3431a6c8b9e59b39bc21b76b8bc547f6ed02bbb3a7ecf1cae77e50116f147a6",
+    "src/v19/codecs.rs": "b435e8981e38dba8bdff189d589c872b944c7f70864570f71943baf37b469e3f",
+    "src/v19/kernel.rs": "c7752a683ef72331a5695f0b1a9fd301f4a943a0e07e222fe9579e769b790430",
+    "src/v19/measure.rs": "efa1b3042ef86a4a879c744857d3cd02725a04b83d82a1a1a9aec8fe75acf5c9",
+    "src/v19/mod.rs": "3484aa871a250d715a0faa19013b5de31490464db18276683cf2c72fe3d2a3b8",
+    "src/v19/model.rs": "2a265224636535ed85c14080a794fc8459abf70af640fcbb1161d2b6fc4bb977",
+    "src/v19/runner.rs": "dee0e9800b8a4a567c1c265cbc210eccaedbd02fe967f2fd9beb6602edec08c1",
+    "validation_suite_v19.py": "38693f87c787b140af58df8158185ecbafdb441db65c76ba502b68669637f00f"
+  },
+  "registered_processes_passed": "9/9",
+  "registered_campaign_gate_passed": true,
+  "accepted_observations": {
+    "literal_lossless": "Every process passed literal cross-arm payload equality.",
+    "point_complete_path": "Session-bound NDABI was 12.42 times faster than stateless JSON.",
+    "point_full_ndabi_gain": "Session-bound NDABI was 1.51 times faster than full framed NDABI.",
+    "direct_distance": "Session-bound NDABI remained within 1.05% of direct across all cases.",
+    "large_result_gain": "Session-bound NDABI was 1.24 to 1.26 times faster than full framed NDABI."
+  },
+  "boundary": "The accepted result applies only to the frozen local fixture campaign."
+}

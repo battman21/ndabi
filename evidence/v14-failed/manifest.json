@@ -1,0 +1,35 @@
+{
+  "schema": "ndabi-v14-failed-evidence-v0.1",
+  "campaign_id": "20260821T233423Z-1787355263351846000",
+  "campaign_summary": "results/v14/20260821T233423Z-1787355263351846000/summary.json",
+  "campaign_summary_sha256": "9408ec23c47901d9702b940c84364d7936abe3cd468ae85ed5df7e3644d65c1a",
+  "release_binary": "evidence/v14-failed/ndabi_v14_linux_arm64",
+  "archived_source_root": "evidence/v14-failed/source",
+  "source_fingerprint_blake3": "4ce94f56ba57d212222421a86ead51269248adbf7f9a2e2b113249d87ec52bf5",
+  "release_binary_sha256": "4dbece4328e26789b9283638c84e6ed9855dbc18ccc344c32ff4bb7721fb11f2",
+  "docker_image_id": "sha256:e8791a1acec2fa13e295a982e466af9b42d512adbe9b438dfedb8e3cd424df37",
+  "source_sha256": {
+    "specs/ndabi_poc_stack_campaign_v1_4.md": "02043babf13c466dd49c9aa93f12a4b454fc359025442587068a59e27de23c50",
+    "docker/Dockerfile.v14": "81be9526e090cb972da08d7cfc85959361eb849af472748a3f2675072d5775b5",
+    "docker/build-v14/Cargo.lock": "c5e79977b9c52eac141677aef3791a764fc14c28cf6980952726cac172f6aef7",
+    "docker/build-v14/Cargo.toml": "dc4057804409cedf52a4d82ddac6b8b9d7d607902292007740866e4434684fa6",
+    "src/alloc.rs": "9d22e8c4e39c9dc66b09a8fe3fb4c7912c6b60d1cb64b27f8b4114052eeef453",
+    "src/bin/ndabi_v14.rs": "5657f3d498a504f3a59e6f4e25a02af8dd4c54bdb20bae96b53352ebc3e2a085",
+    "src/v14/codecs.rs": "5a7fd57109fe5bd0627f8f4dcfb4b82a18647521179c38bb3298f88f55ea3b1a",
+    "src/v14/kernel.rs": "61ebbb464c63dfac19dfe8eac2c1be6d14dc621ad9f56b950cc19bf689c61413",
+    "src/v14/measure.rs": "efa1b3042ef86a4a879c744857d3cd02725a04b83d82a1a1a9aec8fe75acf5c9",
+    "src/v14/mod.rs": "3484aa871a250d715a0faa19013b5de31490464db18276683cf2c72fe3d2a3b8",
+    "src/v14/model.rs": "2a265224636535ed85c14080a794fc8459abf70af640fcbb1161d2b6fc4bb977",
+    "src/v14/runner.rs": "4e47ff357e39ec64017da3000243b7098b978618de042a58a61258290d0e1110",
+    "validation_suite_v14.py": "5fa809168dee786d7d3cbed4c799f7cf1e9fe4076aa3a0388a953548fce7c1df"
+  },
+  "registered_processes_passed": "36/36",
+  "failure": "Eight secondary causal ratios exceeded the ten-percent repeatability gate.",
+  "primary_observations": {
+    "point_complete_path": "NDABI was 8.21 to 8.62 times faster than stateless JSON.",
+    "point_direct_ceiling": "Direct typed execution was 12.80 to 13.39 times faster than stateless JSON.",
+    "point_complete_path_variation": "Complete-path ratio coefficients remained between 0.74 and 3.29 percent.",
+    "calibration": "All 36 corrected timer calibrations passed."
+  },
+  "boundary": "The failed campaign supports no accepted performance claim and was not rerun."
+}

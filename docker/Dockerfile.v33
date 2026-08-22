@@ -1,0 +1,21 @@
+FROM rust:1.92-bookworm@sha256:e90e846de4124376164ddfbaab4b0774c7bdeef5e738866295e5a90a34a307a2 AS builder
+
+WORKDIR /workspace/campaign
+COPY prototypes/ndabi-showdown/docker/build-v33/Cargo.toml prototypes/ndabi-showdown/docker/build-v33/Cargo.lock ./
+COPY prototypes/ndabi-showdown/docker/lib-v33.rs ./src/lib.rs
+COPY prototypes/ndabi-showdown/src/alloc.rs prototypes/ndabi-showdown/src/column_v03.rs ./src/
+COPY prototypes/ndabi-showdown/src/bin/ndabi_v33.rs ./src/bin/
+COPY prototypes/ndabi-showdown/src/v33/mod.rs ./src/v33/mod.rs
+
+RUN RUSTFLAGS="-D warnings" cargo build --release --locked --bin ndabi_v33
+
+FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 AS runtime
+
+COPY --from=builder /workspace/campaign/target/release/ndabi_v33 /usr/local/bin/ndabi_v33
+
+LABEL org.opencontainers.image.title="NDABI PostgreSQL Linux client v3.3"
+LABEL org.whitetree.ndabi.campaign="v3.3"
+LABEL org.whitetree.ndabi.rust="1.92"
+
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/ndabi_v33"]

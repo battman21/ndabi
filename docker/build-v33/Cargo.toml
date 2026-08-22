@@ -1,0 +1,32 @@
+[package]
+name = "ndabi-v33-linux-build"
+version = "0.1.0"
+edition = "2021"
+publish = false
+autobins = false
+
+# Keep the Linux client independent from White Tree and unrelated benchmark dependencies.
+[workspace]
+
+[lib]
+name = "ndabi_showdown"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ndabi_v33"
+path = "src/bin/ndabi_v33.rs"
+
+[dependencies]
+blake3 = { version = "=1.8.7", features = ["zeroize"] }
+futures-util = "=0.3.34"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+sha2 = "=0.11.0"
+subtle = "=2.6.1"
+tokio = { version = "=1.52.3", features = ["rt-multi-thread"] }
+tokio-postgres = "=0.7.18"
+zeroize = "=1.9.0"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"

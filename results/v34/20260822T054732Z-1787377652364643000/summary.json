@@ -1,0 +1,258 @@
+{
+  "schema": "ndabi-postgresql-replay-process-v3.4",
+  "campaign_id": "20260822T054732Z-1787377652364643000",
+  "status": "failed",
+  "binary": {
+    "path": "/usr/local/bin/ndabi_v34",
+    "sha256": "adb03bca75a0bf7715caf1039d9097570fe7a1e6daeb3b1165378ff3bca3549e"
+  },
+  "client_image": {
+    "reference": "ndabi-showdown:v3.4-local",
+    "id": "sha256:ae37aaa7dbcf8aa67f7a1659ec88051307d4fe0c77bd475873cb027c996b3afc"
+  },
+  "postgres_image": {
+    "reference": "postgres@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20",
+    "id": "sha256:eb9fe6b5815523ffa3e3d8aee9db3532bd564b857634fcfa36979d76bed6ae10"
+  },
+  "processes": 5,
+  "latency": [
+    {
+      "batch_size": 32,
+      "median_process_p95_ns": {
+        "native-ephemeral": 156833,
+        "ndabi-ephemeral": 108250,
+        "native-resumable": 6641875,
+        "ndabi-resumable": 6794209
+      },
+      "process_ephemeral_distances": [
+        0.8170302819352593,
+        0.6524966046686603,
+        0.939986611598609,
+        1.1692211313092036,
+        1.0334878780484305
+      ],
+      "process_resumable_distances": [
+        1.015396764671127,
+        1.0206175222049587,
+        1.0700291709795804,
+        1.006141952813424,
+        1.0975832193342454
+      ]
+    },
+    {
+      "batch_size": 128,
+      "median_process_p95_ns": {
+        "native-ephemeral": 927459,
+        "ndabi-ephemeral": 664708,
+        "native-resumable": 7167458,
+        "ndabi-resumable": 7678375
+      },
+      "process_ephemeral_distances": [
+        0.8464757880407252,
+        0.5763010002764389,
+        0.7166979888059741,
+        0.9938763094736701,
+        0.9217200520658606
+      ],
+      "process_resumable_distances": [
+        1.0839075556958624,
+        1.0921467555163908,
+        1.0235672923968182,
+        0.9886692165034114,
+        1.0194365999297506
+      ]
+    }
+  ],
+  "concurrency": [
+    {
+      "concurrency": 1,
+      "process_ephemeral_throughput_ratios": [
+        1.1605088562907055,
+        1.0265058925691601,
+        1.0843955049734242,
+        0.7504503757871216,
+        0.6218457062227228
+      ],
+      "process_resumable_throughput_ratios": [
+        0.7863587886147164,
+        1.7696770164763787,
+        1.1274377800746882,
+        0.9914230722784692,
+        1.116645055621565
+      ],
+      "process_ephemeral_p95_distances": [
+        0.8497705815210408,
+        0.96175260804769,
+        1.1781244350868239,
+        1.2682366863905326,
+        2.038190047883101
+      ],
+      "process_resumable_p95_distances": [
+        1.0895233870964038,
+        0.8999976946910067,
+        1.1290243603868282,
+        1.0252612603834255,
+        0.8417405764966741
+      ]
+    },
+    {
+      "concurrency": 8,
+      "process_ephemeral_throughput_ratios": [
+        0.8495546085369868,
+        1.0988491622893275,
+        0.9980799770538041,
+        1.0940981132075471,
+        0.9806203641368749
+      ],
+      "process_resumable_throughput_ratios": [
+        0.7447654693558038,
+        1.3894552527462276,
+        1.1130664378532866,
+        3.262591416272637,
+        1.0140518546555641
+      ],
+      "process_ephemeral_p95_distances": [
+        1.0815691158156913,
+        0.8864048028084852,
+        0.8204781734773368,
+        0.8203871396527374,
+        1.1135626216742376
+      ],
+      "process_resumable_p95_distances": [
+        1.1934591833350394,
+        1.3898700894874807,
+        0.9941200105689858,
+        0.06469868915221304,
+        0.973865970116147
+      ]
+    },
+    {
+      "concurrency": 32,
+      "process_ephemeral_throughput_ratios": [
+        0.9028861790752346,
+        0.9714155025714531,
+        1.0519875343409033,
+        1.0616013264215878,
+        0.9258369273818182
+      ],
+      "process_resumable_throughput_ratios": [
+        0.6790144576569989,
+        0.8695742611726156,
+        1.1615157626153536,
+        1.1248502656816775,
+        1.003685771557933
+      ],
+      "process_ephemeral_p95_distances": [
+        0.9624748618390842,
+        1.0505548622797363,
+        1.2328354604089475,
+        0.734602777522303,
+        1.2303148713475796
+      ],
+      "process_resumable_p95_distances": [
+        1.1062550998392384,
+        1.1465961282161332,
+        0.8691068068021961,
+        0.792902834541859,
+        1.0179524249657468
+      ]
+    },
+    {
+      "concurrency": 128,
+      "process_ephemeral_throughput_ratios": [
+        1.0488973546039067,
+        0.985785067877507,
+        1.0376224528201587,
+        1.0074452451733176,
+        0.9691265857578164
+      ],
+      "process_resumable_throughput_ratios": [
+        0.946616618835533,
+        1.0746144332208336,
+        1.7496628562307721,
+        1.078305896998852,
+        1.0287776687678227
+      ],
+      "process_ephemeral_p95_distances": [
+        1.0707008690633542,
+        0.8738153587616634,
+        1.1376075268817205,
+        0.8684349923416156,
+        0.9600645962537595
+      ],
+      "process_resumable_p95_distances": [
+        1.0391959785809053,
+        0.9023249586430854,
+        0.5989294617449191,
+        0.917994223984608,
+        1.0239245754282238
+      ]
+    }
+  ],
+  "hard_gate": {
+    "passed": false,
+    "checks": [
+      {
+        "id": "five-complete-processes",
+        "passed": true,
+        "observed": {
+          "results": 5,
+          "exit_codes": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "target": "five complete results"
+      },
+      {
+        "id": "five-zero-exit-codes",
+        "passed": false,
+        "observed": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "target": "five zero exit codes"
+      },
+      {
+        "id": "all-correctness-gates",
+        "passed": true,
+        "observed": 5,
+        "target": "5/5"
+      },
+      {
+        "id": "all-process-hard-gates",
+        "passed": false,
+        "observed": 0,
+        "target": "5/5"
+      },
+      {
+        "id": "batch-32-one-result-identity",
+        "passed": true,
+        "observed": [
+          [
+            "ab0c467ae02305609b1cd1795b382cf56611fb63de93bc736dc02ab321b2206c",
+            "02cab52c6dfe9a9b7ced7e48fd331a897611d13f3b47e60c0e9ef761124effa8"
+          ]
+        ],
+        "target": "one payload and receipt identity"
+      },
+      {
+        "id": "batch-128-one-result-identity",
+        "passed": true,
+        "observed": [
+          [
+            "8c10d91d8aa262626c420524b07c59e5b731f49d45271f39caa5dc92d22ecaa7",
+            "bcb235c2fb07d4e1f81e50932435590844414baf6f273f230a362150a4fc1082"
+          ]
+        ],
+        "target": "one payload and receipt identity"
+      }
+    ]
+  }
+}

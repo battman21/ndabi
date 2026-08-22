@@ -1,0 +1,22 @@
+FROM rust:1.92-bookworm@sha256:e90e846de4124376164ddfbaab4b0774c7bdeef5e738866295e5a90a34a307a2 AS builder
+
+WORKDIR /workspace/campaign/prototypes/ndabi-showdown/docker/build-v42
+COPY prototypes/ndabi-showdown/docker/build-v42/Cargo.toml prototypes/ndabi-showdown/docker/build-v42/Cargo.lock ./
+COPY prototypes/ndabi-showdown/docker/lib-v42.rs ../lib-v42.rs
+COPY prototypes/ndabi-showdown/src/alloc.rs ../../src/alloc.rs
+COPY prototypes/ndabi-showdown/src/bin/ndabi_v42.rs ../../src/bin/ndabi_v42.rs
+COPY prototypes/ndabi-showdown/src/v42/mod.rs ../../src/v42/mod.rs
+COPY prototypes/ndabi-showdown/crates/ndabi-postgres ../../crates/ndabi-postgres
+
+RUN RUSTFLAGS="-D warnings" cargo build --release --locked --bin ndabi_v42
+
+FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 AS runtime
+
+COPY --from=builder /workspace/campaign/prototypes/ndabi-showdown/docker/build-v42/target/release/ndabi_v42 /usr/local/bin/ndabi_v42
+
+LABEL org.opencontainers.image.title="NDABI PostgreSQL scale and query-shape client v4.2"
+LABEL org.whitetree.ndabi.campaign="v4.2"
+LABEL org.whitetree.ndabi.rust="1.92"
+
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/ndabi_v42"]

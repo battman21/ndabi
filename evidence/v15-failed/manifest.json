@@ -1,0 +1,33 @@
+{
+  "schema": "ndabi-v15-failed-evidence-v0.1",
+  "campaign_id": "20260821T234533Z-1787355933614380000",
+  "campaign_summary": "results/v15/20260821T234533Z-1787355933614380000/summary.json",
+  "campaign_summary_sha256": "6c7a2e4c7e9093a1c4bb79e7e18b6b12cae0b44cb06777e2224e34d7a89034d1",
+  "release_binary": "evidence/v15-failed/ndabi_v15_linux_arm64",
+  "archived_source_root": "evidence/v15-failed/source",
+  "source_fingerprint_blake3": "81d07e338070f30329087bae77bc52aead8cba966a844b04cdcdbeb03e383a6f",
+  "release_binary_sha256": "06eeb3429fb2711069d2aa8953848d39b1915b8e799ddfec4b45d9b9b6f8c2c7",
+  "docker_image_id": "sha256:518a5e6af52cb3f6ea3c4a14248c5aea41538eb62dee64dd203182d6f0c9599f",
+  "source_sha256": {
+    "specs/ndabi_poc_phase_profile_v1_5.md": "bda0239a93426393ce0a5ee193f75abe60087468663e94be5ce1f6ddff38ed68",
+    "docker/Dockerfile.v15": "244ef4d296af05845809da50f1d317bf0f8b7cfab39cea861c87ce5a2a918e8c",
+    "docker/build-v15/Cargo.lock": "07138295f8443c8e18dcf6e797554ad15660f1bb340e6f9c6618eb142b1ed9be",
+    "docker/build-v15/Cargo.toml": "6fa76aeef71d24f4ee29b8a0956fc52542b7ebd91d27c1d3b26a8965f45cbc68",
+    "src/alloc.rs": "9d22e8c4e39c9dc66b09a8fe3fb4c7912c6b60d1cb64b27f8b4114052eeef453",
+    "src/bin/ndabi_v15.rs": "3cf67f3a3e0256e58b8b253625696bebeb8965b0b561334a038a250bbf0030ab",
+    "src/v14/codecs.rs": "5a7fd57109fe5bd0627f8f4dcfb4b82a18647521179c38bb3298f88f55ea3b1a",
+    "src/v14/kernel.rs": "61ebbb464c63dfac19dfe8eac2c1be6d14dc621ad9f56b950cc19bf689c61413",
+    "src/v14/model.rs": "2a265224636535ed85c14080a794fc8459abf70af640fcbb1161d2b6fc4bb977",
+    "src/v15/mod.rs": "ea0dd77394e15a3482cce01379f75434829b30c70f48dbad7cfb967e4f5ec73a",
+    "validation_suite_v15.py": "2aba40b530cde5b31711e1bcaef9df57325c24cffd03ace059434b78ac5b0c23"
+  },
+  "registered_processes_passed": "6/9",
+  "failure": "The 64-byte copy phase exceeded the timer-control limit in three point processes.",
+  "diagnostic_observations": {
+    "point_complete_path": "NDABI was 8.31 times faster than stateless JSON.",
+    "point_direct_ceiling": "NDABI was 1.57 times slower than direct typed execution.",
+    "point_framing": "Request and response phases each measured about 17 percent of NDABI latency.",
+    "large_result_framing": "Response encoding and verification measured about 20 percent of NDABI latency."
+  },
+  "boundary": "The failed diagnostic supports hotspot selection, not an accepted performance claim."
+}

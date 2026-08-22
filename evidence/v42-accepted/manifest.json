@@ -1,0 +1,83 @@
+{
+  "schema": "ndabi-evidence-manifest-v1",
+  "campaign": "v4.2 PostgreSQL scale and query-shape campaign",
+  "status": "accepted",
+  "custody_complete": true,
+  "reproduced_binary_sha256": "b38814de9003de84ff32d5518c3cab208dfc654480c8ab948025244541d52205",
+  "artifacts": {
+    "binary": {
+      "path": "evidence/v42-accepted/ndabi_v42_linux_arm64",
+      "sha256": "b38814de9003de84ff32d5518c3cab208dfc654480c8ab948025244541d52205"
+    },
+    "preregistration": {
+      "path": "evidence/v42-accepted/preregistration.md",
+      "sha256": "4f17ae3f97b884d5f20b4d6aea60d37a43a9ec52089e7b726f94f962afdc12cd"
+    },
+    "runner": {
+      "path": "evidence/v42-accepted/runner.py",
+      "sha256": "770b3425cedd680f8b107975a48b6666eba2023a0b99a7357580155f4fa6d2ff"
+    },
+    "dockerfile": {
+      "path": "evidence/v42-accepted/source/docker/Dockerfile.v42",
+      "sha256": "2bccac670f3cac79585299d5f3287f4767d14cd239267df249bffef42394de46"
+    },
+    "docker_library": {
+      "path": "evidence/v42-accepted/source/docker/lib-v42.rs",
+      "sha256": "35e1586e7a6ce273f8b657763d4df14ccbd67496f794e785749d136399e68093"
+    },
+    "docker_manifest": {
+      "path": "evidence/v42-accepted/source/docker/build-v42/Cargo.toml",
+      "sha256": "42d7c9a953c316d3add2a40879804bdb1718f679f8fe5aa703ac58694bb38735"
+    },
+    "docker_lock": {
+      "path": "evidence/v42-accepted/source/docker/build-v42/Cargo.lock",
+      "sha256": "62cd2ee2a10f97d4ee45039b837bf59eb547dfae69a724dc34a3ecea7df2f6e7"
+    },
+    "adapter_manifest": {
+      "path": "evidence/v42-accepted/source/crates/ndabi-postgres/Cargo.toml",
+      "sha256": "8335d6166fb40d9011a19c959d069dbd9b0c9d799d3625073761435d54e92d07"
+    },
+    "adapter_source": {
+      "path": "evidence/v42-accepted/source/crates/ndabi-postgres/src/lib.rs",
+      "sha256": "2496604c48c676d4e52698d4990db7cc394f461b158efc18781e0c4121893c9b"
+    },
+    "allocator_source": {
+      "path": "evidence/v42-accepted/source/src/alloc.rs",
+      "sha256": "9d22e8c4e39c9dc66b09a8fe3fb4c7912c6b60d1cb64b27f8b4114052eeef453"
+    },
+    "binary_source": {
+      "path": "evidence/v42-accepted/source/src/bin/ndabi_v42.rs",
+      "sha256": "7a0a91ba9f2ab876a6cb78fc7d5e393ae804b35585231912c3dd06ae296f3811"
+    },
+    "campaign_source": {
+      "path": "evidence/v42-accepted/source/src/v42/mod.rs",
+      "sha256": "01ce5a637ffc4c93df49d68b8310ea207964e6273c3ac936a93c5f47d7bca68b"
+    },
+    "summary": {
+      "path": "results/v42/20260822T102005Z-1787394005174016000/summary.json",
+      "sha256": "92b93c305f29e6efb359d397414808d033bc084b8f559de12e5bf23bf77b84dd"
+    }
+  },
+  "raw_results": [
+    {
+      "path": "results/v42/20260822T102005Z-1787394005174016000/process-00.json",
+      "sha256": "8a92fd355426e89e4d4a98f611a0e7b68c15a06925c1aae8c95a0adee8e931f8"
+    },
+    {
+      "path": "results/v42/20260822T102005Z-1787394005174016000/process-01.json",
+      "sha256": "c91c136c509ff474bb42fc7a5d27e15ef9cd2658754418f13e4b728acd3d2d32"
+    },
+    {
+      "path": "results/v42/20260822T102005Z-1787394005174016000/process-02.json",
+      "sha256": "ea827931246ce8b7ef092e5d0826e5a6ac319203575f7273b9dba21f5fd259c4"
+    },
+    {
+      "path": "results/v42/20260822T102005Z-1787394005174016000/process-03.json",
+      "sha256": "60fdd8a54d50a7c0e17b6633b29749e192d88bf90c6a65924090a0d251dd4862"
+    },
+    {
+      "path": "results/v42/20260822T102005Z-1787394005174016000/process-04.json",
+      "sha256": "1aa5f19f0ec6b54a66c6ae55253147a8afd45d960ba996e2f07aa7eb27ab6bb9"
+    }
+  ]
+}

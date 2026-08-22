@@ -1,0 +1,24 @@
+[package]
+name = "ndabi-v19-linux-build"
+version = "0.1.0"
+edition = "2021"
+publish = false
+autobins = false
+autolib = false
+
+# Keep the Linux measurement build independent from unused White Tree dependencies.
+[workspace]
+
+[[bin]]
+name = "ndabi_v19"
+path = "src/bin/ndabi_v19.rs"
+
+[dependencies]
+blake3 = "=1.8.7"
+crc32fast = "=1.5.0"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"

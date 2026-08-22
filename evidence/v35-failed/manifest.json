@@ -1,0 +1,31 @@
+{
+  "schema": "ndabi-evidence-manifest-v1",
+  "campaign": "v3.5 PostgreSQL paired replay campaign",
+  "status": "failed",
+  "custody_complete": true,
+  "reproduced_binary_sha256": "239dff20c681d9abab380ddb7361ad5d562cff73013a2d32facaa54365f4577c",
+  "artifacts": {
+    "binary": {"path": "evidence/v35-failed/ndabi_v35_linux_arm64", "sha256": "239dff20c681d9abab380ddb7361ad5d562cff73013a2d32facaa54365f4577c"},
+    "preregistration": {"path": "evidence/v35-failed/preregistration.md", "sha256": "a6ae9eee1ed07a14891aa20e2b0ee130576b58180cfd1ac18d1442dbcf0570ca"},
+    "runner": {"path": "evidence/v35-failed/runner.py", "sha256": "f64ca2fdcec40e3afa288b58f19f6d3de18b3e8b8bbececc2ae32791fe76d4af"},
+    "dockerfile": {"path": "evidence/v35-failed/source/docker/Dockerfile.v35", "sha256": "8a56f2060f1a36ed17e5ecd0cf0e6f165b7812e0d45581f7012f922b4f34f7aa"},
+    "cargo_lock": {"path": "evidence/v35-failed/source/docker/build-v34/Cargo.lock", "sha256": "5804746c70324ae8edbe446481b2ea1c7bdd6928f7433376c94a2d2b06f13c75"},
+    "cargo_manifest": {"path": "evidence/v35-failed/source/docker/build-v34/Cargo.toml", "sha256": "6f9360732086711ac849b15c4648e52ca470672814972c012da5cf8d5f444646"},
+    "docker_library_source": {"path": "evidence/v35-failed/source/docker/lib-v34.rs", "sha256": "fb83fd12e59192196f6d7ee7511f0e1dcaa50bfd5a10ba7954725dd3bc1e3a70"},
+    "allocator_source": {"path": "evidence/v35-failed/source/src/alloc.rs", "sha256": "9d22e8c4e39c9dc66b09a8fe3fb4c7912c6b60d1cb64b27f8b4114052eeef453"},
+    "v34_binary_source": {"path": "evidence/v35-failed/source/src/bin/ndabi_v34.rs", "sha256": "398f9eca180e255697968afbe24f821209b3f7195f05440ed7b04717933e4028"},
+    "binary_source": {"path": "evidence/v35-failed/source/src/bin/ndabi_v35.rs", "sha256": "4a9af92956fde1e6f47e96b57d96cd747f496a9280a9f7727a5ad3131b875c33"},
+    "protocol_source": {"path": "evidence/v35-failed/source/src/column_v03.rs", "sha256": "eee074afc5c747f3512a6e0ed6e7a4b6b02507739592b2c3e4d0507f2502ddf8"},
+    "replay_source": {"path": "evidence/v35-failed/source/src/replay_v01.rs", "sha256": "834b3b716d42785d3f3c8dec9179490fc101c17d6a5b29557664efa9b54a4772"},
+    "session_source": {"path": "evidence/v35-failed/source/src/session_v01.rs", "sha256": "8dbda8962cd6a22e4eb0bb518629c9173c49ca950aa5a79315112bc8dccb2d45"},
+    "adapter_source": {"path": "evidence/v35-failed/source/src/v34/mod.rs", "sha256": "dabf4586b326cb1f3f13de2dafc79e86fc65c0894ee37670eaa994f787dcd71a"},
+    "summary": {"path": "results/v35/20260822T060415Z-1787378655381197000/summary.json", "sha256": "335c879d826737b0deb2804226268079ecbecc9640ebd71791172d2be8b62a65"}
+  },
+  "raw_results": [
+    {"path": "results/v35/20260822T060415Z-1787378655381197000/process-00.json", "sha256": "b2fd6ee7ecc0f3bc45882c6ae88b679006b560b7311a76dbfde827306e261e41"},
+    {"path": "results/v35/20260822T060415Z-1787378655381197000/process-01.json", "sha256": "a37bf5e5bc55439e32c75e4ac3bfb6269cbbffe987bf4d96a808e48e4c0580dc"},
+    {"path": "results/v35/20260822T060415Z-1787378655381197000/process-02.json", "sha256": "b87fdefced049bad6964b6354f2287031eeb3828914cf974c1e2383d68bf75ca"},
+    {"path": "results/v35/20260822T060415Z-1787378655381197000/process-03.json", "sha256": "1537e9685fecb12c92c0128065c846ea7d783727fe430f4c5ef5f7e8b7bd591c"},
+    {"path": "results/v35/20260822T060415Z-1787378655381197000/process-04.json", "sha256": "b128e77cfdfe182e4326f98089d68dd253dfdebb1d497cac7e96f2bbd164d5e4"}
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "ndabi-v09-accepted-evidence-v0.1",
+  "campaign_id": "20260821T093448Z-1787304888796131000",
+  "campaign_summary": "results/v09/20260821T093448Z-1787304888796131000/summary.json",
+  "release_binary": "evidence/v09-accepted/ndabi-v09.gz",
+  "release_binary_encoding": "gzip",
+  "source_fingerprint_blake3": "afd1dcd85c218881ca28cc5de13894de168fad28d20b3ebf7df06ababa71da6f",
+  "release_binary_sha256": "c0cf4302af865eabf32f4ab2c96b04a1fb6d1e3b53880cc0939a64871490e11c",
+  "archived_source_root": "evidence/v09-accepted/source",
+  "known_custody_gap": "The original Cargo.lock was not archived before later prototype dependencies changed it.",
+  "source_sha256": {
+    "Cargo.toml": "6ecb20f9a235d94227c896020d42a856239949bbc8ee49d362b6962795805e5b",
+    "src/alloc.rs": "9d22e8c4e39c9dc66b09a8fe3fb4c7912c6b60d1cb64b27f8b4114052eeef453",
+    "src/bin/ndabi_v06.rs": "519eaf88a1e81cf68cf239610a2c0e6b889970e1bc0bc6c08098101dcc4341b6",
+    "src/durable_v07.rs": "859ae3a0300cbef9e781a774322fabb5e0372b7fba6a28e648d14b88e0db0dd1",
+    "src/kernel_v06.rs": "a074548e9136b3187bc5e4ce8ac11b7cfe69d5667e7103f7f4b1fdf98c812cd1",
+    "src/measure.rs": "c567f25cacc4f4dba3ccb2e4c6a5fdcfd7d3b379883ce1a0b49852671b81b5d5",
+    "validation_suite_v07.py": "e72b5a10e9a3af5608150f4a71b278a3d23abfa557ac55b7d32431e5962606b5",
+    "validation_suite_v09.py": "82d661d9d5829f5d8f76e7625494ccfe996efb737a9f93372fe5a79ea17b54bc"
+  },
+  "boundary": "This manifest preserves the accepted local evidence. It does not make v0.9 production evidence."
+}

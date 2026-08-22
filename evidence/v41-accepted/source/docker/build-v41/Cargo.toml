@@ -1,0 +1,32 @@
+[package]
+name = "ndabi-v41-linux-build"
+version = "0.1.0"
+edition = "2021"
+publish = false
+autobins = false
+
+# Keep the Linux client independent from White Tree and unrelated benchmark dependencies.
+[workspace]
+
+[lib]
+name = "ndabi_showdown"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ndabi_v41"
+path = "src/bin/ndabi_v41.rs"
+
+[dependencies]
+blake3 = { version = "=1.8.7", features = ["zeroize"] }
+libc = "=0.2.189"
+postgres = "=0.19.14"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+sha2 = "=0.11.0"
+subtle = "=2.6.1"
+tempfile = "=3.27.0"
+zeroize = "=1.9.0"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"

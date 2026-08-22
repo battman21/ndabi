@@ -1,0 +1,25 @@
+{
+  "schema": "ndabi-evidence-manifest-v1",
+  "campaign": "v2.3 White Tree repeatability",
+  "status": "failed",
+  "reason": "The session-native p95 ratio was 1.3668 and exceeded the frozen 1.10 ceiling.",
+  "artifacts": {
+    "binary": {
+      "path": "ndabi_v23.gz",
+      "encoding": "gzip",
+      "sha256": "954e828ed9e20f03f04fe52e714ccdbeddd76f6a17ea35a03e38022dd15aae36"
+    },
+    "source": {
+      "path": "source.rs",
+      "sha256": "8d0aff972b1b8e395aa1e8cf31e9e19b6230ef5492c5d3bca3f237c941f5d28d"
+    },
+    "preregistration": {
+      "path": "preregistration.md",
+      "sha256": "9109fc3ed5a8944d42ccc49e06517b246f76f00f148abdb807bf2ace04142db8"
+    },
+    "result": {
+      "path": "result.json",
+      "sha256": "24561101d81a4de9d860fa4f217eb740eb17a41fdfaae16450dccc1c0f775ed0"
+    }
+  }
+}

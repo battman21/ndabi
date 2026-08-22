@@ -1,0 +1,29 @@
+{
+  "schema": "ndabi-v10-scale-evidence-v0.1",
+  "campaign_id": "20260821T224633Z-1787352393259413000",
+  "campaign_summary": "results/v10/20260821T224633Z-1787352393259413000/summary.json",
+  "release_binary": "evidence/v10-scale/ndabi_v10.gz",
+  "release_binary_encoding": "gzip",
+  "archived_source_root": "evidence/v10-scale/source",
+  "source_fingerprint_blake3": "e6231e5631a14b98ea13346f724279453346716c6b92c9dfa8109e858ebd005e",
+  "release_binary_sha256": "0fe669298820138791e6ac343dfa504fa306422b0b5605595132a0f17fbd462d",
+  "source_sha256": {
+    "specs/ndabi_poc_preregistration_v1_0.md": "b307f574658b810ce5cf7b5d0e609393e5202e2e916be37229301c3a6d46f66e",
+    "specs/ndabi_poc_scale_campaign_v1_0.md": "5de2763c4fcb301170c5dc00f766e53ade3ebdfb286f2f5e49497bbadbe59450",
+    "src/bin/ndabi_v10.rs": "4460fd8d1899acf5f1f410312888a996e95676f8f5909c5ac7ae9f1b0b52aee2",
+    "src/v10/codecs.rs": "def15583cd75469a15eb80eee787ffdc6ad1c68a877593d2d51d0e06cf8b662e",
+    "src/v10/kernel.rs": "c882739fcf7ae021ad8c446402e49a645ff77f900ee13dadfadc996d062dca61",
+    "src/v10/measure.rs": "7207a744162ea10281497e463f47257e099e421303fac7f9d0ffad81214b5407",
+    "src/v10/mod.rs": "3484aa871a250d715a0faa19013b5de31490464db18276683cf2c72fe3d2a3b8",
+    "src/v10/model.rs": "2a265224636535ed85c14080a794fc8459abf70af640fcbb1161d2b6fc4bb977",
+    "src/v10/runner.rs": "294e974185e7ca7362fed963029f5ca600b8aeb348a43fa5dce5678b761d6eac",
+    "validation_suite_v10.py": "4877937f2381cbed349d7337f7c5b98fdee3140b4c8cf2e643c24d556b0d86f1"
+  },
+  "audit": {
+    "registered_cases_passed": "12/12",
+    "speed_gate_registered": false,
+    "calibration_defect": "Five slow cases recorded a zero-duration empty control. Do not use this campaign to freeze optimisation targets.",
+    "encoding_result": "Canonical CBOR matched or beat the custom NDABI frame. The next campaign must equalise integrity work."
+  },
+  "boundary": "This is bounded fixture evidence. It is not database, remote, durable, token, or public-standard evidence."
+}

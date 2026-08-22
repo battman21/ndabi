@@ -1,0 +1,20 @@
+{
+  "schema": "ndabi-evidence-manifest-v1",
+  "campaign": "v2.7 PostgreSQL batch campaign",
+  "status": "failed",
+  "reason": "The first run missed one native-distance gate. The retained second run also failed.",
+  "artifacts": {
+    "binary": {"path": "target/release/ndabi_v27", "sha256": "d7507bde034da8a22c1d64fefb8d2d78f59f8531883cce4bd4f1d279d07a749b"},
+    "core_source": {"path": "evidence/v27-failed/source/src/core_v01.rs", "sha256": "82c1a2bdd407a6e616d29f86aedc7c0d60fc987c4abc5524d584da6665f9e496"},
+    "adapter_source": {"path": "evidence/v27-failed/source/src/v27/mod.rs", "sha256": "051bc9126f0ac815cfd4c875abe68cc8d68d4c754e7f323ac1013425a806b81a"},
+    "binary_source": {"path": "evidence/v27-failed/source/src/bin/ndabi_v27.rs", "sha256": "0c2216604db6ffd30fca2029127cc6628a0d8f4b5469262e37904c9ed7027f79"},
+    "cargo_manifest": {"path": "evidence/v27-failed/source/Cargo.toml", "sha256": "a2a1eb5a937f163aab22c056c23f5e330aa1bced1b6e3fab8638ae9602193d38"},
+    "cargo_lock": {"path": "evidence/v27-failed/source/Cargo.lock", "sha256": "393619b274a509c9df967b9ba54fa99bec4a00f032c7459ab702e918913a2b1d"},
+    "core_protocol": {"path": "evidence/v27-failed/core-protocol.md", "sha256": "e9f1ddafb86e395a84985db1106503ee694ab1537ace58876596c20a2c88288e"},
+    "preregistration": {"path": "evidence/v27-failed/preregistration.md", "sha256": "3f17510f924da0f92e3a95c3fee76baae791cf0d587542f1399f39bb9c28971e"},
+    "custody_note": {"path": "evidence/v27-failed/custody-note.md", "sha256": "7e41ca97eff24cba78c5b1da666b126b309d2609083109cfa92f1a3e99a08a3a"}
+  },
+  "raw_results": [
+    {"path": "result.json", "sha256": "e0fe15a7e2f6324eec9144d380cb92237daf14763bc4bc4350a9f33722513253"}
+  ]
+}

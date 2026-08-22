@@ -1,0 +1,81 @@
+{
+  "schema": "ndabi-evidence-manifest-v1",
+  "campaign": "v3.3 PostgreSQL Linux ARM64 container campaign",
+  "status": "accepted",
+  "artifacts": {
+    "binary": {
+      "path": "evidence/v33-accepted/ndabi_v33_linux_arm64",
+      "sha256": "55eebb3e4686363ae80264a5e4cdb817a1117f34bc41304be4b8b35cd3cc1116"
+    },
+    "protocol_source": {
+      "path": "evidence/v33-accepted/source/src/column_v03.rs",
+      "sha256": "e50a1ce83f6a56a32646629970b3e77066ce2309b8e38aeedfafe12d10551257"
+    },
+    "adapter_source": {
+      "path": "evidence/v33-accepted/source/src/v33/mod.rs",
+      "sha256": "e85d5f1e8cf891b5478443a1ee469031962ded3b0f90d4e00b68972c4ce81028"
+    },
+    "binary_source": {
+      "path": "evidence/v33-accepted/source/src/bin/ndabi_v33.rs",
+      "sha256": "af5276bc7385b57f01a666e13bfd162ec47b4311a7f45f8233bcb542f1a92b80"
+    },
+    "dockerfile": {
+      "path": "evidence/v33-accepted/source/docker/Dockerfile.v33",
+      "sha256": "57943401f8a7e447d220d50196bb0fe1fbda79ee2bc924a9f0fc1ed06561f671"
+    },
+    "docker_library": {
+      "path": "evidence/v33-accepted/source/docker/lib-v33.rs",
+      "sha256": "e782cca22279164f05c4bbd37149ea768c5a1d173cceb45fc1d38465907f2055"
+    },
+    "cargo_manifest": {
+      "path": "evidence/v33-accepted/source/docker/build-v33/Cargo.toml",
+      "sha256": "44c9160c11a8a919875d042540198a1db034eaaa3a85348bd27d7769c9a60fd7"
+    },
+    "cargo_lock": {
+      "path": "evidence/v33-accepted/source/docker/build-v33/Cargo.lock",
+      "sha256": "6db8e798e1c55458fbbf601229da99327245791eae08b44725223a733b158d70"
+    },
+    "runner": {
+      "path": "evidence/v33-accepted/runner.py",
+      "sha256": "1e4c6ce675d02f0a01de162dfbdea884627a6677b378d5622eb861aca6ec468d"
+    },
+    "preregistration": {
+      "path": "evidence/v33-accepted/preregistration.md",
+      "sha256": "520804a274200e9b48c842382a1021fb682ff6a01b46623b4499b98cbd1a6091"
+    },
+    "security_audit": {
+      "path": "evidence/v33-accepted/security-audit.md",
+      "sha256": "efb7e5c6a7b838a89cd74a30578e80081eac1adc1f23aa1cb2d8431c86cc1955"
+    },
+    "column_profile": {
+      "path": "evidence/v33-accepted/column-profile.md",
+      "sha256": "45acc048a3207661f4843a46c08702883af39bbc428184ea07e36ab73d6523b1"
+    },
+    "summary": {
+      "path": "results/v33/20260822T034314Z-1787370194473542000/summary.json",
+      "sha256": "8094ded45dbe7417df9efb0b5fb2fc724e230add5b57082253fbfcb87eb5aabd"
+    }
+  },
+  "raw_results": [
+    {
+      "path": "results/v33/20260822T034314Z-1787370194473542000/process-00.json",
+      "sha256": "45dab5093c2eeaa0a4d81c67a764fead6ac8386eff08017f3da631c14c7b2485"
+    },
+    {
+      "path": "results/v33/20260822T034314Z-1787370194473542000/process-01.json",
+      "sha256": "70d0223488e897dc1ea74ecaadc0badd7332e2a13372e4fa3f644a34dfde1331"
+    },
+    {
+      "path": "results/v33/20260822T034314Z-1787370194473542000/process-02.json",
+      "sha256": "fc86d30779124abfb4fbb1fd6dc3253d2eb49c1ec56956f4e0bdb3f2c23ba23f"
+    },
+    {
+      "path": "results/v33/20260822T034314Z-1787370194473542000/process-03.json",
+      "sha256": "50c1689b0d615bfe5e472bb278dd98c4c9f3f5a5063d3e47c750c80efadc3da7"
+    },
+    {
+      "path": "results/v33/20260822T034314Z-1787370194473542000/process-04.json",
+      "sha256": "f2d7dc63473e1186b4627cf5c43be0f59f2c252047634f1302f1b7e18e0c7c22"
+    }
+  ]
+}

@@ -1,0 +1,720 @@
+{
+  "schema": "ndabi-postgresql-paired-replay-process-v3.5",
+  "campaign_id": "20260822T060415Z-1787378655381197000",
+  "status": "failed",
+  "binary": {
+    "path": "/usr/local/bin/ndabi_v35",
+    "sha256": "239dff20c681d9abab380ddb7361ad5d562cff73013a2d32facaa54365f4577c"
+  },
+  "client_image": {
+    "reference": "ndabi-showdown:v3.5-local",
+    "id": "sha256:2ae617a01b024a8326451dd177fb5834e0085a1323ddc769d00ef4120c7f9d47"
+  },
+  "postgres_image": {
+    "reference": "postgres@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20",
+    "id": "sha256:eb9fe6b5815523ffa3e3d8aee9db3532bd564b857634fcfa36979d76bed6ae10"
+  },
+  "processes": 5,
+  "latency": [
+    {
+      "batch_size": 32,
+      "median_process_p95_ns": {
+        "native-ephemeral": 67417,
+        "ndabi-ephemeral": 64375,
+        "native-resumable": 255292,
+        "ndabi-resumable": 269625
+      },
+      "ephemeral_distance": 0.9548778498004954,
+      "resumable_distance": 1.0561435532644972
+    },
+    {
+      "batch_size": 128,
+      "median_process_p95_ns": {
+        "native-ephemeral": 136167,
+        "ndabi-ephemeral": 138667,
+        "native-resumable": 333875,
+        "ndabi-resumable": 333250
+      },
+      "ephemeral_distance": 1.0183598081767242,
+      "resumable_distance": 0.9981280419318608
+    }
+  ],
+  "concurrency": [
+    {
+      "concurrency": 1,
+      "median_process_operations_per_second": {
+        "native-ephemeral": 564172.3680911273,
+        "ndabi-ephemeral": 568000.764096266,
+        "native-resumable": 121904.75453334818,
+        "ndabi-resumable": 133013.7221204789
+      },
+      "median_process_p95_ns": {
+        "native-ephemeral": 68625,
+        "ndabi-ephemeral": 67084,
+        "native-resumable": 279000,
+        "ndabi-resumable": 266458
+      },
+      "ephemeral_throughput_ratio": 1.0067858623032038,
+      "resumable_throughput_ratio": 1.0911282552485821,
+      "ephemeral_p95_distance": 0.9775446265938069,
+      "resumable_p95_distance": 0.9550465949820789
+    },
+    {
+      "concurrency": 8,
+      "median_process_operations_per_second": {
+        "native-ephemeral": 2970166.8398404564,
+        "ndabi-ephemeral": 3212188.4706971454,
+        "native-resumable": 688340.9267933548,
+        "ndabi-resumable": 711687.741355165
+      },
+      "median_process_p95_ns": {
+        "native-ephemeral": 125459,
+        "ndabi-ephemeral": 125292,
+        "native-resumable": 474917,
+        "ndabi-resumable": 446792
+      },
+      "ephemeral_throughput_ratio": 1.0814841872215128,
+      "resumable_throughput_ratio": 1.033917516238024,
+      "ephemeral_p95_distance": 0.9986688878438374,
+      "resumable_p95_distance": 0.9407791256156339
+    },
+    {
+      "concurrency": 32,
+      "median_process_operations_per_second": {
+        "native-ephemeral": 3110317.3322086204,
+        "ndabi-ephemeral": 3456609.1656402806,
+        "native-resumable": 1058990.8217348214,
+        "ndabi-resumable": 1007561.8208100217
+      },
+      "median_process_p95_ns": {
+        "native-ephemeral": 538834,
+        "ndabi-ephemeral": 527750,
+        "native-resumable": 1440583,
+        "ndabi-resumable": 1434959
+      },
+      "ephemeral_throughput_ratio": 1.1113364960692806,
+      "resumable_throughput_ratio": 0.9514358388483957,
+      "ephemeral_p95_distance": 0.9794296573712868,
+      "resumable_p95_distance": 0.9960960250120958
+    },
+    {
+      "concurrency": 128,
+      "median_process_operations_per_second": {
+        "native-ephemeral": 3384813.148471215,
+        "ndabi-ephemeral": 3541360.2518871524,
+        "native-resumable": 980956.0122039705,
+        "ndabi-resumable": 986730.2131202356
+      },
+      "median_process_p95_ns": {
+        "native-ephemeral": 2119500,
+        "ndabi-ephemeral": 2127375,
+        "native-resumable": 6786750,
+        "ndabi-resumable": 6712875
+      },
+      "ephemeral_throughput_ratio": 1.0462498508925504,
+      "resumable_throughput_ratio": 1.0058862995327302,
+      "ephemeral_p95_distance": 1.003715498938429,
+      "resumable_p95_distance": 0.9891148193170516
+    }
+  ],
+  "hard_gate": {
+    "passed": false,
+    "checks": [
+      {
+        "id": "five-complete-processes",
+        "passed": true,
+        "observed": {
+          "results": 5,
+          "exit_codes": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "target": "five complete results"
+      },
+      {
+        "id": "five-zero-exit-codes",
+        "passed": true,
+        "observed": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "target": "five zero exit codes"
+      },
+      {
+        "id": "all-process-correctness-gates",
+        "passed": true,
+        "observed": 5,
+        "target": "5/5"
+      },
+      {
+        "id": "batch-32-ephemeral-distance",
+        "passed": true,
+        "observed": [
+          0.9263391790509867,
+          1.0013065592384627,
+          0.9505465980390703,
+          0.9634369287020109,
+          1.0087375034320138
+        ],
+        "target": "aggregate p95 no more than 1.05x"
+      },
+      {
+        "id": "batch-32-ephemeral-distance-repeatability",
+        "passed": true,
+        "observed": {
+          "ratios": [
+            0.9263391790509867,
+            1.0013065592384627,
+            0.9505465980390703,
+            0.9634369287020109,
+            1.0087375034320138
+          ],
+          "coefficient_of_variation": 0.03196779649189023
+        },
+        "target": "coefficient below 0.20"
+      },
+      {
+        "id": "batch-32-resumable-distance",
+        "passed": true,
+        "observed": [
+          1.269362200561819,
+          0.9988479353581264,
+          1.0561435532644972,
+          1.0472329886416354,
+          1.0154173228346457
+        ],
+        "target": "aggregate p95 no more than 1.10x"
+      },
+      {
+        "id": "batch-32-resumable-distance-repeatability",
+        "passed": true,
+        "observed": {
+          "ratios": [
+            1.269362200561819,
+            0.9988479353581264,
+            1.0561435532644972,
+            1.0472329886416354,
+            1.0154173228346457
+          ],
+          "coefficient_of_variation": 0.09115232412743686
+        },
+        "target": "coefficient below 0.20"
+      },
+      {
+        "id": "batch-32-one-result-identity",
+        "passed": true,
+        "observed": [
+          [
+            "ab0c467ae02305609b1cd1795b382cf56611fb63de93bc736dc02ab321b2206c",
+            "02cab52c6dfe9a9b7ced7e48fd331a897611d13f3b47e60c0e9ef761124effa8"
+          ]
+        ],
+        "target": "one payload and receipt identity"
+      },
+      {
+        "id": "batch-128-ephemeral-distance",
+        "passed": true,
+        "observed": [
+          0.9956166189754811,
+          0.9990700511843829,
+          0.879237341532878,
+          1.0183598081767242,
+          0.9874026465028355
+        ],
+        "target": "aggregate p95 no more than 1.05x"
+      },
+      {
+        "id": "batch-128-ephemeral-distance-repeatability",
+        "passed": true,
+        "observed": {
+          "ratios": [
+            0.9956166189754811,
+            0.9990700511843829,
+            0.879237341532878,
+            1.0183598081767242,
+            0.9874026465028355
+          ],
+          "coefficient_of_variation": 0.05062340947765126
+        },
+        "target": "coefficient below 0.20"
+      },
+      {
+        "id": "batch-128-resumable-distance",
+        "passed": true,
+        "observed": [
+          0.9987169811320755,
+          1.0374454045561665,
+          1.085486347464415,
+          0.9981280419318608,
+          1.0219440283799763
+        ],
+        "target": "aggregate p95 no more than 1.10x"
+      },
+      {
+        "id": "batch-128-resumable-distance-repeatability",
+        "passed": true,
+        "observed": {
+          "ratios": [
+            0.9987169811320755,
+            1.0374454045561665,
+            1.085486347464415,
+            0.9981280419318608,
+            1.0219440283799763
+          ],
+          "coefficient_of_variation": 0.03129920590974552
+        },
+        "target": "coefficient below 0.20"
+      },
+      {
+        "id": "batch-128-one-result-identity",
+        "passed": true,
+        "observed": [
+          [
+            "8c10d91d8aa262626c420524b07c59e5b731f49d45271f39caa5dc92d22ecaa7",
+            "bcb235c2fb07d4e1f81e50932435590844414baf6f273f230a362150a4fc1082"
+          ]
+        ],
+        "target": "one payload and receipt identity"
+      },
+      {
+        "id": "concurrency-1-ephemeral-throughput",
+        "passed": true,
+        "observed": [
+          1.0067858623032038,
+          1.0038034428269624,
+          0.9813998094044596,
+          1.0013512052751055,
+          0.9777476366025476
+        ],
+        "target": "aggregate throughput at least 0.90x"
+      },
+      {
+        "id": "concurrency-1-ephemeral-throughput-repeatability",
+        "passed": true,
+        "observed": {
+          "ratios": [
+            1.0067858623032038,
+            1.0038034428269624,
+            0.9813998094044596,
+            1.0013512052751055,
+            0.9777476366025476
+          ],
+          "coefficient_of_variation": 0.012205596282057593
+        },
+        "target": "coefficient below 0.20"
+      },
+      {
+        "id": "concurrency-1-resumable-throughput",
+        "passed": true,
+        "observed": [
+          0.9999094767724459,
+          1.0799482233338624,
+          1.6774093304556823,
+          0.9535204433905828,
+          1.0302968816370592
+        ],
+        "target": "aggregate throughput at least 0.90x"
+      },
+      {
+        "id": "concurrency-1-resumable-throughput-repeatability",
+        "passed": false,
+        "observed": {
+          "ratios": [
+            0.9999094767724459,
+            1.0799482233338624,
+            1.6774093304556823,
+            0.9535204433905828,
+            1.0302968816370592
+          ],
+          "coefficient_of_variation": 0.23320777608756543
+        },
+        "target": "coefficient below 0.20"
+      },
+      {
+        "id": "concurrency-1-ephemeral-p95",
+        "passed": true,
+        "observed": [
+          0.9775446265938069,
+          1.03264173735282,
+          1.0447763518564666,
+          1.0275695205442295,
+          1.0470004190709519
+        ],
+        "target": "aggregate p95 no more than 1.15x"
+      },
+      {
+        "id": "concurrency-1-ephemeral-p95-repeatability",
+        "passed": true,
+        "observed": {
+          "ratios": [
+            0.9775446265938069,
+            1.03264173735282,
+            1.0447763518564666,
+            1.0275695205442295,
+            1.0470004190709519
+          ],
+          "coefficient_of_variation": 0.024613197382334483
+        },
+        "target": "coefficient below 0.20"
+      },
+      {
+        "id": "concurrency-1-resumable-p95",
+        "passed": true,
+        "observed": [
+          0.9948662039405152,
+          0.7890672761302823,
+          0.9268207885304659,
+          1.1124739530132788,
+          0.946140098819077
+        ],
+        "target": "aggregate p95 no more than 1.15x"
+      },
+      {
+        "id": "concurrency-1-resumable-p95-repeatability",
+        "passed": true,
+        "observed": {
+          "ratios": [
+            0.9948662039405152,
+            0.7890672761302823,
+            0.9268207885304659,
+            1.1124739530132788,
+            0.946140098819077
+          ],
+          "coefficient_of_variation": 0.10973973238452449
+        },
+        "target": "coefficient below 0.20"
+      },
+      {
+        "id": "concurrency-8-ephemeral-throughput",
+        "passed": true,
+        "observed": [
+          1.0030538514572143,
+          1.0717669585944765,
+          1.1429466902524925,
+          1.0386956552842033,
+          0.975561756579633
+        ],
+        "target": "aggregate throughput at least 0.90x"
+      },
+      {
+        "id": "concurrency-8-ephemeral-throughput-repeatability",
+        "passed": true,
+        "observed": {
+          "ratios": [
+            1.0030538514572143,
+            1.0717669585944765,
+            1.1429466902524925,
+            1.0386956552842033,
+            0.975561756579633
+          ],
+          "coefficient_of_variation": 0.055594116029772385
+        },
+        "target": "coefficient below 0.20"
+      },
+      {
+        "id": "concurrency-8-resumable-throughput",
+        "passed": true,
+        "observed": [
+          1.033917516238024,
+          0.9910127741181163,
+          1.0685576481992594,
+          0.9906134675440015,
+          1.0626763748113066
+        ],
+        "target": "aggregate throughput at least 0.90x"
+      },
+      {
+        "id": "concurrency-8-resumable-throughput-repeatability",
+        "passed": true,
+        "observed": {
+          "ratios": [
+            1.033917516238024,
+            0.9910127741181163,
+            1.0685576481992594,
+            0.9906134675440015,
+            1.0626763748113066
+          ],
+          "coefficient_of_variation": 0.0326250396939855
+        },
+        "target": "coefficient below 0.20"
+      },
+      {
+        "id": "concurrency-8-ephemeral-p95",
+        "passed": true,
+        "observed": [
+          1.1133517534537727,
+          0.9123219537856989,
+          0.8659611992945326,
+          0.8710875036500411,
+          1.0397699471391788
+        ],
+        "target": "aggregate p95 no more than 1.15x"
+      },
+      {
+        "id": "concurrency-8-ephemeral-p95-repeatability",
+        "passed": true,
+        "observed": {
+          "ratios": [
+            1.1133517534537727,
+            0.9123219537856989,
+            0.8659611992945326,
+            0.8710875036500411,
+            1.0397699471391788
+          ],
+          "coefficient_of_variation": 0.10296172212234783
+        },
+        "target": "coefficient below 0.20"
+      },
+      {
+        "id": "concurrency-8-resumable-p95",
+        "passed": true,
+        "observed": [
+          0.950285643793894,
+          1.008108391814288,
+          0.8191124773668363,
+          1.768535664024887,
+          0.9330577764114572
+        ],
+        "target": "aggregate p95 no more than 1.15x"
+      },
+      {
+        "id": "concurrency-8-resumable-p95-repeatability",
+        "passed": false,
+        "observed": {
+          "ratios": [
+            0.950285643793894,
+            1.008108391814288,
+            0.8191124773668363,
+            1.768535664024887,
+            0.9330577764114572
+          ],
+          "coefficient_of_variation": 0.31200392812853417
+        },
+        "target": "coefficient below 0.20"
+      },
+      {
+        "id": "concurrency-32-ephemeral-throughput",
+        "passed": true,
+        "observed": [
+          1.0454126907715213,
+          1.0595351704892964,
+          1.2321343788727446,
+          1.0263930262995813,
+          1.0468547832045316
+        ],
+        "target": "aggregate throughput at least 0.90x"
+      },
+      {
+        "id": "concurrency-32-ephemeral-throughput-repeatability",
+        "passed": true,
+        "observed": {
+          "ratios": [
+            1.0454126907715213,
+            1.0595351704892964,
+            1.2321343788727446,
+            1.0263930262995813,
+            1.0468547832045316
+          ],
+          "coefficient_of_variation": 0.07003012218706718
+        },
+        "target": "coefficient below 0.20"
+      },
+      {
+        "id": "concurrency-32-resumable-throughput",
+        "passed": true,
+        "observed": [
+          0.9419165255834911,
+          0.9649982256315311,
+          1.0018882345666205,
+          1.022058222129946,
+          1.0061842028465542
+        ],
+        "target": "aggregate throughput at least 0.90x"
+      },
+      {
+        "id": "concurrency-32-resumable-throughput-repeatability",
+        "passed": true,
+        "observed": {
+          "ratios": [
+            0.9419165255834911,
+            0.9649982256315311,
+            1.0018882345666205,
+            1.022058222129946,
+            1.0061842028465542
+          ],
+          "coefficient_of_variation": 0.029818723124263286
+        },
+        "target": "coefficient below 0.20"
+      },
+      {
+        "id": "concurrency-32-ephemeral-p95",
+        "passed": true,
+        "observed": [
+          0.978134462243212,
+          0.9585502595563945,
+          0.9814103300207639,
+          0.9794296573712868,
+          0.9773233930572434
+        ],
+        "target": "aggregate p95 no more than 1.15x"
+      },
+      {
+        "id": "concurrency-32-ephemeral-p95-repeatability",
+        "passed": true,
+        "observed": {
+          "ratios": [
+            0.978134462243212,
+            0.9585502595563945,
+            0.9814103300207639,
+            0.9794296573712868,
+            0.9773233930572434
+          ],
+          "coefficient_of_variation": 0.008538708191952361
+        },
+        "target": "coefficient below 0.20"
+      },
+      {
+        "id": "concurrency-32-resumable-p95",
+        "passed": true,
+        "observed": [
+          1.0361964222400823,
+          0.996873695884569,
+          1.0389890759505005,
+          0.9525731942329004,
+          0.8390136327185245
+        ],
+        "target": "aggregate p95 no more than 1.15x"
+      },
+      {
+        "id": "concurrency-32-resumable-p95-repeatability",
+        "passed": true,
+        "observed": {
+          "ratios": [
+            1.0361964222400823,
+            0.996873695884569,
+            1.0389890759505005,
+            0.9525731942329004,
+            0.8390136327185245
+          ],
+          "coefficient_of_variation": 0.07594604898097655
+        },
+        "target": "coefficient below 0.20"
+      },
+      {
+        "id": "concurrency-128-ephemeral-throughput",
+        "passed": true,
+        "observed": [
+          1.024511562970498,
+          1.109362210281566,
+          1.0499415595837462,
+          1.0918774644294376,
+          0.9374548527395551
+        ],
+        "target": "aggregate throughput at least 0.90x"
+      },
+      {
+        "id": "concurrency-128-ephemeral-throughput-repeatability",
+        "passed": true,
+        "observed": {
+          "ratios": [
+            1.024511562970498,
+            1.109362210281566,
+            1.0499415595837462,
+            1.0918774644294376,
+            0.9374548527395551
+          ],
+          "coefficient_of_variation": 0.05805932678195722
+        },
+        "target": "coefficient below 0.20"
+      },
+      {
+        "id": "concurrency-128-resumable-throughput",
+        "passed": true,
+        "observed": [
+          1.0731609704181946,
+          0.9987624921607913,
+          1.0400816963722144,
+          0.9997328102769958,
+          1.015707186434943
+        ],
+        "target": "aggregate throughput at least 0.90x"
+      },
+      {
+        "id": "concurrency-128-resumable-throughput-repeatability",
+        "passed": true,
+        "observed": {
+          "ratios": [
+            1.0731609704181946,
+            0.9987624921607913,
+            1.0400816963722144,
+            0.9997328102769958,
+            1.015707186434943
+          ],
+          "coefficient_of_variation": 0.027439308454706803
+        },
+        "target": "coefficient below 0.20"
+      },
+      {
+        "id": "concurrency-128-ephemeral-p95",
+        "passed": true,
+        "observed": [
+          1.0079811276244397,
+          0.9467466680973239,
+          1.0188577586206897,
+          1.0196588594678713,
+          0.9602601952117658
+        ],
+        "target": "aggregate p95 no more than 1.15x"
+      },
+      {
+        "id": "concurrency-128-ephemeral-p95-repeatability",
+        "passed": true,
+        "observed": {
+          "ratios": [
+            1.0079811276244397,
+            0.9467466680973239,
+            1.0188577586206897,
+            1.0196588594678713,
+            0.9602601952117658
+          ],
+          "coefficient_of_variation": 0.03123749717067538
+        },
+        "target": "coefficient below 0.20"
+      },
+      {
+        "id": "concurrency-128-resumable-p95",
+        "passed": true,
+        "observed": [
+          0.9862902370940956,
+          1.0492474820214048,
+          0.9873539330248607,
+          0.9798339538760766,
+          0.9891148193170516
+        ],
+        "target": "aggregate p95 no more than 1.15x"
+      },
+      {
+        "id": "concurrency-128-resumable-p95-repeatability",
+        "passed": true,
+        "observed": {
+          "ratios": [
+            0.9862902370940956,
+            1.0492474820214048,
+            0.9873539330248607,
+            0.9798339538760766,
+            0.9891148193170516
+          ],
+          "coefficient_of_variation": 0.025674049304981558
+        },
+        "target": "coefficient below 0.20"
+      }
+    ]
+  }
+}

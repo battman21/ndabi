@@ -1,0 +1,39 @@
+[package]
+name = "ndabi-showdown"
+version = "0.9.0"
+edition = "2021"
+publish = false
+
+# Keep this research prototype outside the product workspace. Its SQLite dependency and benchmark
+# profile must not change White Tree's build graph or feature unification.
+[workspace]
+
+[[bin]]
+name = "ndabi-v06"
+path = "src/bin/ndabi_v06.rs"
+
+[[bin]]
+name = "ndabi-v07"
+path = "src/bin/ndabi_v07.rs"
+
+[[bin]]
+name = "ndabi-v08"
+path = "src/bin/ndabi_v08.rs"
+
+[[bin]]
+name = "ndabi-v09"
+path = "src/bin/ndabi_v09.rs"
+
+[dependencies]
+blake3 = "1.8"
+crc32fast = "1.5"
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+olx-core = { version = "=0.1.0", path = "../../crates/olx-core", features = ["store-fixtures"] }
+tempfile = "3"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"

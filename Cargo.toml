@@ -1,0 +1,138 @@
+[package]
+name = "ndabi-showdown"
+version = "0.9.0"
+edition = "2021"
+publish = false
+
+# Keep this research prototype outside the product workspace. Its SQLite dependency and benchmark
+# profile must not change White Tree's build graph or feature unification.
+[workspace]
+members = ["crates/ndabi-mongodb", "crates/ndabi-postgres", "crates/ndabi-session", "crates/ndabi-write"]
+
+[[bin]]
+name = "ndabi-v06"
+path = "src/bin/ndabi_v06.rs"
+
+[[bin]]
+name = "ndabi-v07"
+path = "src/bin/ndabi_v07.rs"
+
+[[bin]]
+name = "ndabi-v08"
+path = "src/bin/ndabi_v08.rs"
+
+[[bin]]
+name = "ndabi-v09"
+path = "src/bin/ndabi_v09.rs"
+
+[[bin]]
+name = "ndabi_v22"
+path = "src/bin/ndabi_v22.rs"
+
+[[bin]]
+name = "ndabi_v23"
+path = "src/bin/ndabi_v23.rs"
+
+[[bin]]
+name = "ndabi_v25"
+path = "src/bin/ndabi_v25.rs"
+
+[[bin]]
+name = "ndabi_v27"
+path = "src/bin/ndabi_v27.rs"
+
+[[bin]]
+name = "ndabi_v28"
+path = "src/bin/ndabi_v28.rs"
+
+[[bin]]
+name = "ndabi_v30"
+path = "src/bin/ndabi_v30.rs"
+
+[[bin]]
+name = "ndabi_v31"
+path = "src/bin/ndabi_v31.rs"
+
+[[bin]]
+name = "ndabi_v32"
+path = "src/bin/ndabi_v32.rs"
+
+[[bin]]
+name = "ndabi_v33"
+path = "src/bin/ndabi_v33.rs"
+
+[[bin]]
+name = "ndabi_fuzz_v01"
+path = "src/bin/ndabi_fuzz_v01.rs"
+
+[[bin]]
+name = "ndabi_v34"
+path = "src/bin/ndabi_v34.rs"
+
+[[bin]]
+name = "ndabi_v35"
+path = "src/bin/ndabi_v35.rs"
+
+[[bin]]
+name = "ndabi_v40"
+path = "src/bin/ndabi_v40.rs"
+
+[[bin]]
+name = "ndabi_v41"
+path = "src/bin/ndabi_v41.rs"
+
+[[bin]]
+name = "ndabi_v42"
+path = "src/bin/ndabi_v42.rs"
+
+[[bin]]
+name = "ndabi_v44"
+path = "src/bin/ndabi_v44.rs"
+
+[[bin]]
+name = "ndabi_v45"
+path = "src/bin/ndabi_v45.rs"
+
+[[bin]]
+name = "ndabi_v46"
+path = "src/bin/ndabi_v46.rs"
+
+[[bin]]
+name = "ndabi_v47"
+path = "src/bin/ndabi_v47.rs"
+
+[[bin]]
+name = "ndabi_v50"
+path = "src/bin/ndabi_v50.rs"
+
+[[bin]]
+name = "ndabi_v51"
+path = "src/bin/ndabi_v51.rs"
+
+[dependencies]
+blake3 = { version = "1.8", features = ["zeroize"] }
+crc32fast = "1.5"
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+olx-core = { version = "=0.1.0", path = "../../crates/olx-core", features = ["store-fixtures", "dev-software-signing"] }
+tempfile = "3"
+arrow-array = "58.3"
+tokio = { version = "1.52", features = ["rt-multi-thread"] }
+postgres = "0.19"
+tokio-postgres = "0.7"
+futures-util = "0.3"
+subtle = "2.6"
+zeroize = "1.9"
+ndabi-mongodb = { path = "crates/ndabi-mongodb" }
+ndabi-postgres = { path = "crates/ndabi-postgres" }
+ndabi-session = { path = "crates/ndabi-session" }
+ndabi-write = { path = "crates/ndabi-write" }
+mongodb = { version = "3.8", features = ["sync"] }
+rcgen = "0.14"
+rustls = "0.23"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"

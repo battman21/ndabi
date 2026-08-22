@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NDABI showdown</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="NDABI showdown home">
+        <span class="brand-mark" aria-hidden="true">N</span>
+        <span>NDABI showdown</span>
+      </a>
+      <span class="runtime-state" id="runtime-state">Loading evidence</span>
+      <button class="button button-secondary" id="download-result" type="button" disabled>
+        Download JSON
+      </button>
+    </header>
+
+    <main id="top">
+      <section class="intro">
+        <p class="kicker">Local comparison laboratory</p>
+        <h1>Measure the compression thesis.</h1>
+        <p class="intro-copy">
+          Compare four physical bindings against identical governed operations and exact results.
+        </p>
+        <form class="run-controls" id="run-form">
+          <label>
+            Database rows
+            <select id="rows" name="rows">
+              <option value="1024">1,024</option>
+              <option value="4096" selected>4,096</option>
+              <option value="16384">16,384</option>
+              <option value="65536">65,536</option>
+            </select>
+          </label>
+          <label>
+            Measured runs
+            <select id="iterations" name="iterations">
+              <option value="400">400</option>
+              <option value="2000" selected>2,000</option>
+              <option value="10000">10,000</option>
+            </select>
+          </label>
+          <label>
+            Warm-up runs
+            <select id="warmup" name="warmup">
+              <option value="20">20</option>
+              <option value="100" selected>100</option>
+              <option value="500">500</option>
+            </select>
+          </label>
+          <button class="button button-primary" id="run-button" type="submit">Run showdown</button>
+        </form>
+        <p class="error-message" id="error-message" role="alert" hidden></p>
+      </section>
+
+      <section class="overview" aria-live="polite">
+        <div>
+          <span class="section-label">Current verdict</span>
+          <strong class="overall-verdict" id="overall-verdict">Pending</strong>
+        </div>
+        <p id="overview-copy">Waiting for the first complete local result.</p>
+        <dl class="run-meta" id="run-meta"></dl>
+      </section>
+
+      <section class="track" id="scale-track" aria-labelledby="scale-title">
+        <div class="track-heading">
+          <div>
+            <span class="section-label">Scale campaign · v0.7–v0.9</span>
+            <h2 id="scale-title">Does the result survive independent processes?</h2>
+          </div>
+          <div class="track-score" id="scale-score"></div>
+        </div>
+        <div id="scale-content"></div>
+      </section>
+
+      <section class="track" id="v06-track" aria-labelledby="v06-title">
+        <div class="track-heading">
+          <div>
+            <span class="section-label">Architectural showdown · v0.6</span>
+            <h2 id="v06-title">Remove the application stack, not only its syntax</h2>
+          </div>
+          <div class="track-score" id="v06-score"></div>
+        </div>
+        <div id="v06-content"></div>
+      </section>
+
+      <section class="track" id="validation-track" aria-labelledby="validation-title">
+        <div class="track-heading">
+          <div>
+            <span class="section-label">Repeatability</span>
+            <h2 id="validation-title">Does the direction survive repeated runs?</h2>
+          </div>
+          <div class="track-score" id="validation-state"></div>
+        </div>
+        <div id="validation-content"></div>
+      </section>
+
+      <section class="track" id="database-track" aria-labelledby="database-title">
+        <div class="track-heading">
+          <div>
+            <span class="section-label">Database surface</span>
+            <h2 id="database-title">SQL, tuned JSON, NDABI wire, and NDABI local</h2>
+          </div>
+          <div class="track-score" id="database-score"></div>
+        </div>
+        <div id="database-content"></div>
+      </section>
+
+      <section class="track" id="application-track" aria-labelledby="application-title">
+        <div class="track-heading">
+          <div>
+            <span class="section-label">Application surface</span>
+            <h2 id="application-title">Complete state, tuned patch, wire patch, and local patch</h2>
+          </div>
+          <div class="track-score" id="application-score"></div>
+        </div>
+        <div id="application-content"></div>
+      </section>
+
+      <section class="track" id="white-tree-track" aria-labelledby="white-tree-title">
+        <div class="track-heading">
+          <div>
+            <span class="section-label">White Tree engine</span>
+            <h2 id="white-tree-title">Governed `.olt` context through four bindings</h2>
+          </div>
+          <div class="track-score" id="white-tree-score"></div>
+        </div>
+        <div id="white-tree-content"></div>
+      </section>
+
+      <section class="track" id="model-track" aria-labelledby="model-title">
+        <div class="track-heading">
+          <div>
+            <span class="section-label">Model boundary</span>
+            <h2 id="model-title">Semantic handles, raw hex, and provider-reported tokens</h2>
+          </div>
+          <div class="track-score" id="model-state"></div>
+        </div>
+        <div id="model-content"></div>
+      </section>
+
+      <section class="disclosure" aria-labelledby="limits-title">
+        <span class="section-label">Evidence boundary</span>
+        <h2 id="limits-title">What this run does not prove</h2>
+        <ul id="limitations"></ul>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

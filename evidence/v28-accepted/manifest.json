@@ -1,0 +1,18 @@
+{
+  "schema": "ndabi-evidence-manifest-v1",
+  "campaign": "v2.8 PostgreSQL borrowed batch campaign",
+  "status": "accepted",
+  "artifacts": {
+    "binary": {"path": "target/release/ndabi_v28", "sha256": "41c2647ded238eddbb24e69cdfc97811f73cde00703097d6474097829d813e55"},
+    "core_source": {"path": "evidence/v28-accepted/source/src/core_v01.rs", "sha256": "dc3487b7764f5a9b3efa3e3b47544af0bb80ad246d6bce50274c5ed2c75f2cd9"},
+    "adapter_source": {"path": "evidence/v28-accepted/source/src/v28/mod.rs", "sha256": "ecded37fd700f700db1514a50e8bb0517387fddf3d295c3573a18901b7b30ffe"},
+    "binary_source": {"path": "evidence/v28-accepted/source/src/bin/ndabi_v28.rs", "sha256": "4a443abb53a9f32072a88e3cc11e54cc8f93d8af0a8380ed5855f664d2728494"},
+    "cargo_manifest": {"path": "evidence/v28-accepted/source/Cargo.toml", "sha256": "b1a93a3b81341346e5424198e1fb1563d16db547ba3bdbbb099db09dbf8fa77c"},
+    "cargo_lock": {"path": "evidence/v28-accepted/source/Cargo.lock", "sha256": "393619b274a509c9df967b9ba54fa99bec4a00f032c7459ab702e918913a2b1d"},
+    "core_protocol": {"path": "evidence/v28-accepted/core-protocol.md", "sha256": "6339243b2c6122d93210031061ed1ea625629b139dcd0eddca74f64b9a807a77"},
+    "preregistration": {"path": "evidence/v28-accepted/preregistration.md", "sha256": "11d84d8f161023073f41351cd0ade539e5408f4f56c5a64c2bc4cba88d6d8dce"}
+  },
+  "raw_results": [
+    {"path": "result.json", "sha256": "0ad668185caa2b7646fe26e449562b6c80f2536c07a219a5ffdb536453ccac23"}
+  ]
+}

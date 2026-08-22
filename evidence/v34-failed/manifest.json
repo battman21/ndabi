@@ -1,0 +1,35 @@
+{
+  "schema": "ndabi-evidence-manifest-v1",
+  "campaign": "v3.4 PostgreSQL replay campaign",
+  "status": "failed",
+  "custody_complete": false,
+  "custody_note": "The source candidate rebuilt to 84966d1bcddb0bdceb221722e7613480b1949c73c3b2dd58260d1483b16b83d9, not the retained binary digest.",
+  "artifacts": {
+    "binary": {"path": "evidence/v34-failed/ndabi_v34_linux_arm64", "sha256": "adb03bca75a0bf7715caf1039d9097570fe7a1e6daeb3b1165378ff3bca3549e"},
+    "preregistration": {"path": "evidence/v34-failed/preregistration.md", "sha256": "5e8977ce67c91c2e22d6a5cfdb834a5ed2760fd65231c297b30a4e315660406b"},
+    "runner": {"path": "evidence/v34-failed/runner.py", "sha256": "0f4421564cfedee4d4bd94ec0b414450354f2e0c2a6f0ddbea3fab981fd1258f"},
+    "dockerfile": {"path": "evidence/v34-failed/source/docker/Dockerfile.v34", "sha256": "7f91cbe70bf9a0878db8daa97ee2246c5a46a0c6de57abee6ab9350b71a3aa32"},
+    "cargo_lock": {"path": "evidence/v34-failed/source/docker/build-v34/Cargo.lock", "sha256": "5804746c70324ae8edbe446481b2ea1c7bdd6928f7433376c94a2d2b06f13c75"},
+    "cargo_manifest": {"path": "evidence/v34-failed/source/docker/build-v34/Cargo.toml", "sha256": "6f9360732086711ac849b15c4648e52ca470672814972c012da5cf8d5f444646"},
+    "docker_library_candidate": {"path": "evidence/v34-failed/source/docker/lib-v34.rs", "sha256": "fb83fd12e59192196f6d7ee7511f0e1dcaa50bfd5a10ba7954725dd3bc1e3a70"},
+    "allocator_candidate": {"path": "evidence/v34-failed/source/src/alloc.rs", "sha256": "9d22e8c4e39c9dc66b09a8fe3fb4c7912c6b60d1cb64b27f8b4114052eeef453"},
+    "binary_candidate": {"path": "evidence/v34-failed/source/src/bin/ndabi_v34.rs", "sha256": "398f9eca180e255697968afbe24f821209b3f7195f05440ed7b04717933e4028"},
+    "protocol_candidate": {"path": "evidence/v34-failed/source/src/column_v03.rs", "sha256": "eee074afc5c747f3512a6e0ed6e7a4b6b02507739592b2c3e4d0507f2502ddf8"},
+    "replay_candidate": {"path": "evidence/v34-failed/source/src/replay_v01.rs", "sha256": "834b3b716d42785d3f3c8dec9179490fc101c17d6a5b29557664efa9b54a4772"},
+    "session_candidate": {"path": "evidence/v34-failed/source/src/session_v01.rs", "sha256": "8dbda8962cd6a22e4eb0bb518629c9173c49ca950aa5a79315112bc8dccb2d45"},
+    "adapter_candidate": {"path": "evidence/v34-failed/source/src/v34/mod.rs", "sha256": "dabf4586b326cb1f3f13de2dafc79e86fc65c0894ee37670eaa994f787dcd71a"},
+    "summary": {"path": "results/v34/20260822T054732Z-1787377652364643000/summary.json", "sha256": "23b8942b85bb30dc0d613c29ba1c35bc1cfa91459c4284b25059abf44d47a31e"},
+    "process_00_stderr": {"path": "results/v34/20260822T054732Z-1787377652364643000/process-00.stderr", "sha256": "c8ecb9fdb68aa0cd614a19f5f6bd549b139169a439542780ecf3e5c261bfb28c"},
+    "process_01_stderr": {"path": "results/v34/20260822T054732Z-1787377652364643000/process-01.stderr", "sha256": "c8ecb9fdb68aa0cd614a19f5f6bd549b139169a439542780ecf3e5c261bfb28c"},
+    "process_02_stderr": {"path": "results/v34/20260822T054732Z-1787377652364643000/process-02.stderr", "sha256": "c8ecb9fdb68aa0cd614a19f5f6bd549b139169a439542780ecf3e5c261bfb28c"},
+    "process_03_stderr": {"path": "results/v34/20260822T054732Z-1787377652364643000/process-03.stderr", "sha256": "c8ecb9fdb68aa0cd614a19f5f6bd549b139169a439542780ecf3e5c261bfb28c"},
+    "process_04_stderr": {"path": "results/v34/20260822T054732Z-1787377652364643000/process-04.stderr", "sha256": "c8ecb9fdb68aa0cd614a19f5f6bd549b139169a439542780ecf3e5c261bfb28c"}
+  },
+  "raw_results": [
+    {"path": "results/v34/20260822T054732Z-1787377652364643000/process-00.json", "sha256": "0c09d6614a163af0eb1360a94781e74dac3e764fe798278e8e6a250da942a398"},
+    {"path": "results/v34/20260822T054732Z-1787377652364643000/process-01.json", "sha256": "b1ecd3ed1c21221f3a6e2bdc777ef2380f2c41c1cbe114d8671452bdcf9ec32a"},
+    {"path": "results/v34/20260822T054732Z-1787377652364643000/process-02.json", "sha256": "58622e0b3f310a0f4765ae44360450855728f2e3c6423337ad28fd4ae79136ea"},
+    {"path": "results/v34/20260822T054732Z-1787377652364643000/process-03.json", "sha256": "bedb510d25fdc1105554c44f9bde1e239050afbebb8a5c6c0d88fea526cdc76d"},
+    {"path": "results/v34/20260822T054732Z-1787377652364643000/process-04.json", "sha256": "b9202b941093ca7b28264f3fcf5da64f0a5d59fec8d1a024c17b2e512afc7712"}
+  ]
+}

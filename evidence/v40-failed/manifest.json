@@ -1,0 +1,27 @@
+{
+  "schema": "ndabi-evidence-manifest-v1",
+  "campaign": "v4.0 PostgreSQL gateway campaign",
+  "status": "failed",
+  "custody_complete": true,
+  "reproduced_binary_sha256": "02a3b070fc2737b4c994c2c82bad6dfd6c99432d787fa1c32f66cbb465f16d48",
+  "artifacts": {
+    "binary": {"path": "evidence/v40-failed/ndabi_v40_linux_arm64", "sha256": "02a3b070fc2737b4c994c2c82bad6dfd6c99432d787fa1c32f66cbb465f16d48"},
+    "preregistration": {"path": "evidence/v40-failed/preregistration.md", "sha256": "c9574b18671c2958c47cb8a8817bdc3e1b5991f9c510cf2657a36fa215c0b3c3"},
+    "runner": {"path": "evidence/v40-failed/runner.py", "sha256": "db26ea6786eac919cd2646031a3feff940a05f6de378a684040d30e9330b9e23"},
+    "adapter_source": {"path": "evidence/v40-failed/source.rs", "sha256": "273205524f38cb1a7566b4449d5b5420c7bab459ac9bc00bf9eea098afab51ec"},
+    "dockerfile": {"path": "evidence/v40-failed/source/docker/Dockerfile.v40", "sha256": "e5e3c742603e2e460bc8f0955f7cb8d767284d0fa5b763dd2a8f9784ff25c401"},
+    "cargo_manifest": {"path": "evidence/v40-failed/source/docker/build-v40/Cargo.toml", "sha256": "0250c29e4b2b7afdb00fde5124bfe5c91073df60597d3179cbe68978b06b8829"},
+    "cargo_lock": {"path": "evidence/v40-failed/source/docker/build-v40/Cargo.lock", "sha256": "0617704f55d6a89876b945598d53450d473598d5ce8a8fb9390bdb62a17b1743"},
+    "docker_library_source": {"path": "evidence/v40-failed/source/docker/lib-v34.rs", "sha256": "fb83fd12e59192196f6d7ee7511f0e1dcaa50bfd5a10ba7954725dd3bc1e3a70"},
+    "allocator_source": {"path": "evidence/v40-failed/source/src/alloc.rs", "sha256": "9d22e8c4e39c9dc66b09a8fe3fb4c7912c6b60d1cb64b27f8b4114052eeef453"},
+    "binary_source": {"path": "evidence/v40-failed/source/src/bin/ndabi_v40.rs", "sha256": "3abb5dcb0bbb5d30c286924f5a71b849d62259788982383af4b288c30ef63006"},
+    "summary": {"path": "results/v40/20260822T073638Z-1787384198469986000/summary.json", "sha256": "98c8d0f56761490975a0af1c5f640a11c2bcebff46cd1f31b64941a55138e4a4"}
+  },
+  "raw_results": [
+    {"path": "results/v40/20260822T073638Z-1787384198469986000/process-00.json", "sha256": "0335d82d0808e91d5cacf257061722f7a13da81356294c0586717266ed1d47fe"},
+    {"path": "results/v40/20260822T073638Z-1787384198469986000/process-01.json", "sha256": "16f4b095391af04e634f7dc04e06674f8a828219240547e79dae70d7914e2838"},
+    {"path": "results/v40/20260822T073638Z-1787384198469986000/process-02.json", "sha256": "1acc3b3d3e7b0b354f9be62ab695509c3f4f0ac52e24d7fb811514ab36dc425e"},
+    {"path": "results/v40/20260822T073638Z-1787384198469986000/process-03.json", "sha256": "15b395eddcdaf5e60e76228e85921cfe8642d239c9e74415573abc0a70bb6fc7"},
+    {"path": "results/v40/20260822T073638Z-1787384198469986000/process-04.json", "sha256": "36b467777d3c3c8515e23da3207e537f119192c60e058e31511e66507fd00aa6"}
+  ]
+}

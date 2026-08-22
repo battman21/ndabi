@@ -1,0 +1,16 @@
+{
+  "schema": "ndabi-v11-failed-campaign-v0.1",
+  "campaign_id": "20260821T225054Z-1787352654218692000",
+  "status": "failed-measurement-calibration",
+  "release_binary_sha256": "8fa03ea02d7d8223596b3c60f5d500bc2710230af46eadcab7f4f04efb188fab",
+  "source_fingerprint_blake3": "59b5d591665ea16e1f5cd35d3fbd32617bce37a2ef70d899c55dd361ba527410",
+  "runner_sha256": "514ad313212f0c55b9d9c7677a991d0a3089c61a6b15c516db940ff57a9131ad",
+  "preregistration_sha256": "6e3a60fa783ac8a16401acf4525b6f2800378584692ddbab8632de9089237998",
+  "completed_cases": [
+    "results/v11/20260821T225054Z-1787352654218692000/cases/case-01-point-512.json",
+    "results/v11/20260821T225054Z-1787352654218692000/cases/case-02-point-10k.json"
+  ],
+  "failure": "The point-100k process failed the one-percent measurement-calibration gate.",
+  "custody_defect": "The runner discarded the failed process JSON before storage. The next runner stores valid failed results.",
+  "decision": "Do not rerun until a new preregistration increases control-heavy operations per batch."
+}

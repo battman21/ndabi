@@ -1,0 +1,25 @@
+{
+  "schema": "ndabi-evidence-manifest-v1",
+  "campaign": "v2.5 PostgreSQL real engine",
+  "status": "failed",
+  "reason": "Simple SQL reached 1.0977x, below 1.10x, and direct repeat reached 1.1312x.",
+  "artifacts": {
+    "binary": {
+      "path": "ndabi_v25.gz",
+      "encoding": "gzip",
+      "sha256": "0fb95571ab8f26dbf76fe6b2eaaec1850304ca5518a527ee5e2fe0cf7804b962"
+    },
+    "source": {
+      "path": "source.rs",
+      "sha256": "2c2ae927901c2de1362fc11df2718bbecfa50fc82467958890df5eca5b6f817e"
+    },
+    "preregistration": {
+      "path": "preregistration.md",
+      "sha256": "4f9af0d87aed74ecc60632e49d1d73cba7e09a87d31e59c27335258d1fdc9da9"
+    },
+    "result": {
+      "path": "result.json",
+      "sha256": "aa65c39079a7ea9728729e3dd8d8cfb49557b259267fd85d59ab8cf8a874a94e"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+[package]
+name = "ndabi-v42-linux-build"
+version = "0.1.0"
+edition = "2021"
+publish = false
+autobins = false
+
+[workspace]
+
+[lib]
+name = "ndabi_showdown"
+path = "../lib-v42.rs"
+
+[[bin]]
+name = "ndabi_v42"
+path = "../../src/bin/ndabi_v42.rs"
+
+[dependencies]
+libc = "=0.2.189"
+ndabi-postgres = { path = "../../crates/ndabi-postgres" }
+postgres = "=0.19.14"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+sha2 = "=0.11.0"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
