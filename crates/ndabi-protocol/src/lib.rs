@@ -483,9 +483,13 @@ impl BoundedOutput {
     }
 
     pub fn complete_row(&mut self) -> Result<(), ProtocolError> {
+        self.complete_rows(1)
+    }
+
+    pub fn complete_rows(&mut self, count: u32) -> Result<(), ProtocolError> {
         let rows = self
             .rows
-            .checked_add(1)
+            .checked_add(count)
             .ok_or(ProtocolError::RowBudgetExceeded)?;
         if rows > self.maximum_rows {
             return Err(ProtocolError::RowBudgetExceeded);
@@ -976,6 +980,17 @@ mod tests {
         assert_eq!(
             output.reserve_total(8_193).unwrap_err(),
             ProtocolError::ResultBudgetExceeded
+        );
+    }
+
+    #[test]
+    fn a_bulk_row_completion_stays_inside_the_row_budget() {
+        let mut output = BoundedOutput::new(1, 4);
+        output.complete_rows(4).expect("row completion");
+        assert_eq!(output.rows(), 4);
+        assert_eq!(
+            output.complete_rows(1).unwrap_err(),
+            ProtocolError::RowBudgetExceeded
         );
     }
 
