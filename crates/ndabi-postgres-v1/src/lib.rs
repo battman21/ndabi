@@ -5,8 +5,8 @@
 //! PostgreSQL must enforce a read-only, least-privilege database role.
 
 use ndabi_protocol::{
-    Authority, Backend, BackendIdentity, BoundedOutput, Clock, Execution, ExecutionLimits,
-    MemoryReplayStore, Operation, ProtocolError, ReplayStore,
+    Authority, Backend, BackendIdentity, BatchBackend, BatchItems, BatchOperation, BoundedOutput,
+    Clock, Execution, ExecutionLimits, MemoryReplayStore, Operation, ProtocolError, ReplayStore,
 };
 use postgres::{Client, Row, Statement};
 
@@ -81,6 +81,14 @@ impl RangeProfile {
             count,
         )
     }
+
+    pub fn batch_operation(self) -> Result<BatchOperation, ProtocolError> {
+        BatchOperation::new(
+            RANGE_OPCODE,
+            self.binding.plan_handle,
+            self.binding.result_shape,
+        )
+    }
 }
 
 pub struct RangeBackend {
@@ -89,6 +97,8 @@ pub struct RangeBackend {
     statement: Statement,
     profile: RangeProfile,
     identity: BackendIdentity,
+    batch_ids: Vec<i64>,
+    data_queries: u64,
 }
 
 impl RangeBackend {
@@ -114,7 +124,26 @@ impl RangeBackend {
             statement,
             profile,
             identity,
+            batch_ids: Vec::with_capacity(4_096),
+            data_queries: 0,
         })
+    }
+
+    pub fn data_queries(&self) -> u64 {
+        self.data_queries
+    }
+
+    fn apply_deadline(&mut self, limits: ExecutionLimits) -> Result<(), ProtocolError> {
+        let remaining_us = limits
+            .deadline_unix_us
+            .checked_sub(limits.admitted_unix_us)
+            .ok_or(ProtocolError::Expired)?;
+        let remaining_ms = remaining_us.div_ceil(1_000).max(1);
+        let timeout = format!("{remaining_ms}ms");
+        self.client
+            .query_one(&self.deadline_statement, &[&timeout])
+            .map_err(|_| ProtocolError::BackendRefused)?;
+        Ok(())
     }
 
     fn execute_range(
@@ -134,20 +163,13 @@ impl RangeBackend {
         if required_bytes > u64::from(limits.maximum_result_bytes) {
             return Err(ProtocolError::ResultBudgetExceeded);
         }
-        let remaining_us = limits
-            .deadline_unix_us
-            .checked_sub(limits.admitted_unix_us)
-            .ok_or(ProtocolError::Expired)?;
-        let remaining_ms = remaining_us.div_ceil(1_000).max(1);
-        let timeout = format!("{remaining_ms}ms");
-        self.client
-            .query_one(&self.deadline_statement, &[&timeout])
-            .map_err(|_| ProtocolError::BackendRefused)?;
+        self.apply_deadline(limits)?;
         let ids: Vec<i64> = (0..i64::from(count)).map(|offset| start + offset).collect();
         let rows = self
             .client
             .query(&self.statement, &[&ids])
             .map_err(|_| ProtocolError::BackendRefused)?;
+        self.data_queries = self.data_queries.saturating_add(1);
         if rows.len() != count as usize {
             return Err(ProtocolError::BackendRefused);
         }
@@ -155,6 +177,65 @@ impl RangeBackend {
         output.write(&0_u32.to_le_bytes())?;
         for (index, row) in rows.iter().enumerate() {
             encode_row(row, start, index, output)?;
+        }
+        output.patch_u32(2, output.rows())?;
+        Ok(())
+    }
+}
+
+impl BatchBackend for RangeBackend {
+    fn identity(&self) -> BackendIdentity {
+        self.identity
+    }
+
+    fn execute_batch(
+        &mut self,
+        operation: BatchOperation,
+        items: BatchItems<'_>,
+        limits: ExecutionLimits,
+        output: &mut BoundedOutput,
+    ) -> Result<(), ProtocolError> {
+        if operation != self.profile.batch_operation()? {
+            return Err(ProtocolError::BackendRefused);
+        }
+        let count = u32::try_from(items.len()).map_err(|_| ProtocolError::BatchLimitExceeded)?;
+        if count > limits.maximum_rows {
+            return Err(ProtocolError::RowBudgetExceeded);
+        }
+        let required_bytes = 6_u64
+            .checked_add(u64::from(count) * 84)
+            .ok_or(ProtocolError::ResultBudgetExceeded)?;
+        if required_bytes > u64::from(limits.maximum_result_bytes) {
+            return Err(ProtocolError::ResultBudgetExceeded);
+        }
+        self.batch_ids.clear();
+        for item in items {
+            validate_range(item.first, 1)?;
+            if item.second != 0 || item.third != 1 {
+                return Err(ProtocolError::BackendRefused);
+            }
+            if self
+                .batch_ids
+                .last()
+                .is_some_and(|last| *last >= item.first)
+            {
+                return Err(ProtocolError::BackendRefused);
+            }
+            self.batch_ids.push(item.first);
+        }
+        self.apply_deadline(limits)?;
+        let rows = self
+            .client
+            .query(&self.statement, &[&self.batch_ids])
+            .map_err(|_| ProtocolError::BackendRefused)?;
+        self.data_queries = self.data_queries.saturating_add(1);
+        if rows.len() != self.batch_ids.len() {
+            return Err(ProtocolError::BackendRefused);
+        }
+        output.write(&RANGE_OPCODE.to_le_bytes())?;
+        output.write(&0_u32.to_le_bytes())?;
+        for (row, expected_id) in rows.iter().zip(&self.batch_ids) {
+            encode_expected_row(row, *expected_id, output)?;
         }
         output.patch_u32(2, output.rows())?;
         Ok(())
@@ -199,13 +280,24 @@ fn encode_row(
     index: usize,
     output: &mut BoundedOutput,
 ) -> Result<(), ProtocolError> {
+    let index = i64::try_from(index).map_err(|_| ProtocolError::BackendRefused)?;
+    let expected_id = expected_start
+        .checked_add(index)
+        .ok_or(ProtocolError::BackendRefused)?;
+    encode_expected_row(row, expected_id, output)
+}
+
+fn encode_expected_row(
+    row: &Row,
+    expected_id: i64,
+    output: &mut BoundedOutput,
+) -> Result<(), ProtocolError> {
     let id: i64 = row.try_get(0).map_err(|_| ProtocolError::BackendRefused)?;
     let bucket: i32 = row.try_get(1).map_err(|_| ProtocolError::BackendRefused)?;
     let owner: i32 = row.try_get(2).map_err(|_| ProtocolError::BackendRefused)?;
     let score: i32 = row.try_get(3).map_err(|_| ProtocolError::BackendRefused)?;
     let payload: Vec<u8> = row.try_get(4).map_err(|_| ProtocolError::BackendRefused)?;
-    let index = i64::try_from(index).map_err(|_| ProtocolError::BackendRefused)?;
-    if id != expected_start + index || payload.len() != 64 {
+    if id != expected_id || payload.len() != 64 {
         return Err(ProtocolError::BackendRefused);
     }
     output.write(&id.to_le_bytes())?;
