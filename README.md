@@ -351,6 +351,10 @@ The v7.1 indexed batch campaign binds commit `f3d4f37` and passes every register
 Median speed-ups measured 5.46, 13.60, and 22.12 times for 2, 8, and 16 operations.
 Request bytes fell by 81.17% to 94.39%. Database queries fell by 50.00% to 93.75%.
 The speed-up comes from one admitted session and one indexed query per batch.
-The campaign used direct PostgreSQL and local PostgREST. Hosted Supabase and Supavisor remain untested.
+The v7.2 Supavisor session campaign binds commit `9c41128` and passes every frozen gate.
+Pooled NDABI measured 3.91, 10.55, and 18.25 times faster than repeated PostgREST.
+Supavisor added 33.34%, 33.90%, and 27.81% median p50 overhead against direct NDABI.
+All seventeen pooled-path security checks and all session, custody, query, and repeatability gates passed.
+The campaign used local Docker. Hosted Supabase, TLS, WAN, and concurrency remain untested.
 The v5.2 result proves one PostgreSQL compare-and-swap write profile.
 Tokens, energy, public WAN, production custody, and general query or write support remain unproven.

@@ -61,6 +61,40 @@ class SupavisorSessionCampaignTests(unittest.TestCase):
         self.assertFalse(result["passed"])
         self.assertIsNotNone(result["validation_error"])
 
+    def test_accepted_evidence_revalidates(self):
+        root = validation_suite_v72.RESULT_ROOT
+        aggregate = json.loads((root / "latest.json").read_text())
+        campaign = root / aggregate["campaign_id"]
+        stored = json.loads((campaign / "aggregate.json").read_text())
+        self.assertEqual(aggregate, stored)
+        self.assertTrue(aggregate["accepted"])
+        self.assertEqual(
+            aggregate["source_commit"],
+            "9c4112818b76a25ddc72bbfb79d64046bfae6866",
+        )
+        self.assertTrue(aggregate["source_custody_passed"])
+        self.assertTrue(aggregate["session_proof_passed"])
+        self.assertEqual(len(aggregate["security"]), 17)
+        self.assertTrue(all(aggregate["security"].values()))
+        self.assertTrue(aggregate["repeatability_passed"])
+        for process in range(1, validation_suite_v72.PROCESS_COUNT + 1):
+            direct = json.loads((campaign / f"direct-process-{process}.json").read_text())
+            pooled = json.loads((campaign / f"pooled-process-{process}.json").read_text())
+            pair = json.loads((campaign / f"pair-process-{process}.json").read_text())
+            validation_suite_v72.v71.validate_report(direct)
+            validation_suite_v72.v71.validate_report(pooled)
+            self.assertEqual(
+                direct["observed_data_queries"],
+                validation_suite_v72.EXPECTED_QUERIES_PER_ARM,
+            )
+            self.assertEqual(
+                pooled["observed_data_queries"],
+                validation_suite_v72.EXPECTED_QUERIES_PER_ARM,
+            )
+            self.assertTrue(direct["campaign_gate_passed"])
+            self.assertTrue(pooled["campaign_gate_passed"])
+            self.assertTrue(pair["passed"])
+
 
 if __name__ == "__main__":
     unittest.main()

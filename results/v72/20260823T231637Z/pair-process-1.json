@@ -1,0 +1,28 @@
+{
+  "cases": [
+    {
+      "operations": 2,
+      "pooled_to_direct_p50_ratio": 1.3956786961583236,
+      "pooled_to_postgrest_p50_ratio": 0.24116568537416425,
+      "canonical_result_equal": true,
+      "passed": true
+    },
+    {
+      "operations": 8,
+      "pooled_to_direct_p50_ratio": 1.1890506729898582,
+      "pooled_to_postgrest_p50_ratio": 0.08860603558882918,
+      "canonical_result_equal": true,
+      "passed": true
+    },
+    {
+      "operations": 16,
+      "pooled_to_direct_p50_ratio": 1.3303496494254012,
+      "pooled_to_postgrest_p50_ratio": 0.053464428576967794,
+      "canonical_result_equal": true,
+      "passed": true
+    }
+  ],
+  "validation_error": null,
+  "passed": true,
+  "process": 1
+}

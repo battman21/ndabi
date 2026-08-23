@@ -1,0 +1,136 @@
+{
+  "campaign": "NDABI Supavisor session campaign v7.2",
+  "campaign_id": "20260823T231637Z",
+  "smoke": false,
+  "process_count": 5,
+  "source_commit": "9c4112818b76a25ddc72bbfb79d64046bfae6866",
+  "source_sha256": "bece130e79335fc9df9517c44b6aa8a1bb74e9fb3b345b63893176490715accd",
+  "source_custody_passed": true,
+  "binary_sha256": "2a5d3c3a13e5c1687f17e88fbd3c1037b78215153c3ca0ffca43b0f8b24fbc46",
+  "postgres_image_id": "sha256:eb9fe6b5815523ffa3e3d8aee9db3532bd564b857634fcfa36979d76bed6ae10",
+  "postgrest_image_id": "sha256:367030c7d679ff6ab17bfde55017fe94863e74c30b6e160bdbe4993bbfaf545b",
+  "supavisor_image_id": "sha256:f57c01457d930c906720b562f65b2ca6bbc97d39116eb53fbbc2831c99616167",
+  "pooler_mode": "session",
+  "session_proof_passed": true,
+  "authenticator_least_privilege": true,
+  "rls_enabled_and_forced": true,
+  "security": {
+    "valid_token_accepted": true,
+    "changed_signature_refused": true,
+    "unknown_key_refused": true,
+    "wrong_issuer_refused": true,
+    "wrong_audience_refused": true,
+    "expired_token_refused": true,
+    "unsigned_subject_refused": true,
+    "elevated_role_refused": true,
+    "authorised_ndabi_rows_accepted": true,
+    "cross_subject_ndabi_rows_refused": true,
+    "second_subject_ndabi_rows_accepted": true,
+    "changed_ndabi_frame_refused": true,
+    "ndabi_replay_refused_before_query": true,
+    "invalid_ndabi_receipt_refused": true,
+    "valid_ndabi_result_accepted": true,
+    "cross_subject_postgrest_rows_hidden": true,
+    "user_write_refused": true
+  },
+  "security_passed": true,
+  "repeatability": [
+    {
+      "operations": 2,
+      "ratio": "pooled_to_direct_p50_ratio",
+      "coefficient_of_variation": 0.036836920680670945,
+      "hard_gate": false,
+      "passed": true
+    },
+    {
+      "operations": 2,
+      "ratio": "pooled_to_postgrest_p50_ratio",
+      "coefficient_of_variation": 0.03712683542254158,
+      "hard_gate": false,
+      "passed": true
+    },
+    {
+      "operations": 8,
+      "ratio": "pooled_to_direct_p50_ratio",
+      "coefficient_of_variation": 0.07584687180569083,
+      "hard_gate": true,
+      "passed": true
+    },
+    {
+      "operations": 8,
+      "ratio": "pooled_to_postgrest_p50_ratio",
+      "coefficient_of_variation": 0.0440038219313387,
+      "hard_gate": true,
+      "passed": true
+    },
+    {
+      "operations": 16,
+      "ratio": "pooled_to_direct_p50_ratio",
+      "coefficient_of_variation": 0.039880374220583104,
+      "hard_gate": true,
+      "passed": true
+    },
+    {
+      "operations": 16,
+      "ratio": "pooled_to_postgrest_p50_ratio",
+      "coefficient_of_variation": 0.033816193492129894,
+      "hard_gate": true,
+      "passed": true
+    }
+  ],
+  "repeatability_passed": true,
+  "summary": [
+    {
+      "operations": 2,
+      "direct_ndabi_median_p50_ns": 356209,
+      "pooled_ndabi_median_p50_ns": 464625,
+      "direct_postgrest_median_p50_ns": 1766375,
+      "pooled_postgrest_median_p50_ns": 1836625,
+      "pooled_to_direct_median_p50_ratio": 1.333371700322002,
+      "pooled_speedup_over_postgrest": 3.912347419261386,
+      "direct_speedup_over_postgrest": 5.0706411123806525,
+      "minimum_request_reduction": 0.8116760828625236,
+      "database_query_reduction": 0.5,
+      "pooled_median_mean_allocations": 30.333333333333332,
+      "pooled_median_mean_allocated_bytes": 9450.444444444445
+    },
+    {
+      "operations": 8,
+      "direct_ndabi_median_p50_ns": 527416,
+      "pooled_ndabi_median_p50_ns": 746459,
+      "direct_postgrest_median_p50_ns": 7719375,
+      "pooled_postgrest_median_p50_ns": 7695000,
+      "pooled_to_direct_median_p50_ratio": 1.338963808524735,
+      "pooled_speedup_over_postgrest": 10.547164762377877,
+      "direct_speedup_over_postgrest": 14.462097345324777,
+      "minimum_request_reduction": 0.924953095684803,
+      "database_query_reduction": 0.875,
+      "pooled_median_mean_allocations": 85.22222222222223,
+      "pooled_median_mean_allocated_bytes": 40959.142857142855
+    },
+    {
+      "operations": 16,
+      "direct_ndabi_median_p50_ns": 679042,
+      "pooled_ndabi_median_p50_ns": 833916,
+      "direct_postgrest_median_p50_ns": 15194333,
+      "pooled_postgrest_median_p50_ns": 15240208,
+      "pooled_to_direct_median_p50_ratio": 1.2780906438436102,
+      "pooled_speedup_over_postgrest": 18.253457489227877,
+      "direct_speedup_over_postgrest": 23.290474226804125,
+      "minimum_request_reduction": 0.9439252336448598,
+      "database_query_reduction": 0.9375,
+      "pooled_median_mean_allocations": 156.26984126984127,
+      "pooled_median_mean_allocated_bytes": 84645.87301587302
+    }
+  ],
+  "environment": {
+    "platform": "macOS-15.7.8-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "processor": "arm",
+    "python_version": "3.14.6",
+    "rustc_version": "rustc 1.92.0 (ded5c06cf 2025-12-08)",
+    "docker_server_version": "29.7.2",
+    "executable": "/opt/homebrew/opt/python@3.14/bin/python3.14"
+  },
+  "accepted": true
+}
