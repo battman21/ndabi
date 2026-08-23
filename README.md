@@ -60,6 +60,17 @@ The v4.7 MongoDB 8.0 campaign failed because the engine refused Docker Desktop's
 The v4.8 repair failed because rotating identifiers changed result identities.
 The corrected v4.9 MongoDB 6.0.26 campaign passed five processes with 73.97% request compression.
 
+The v5.3 MongoDB fused-batch campaign failed its native-distance and raw-BSON allocation gates.
+The audits rejected v5.4 to v5.6 because their evidence or harness closure was incomplete.
+The v5.7 final harness passed every frozen gate with one million documents and five processes.
+Request compression measured 78.10% to 78.41% against equal-security JSON.
+Batch-32 p95 measured 22.65 times sequential JSON and 1.142 times native set execution.
+Batch-128 p95 measured 55.20 times sequential JSON and 0.979 times native set execution.
+The batch-128 typed path allocated 0.47% more bytes than native set execution.
+Every process compared complete bytes twice and observed one `find` with zero `getMore` commands.
+Every process passed eight refusals, and the harness removed its temporary container.
+The batch-one result was approximately equal, so operation fusion produced the large gain.
+
 The v5.0 Supabase-compatible binding passed five processes.
 It proved trusted NDABI PostgreSQL reads and PostgREST JWT row scope.
 The v5.2 write campaign passed five processes after binding backend access class to authority class.
@@ -81,6 +92,10 @@ The stack analysis is [`../../specs/ndabi_stack_compression_research_v0_1.md`](.
 The implemented core contracts are [`../../specs/ndabi_core_protocol_v0_2.md`](../../specs/ndabi_core_protocol_v0_2.md)
 and [`../../specs/ndabi_column_batch_profile_v0_1.md`](../../specs/ndabi_column_batch_profile_v0_1.md).
 The accepted PostgreSQL batch contract is [`../../specs/ndabi_postgresql_column_batch_campaign_v3_2.md`](../../specs/ndabi_postgresql_column_batch_campaign_v3_2.md).
+The failed MongoDB fusion contract is [`../../specs/ndabi_mongodb_fused_batch_campaign_v5_3.md`](../../specs/ndabi_mongodb_fused_batch_campaign_v5_3.md).
+The diagnostic MongoDB single-batch contract is [`../../specs/ndabi_mongodb_single_batch_campaign_v5_4.md`](../../specs/ndabi_mongodb_single_batch_campaign_v5_4.md).
+The accepted closed MongoDB contract is [`../../specs/ndabi_mongodb_final_harness_campaign_v5_7.md`](../../specs/ndabi_mongodb_final_harness_campaign_v5_7.md).
+The accepted final harness is [`../../specs/ndabi_mongodb_final_harness_campaign_v5_7.md`](../../specs/ndabi_mongodb_final_harness_campaign_v5_7.md).
 The replay contract is [`../../specs/ndabi_replay_state_profile_v0_1.md`](../../specs/ndabi_replay_state_profile_v0_1.md).
 The frozen v0.8 contract is [`../../specs/ndabi_poc_preregistration_v0_8.md`](../../specs/ndabi_poc_preregistration_v0_8.md).
 The frozen v0.7 contract is [`../../specs/ndabi_poc_preregistration_v0_7.md`](../../specs/ndabi_poc_preregistration_v0_7.md).

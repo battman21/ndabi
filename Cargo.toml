@@ -109,6 +109,26 @@ path = "src/bin/ndabi_v50.rs"
 name = "ndabi_v51"
 path = "src/bin/ndabi_v51.rs"
 
+[[bin]]
+name = "ndabi_v53"
+path = "src/bin/ndabi_v53.rs"
+
+[[bin]]
+name = "ndabi_v54"
+path = "src/bin/ndabi_v54.rs"
+
+[[bin]]
+name = "ndabi_v55"
+path = "src/bin/ndabi_v55.rs"
+
+[[bin]]
+name = "ndabi_v56"
+path = "src/bin/ndabi_v56.rs"
+
+[[bin]]
+name = "ndabi_v57"
+path = "src/bin/ndabi_v57.rs"
+
 [dependencies]
 blake3 = { version = "1.8", features = ["zeroize"] }
 crc32fast = "1.5"

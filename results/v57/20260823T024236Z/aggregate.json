@@ -1,0 +1,114 @@
+{
+  "campaign": "NDABI MongoDB final harness v5.7",
+  "campaign_id": "20260823T024236Z",
+  "process_count": 5,
+  "binary_sha256": "3d15b1f0b36b44c27846de9b2d60433431be44717f7ea36cd7aa093b0068ee8d",
+  "source_sha256": "ac527ce854b8130b1b01ab0773e7def04f8f5ee09c4dd70000c1c8671caeb96f",
+  "mongodb_image": "mongo@sha256:0a83b2f824b29c94c5284a49b018db2e3166d9879d1edda5cce545d899ef2bbb",
+  "mongodb_image_id": "sha256:5c498219ec01c0cd170bf7e5f32b0dfc9d008a6a5524e537c759f6401b1f57c3",
+  "cases": [
+    {
+      "batch_size": 1,
+      "median_p95_ns": {
+        "native-sequential": 745750.0,
+        "json-sequential": 834292.0,
+        "json-set": 836125.0,
+        "native-set": 780625.0,
+        "ndabi-typed": 813250.0,
+        "ndabi-raw": 871416.0
+      },
+      "median_allocated_bytes_per_operation": {
+        "native-set": 43509.496,
+        "ndabi-typed": 43518.536,
+        "ndabi-raw": 43613.536
+      },
+      "ndabi_typed_native_ratio": 1.0417934347477982,
+      "ndabi_typed_sequential_json_speedup": 1.0258739624961575,
+      "ndabi_typed_native_allocated_byte_ratio": 1.0002077707358412,
+      "request_compression": 0.7809798270893371,
+      "exact_results": true,
+      "passed": true
+    },
+    {
+      "batch_size": 8,
+      "median_p95_ns": {
+        "native-sequential": 7470083.0,
+        "json-sequential": 5884000.0,
+        "json-set": 853167.0,
+        "native-set": 909416.0,
+        "ndabi-typed": 898791.0,
+        "ndabi-raw": 844750.0
+      },
+      "median_allocated_bytes_per_operation": {
+        "native-set": 52790.808,
+        "ndabi-typed": 52854.6,
+        "ndabi-raw": 53614.808
+      },
+      "ndabi_typed_native_ratio": 0.9883166779559629,
+      "ndabi_typed_sequential_json_speedup": 6.546572006172736,
+      "ndabi_typed_native_allocated_byte_ratio": 1.0012083921882764,
+      "request_compression": 0.7816091954022988,
+      "exact_results": true,
+      "passed": true
+    },
+    {
+      "batch_size": 32,
+      "median_p95_ns": {
+        "native-sequential": 23473500.0,
+        "json-sequential": 29753000.0,
+        "json-set": 1114125.0,
+        "native-set": 1150042.0,
+        "ndabi-typed": 1313542.0,
+        "ndabi-raw": 1276500.0
+      },
+      "median_allocated_bytes_per_operation": {
+        "native-set": 85676.52,
+        "ndabi-typed": 85932.52,
+        "ndabi-raw": 88972.52
+      },
+      "ndabi_typed_native_ratio": 1.1421687207945448,
+      "ndabi_typed_sequential_json_speedup": 22.65096966827098,
+      "ndabi_typed_native_allocated_byte_ratio": 1.0029879831720523,
+      "request_compression": 0.7828571428571429,
+      "exact_results": true,
+      "passed": true
+    },
+    {
+      "batch_size": 128,
+      "median_p95_ns": {
+        "native-sequential": 101237792.0,
+        "json-sequential": 108481416.0,
+        "json-set": 2022625.0,
+        "native-set": 2006250.0,
+        "ndabi-typed": 1965084.0,
+        "ndabi-raw": 2470125.0
+      },
+      "median_allocated_bytes_per_operation": {
+        "native-set": 216727.64,
+        "ndabi-typed": 217752.68,
+        "ndabi-raw": 229911.64
+      },
+      "ndabi_typed_native_ratio": 0.9794811214953271,
+      "ndabi_typed_sequential_json_speedup": 55.204467595278366,
+      "ndabi_typed_native_allocated_byte_ratio": 1.0047296228575182,
+      "request_compression": 0.7840909090909091,
+      "exact_results": true,
+      "passed": true
+    }
+  ],
+  "process_integrity": [
+    true,
+    true,
+    true,
+    true,
+    true
+  ],
+  "accepted": true,
+  "process_results": [
+    "results/v57/20260823T024236Z/process-1.json",
+    "results/v57/20260823T024236Z/process-2.json",
+    "results/v57/20260823T024236Z/process-3.json",
+    "results/v57/20260823T024236Z/process-4.json",
+    "results/v57/20260823T024236Z/process-5.json"
+  ]
+}
