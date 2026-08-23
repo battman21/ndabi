@@ -95,7 +95,6 @@ The accepted PostgreSQL batch contract is [`../../specs/ndabi_postgresql_column_
 The failed MongoDB fusion contract is [`../../specs/ndabi_mongodb_fused_batch_campaign_v5_3.md`](../../specs/ndabi_mongodb_fused_batch_campaign_v5_3.md).
 The diagnostic MongoDB single-batch contract is [`../../specs/ndabi_mongodb_single_batch_campaign_v5_4.md`](../../specs/ndabi_mongodb_single_batch_campaign_v5_4.md).
 The accepted closed MongoDB contract is [`../../specs/ndabi_mongodb_final_harness_campaign_v5_7.md`](../../specs/ndabi_mongodb_final_harness_campaign_v5_7.md).
-The accepted final harness is [`../../specs/ndabi_mongodb_final_harness_campaign_v5_7.md`](../../specs/ndabi_mongodb_final_harness_campaign_v5_7.md).
 The replay contract is [`../../specs/ndabi_replay_state_profile_v0_1.md`](../../specs/ndabi_replay_state_profile_v0_1.md).
 The frozen v0.8 contract is [`../../specs/ndabi_poc_preregistration_v0_8.md`](../../specs/ndabi_poc_preregistration_v0_8.md).
 The frozen v0.7 contract is [`../../specs/ndabi_poc_preregistration_v0_7.md`](../../specs/ndabi_poc_preregistration_v0_7.md).
