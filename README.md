@@ -330,5 +330,10 @@ It moved session controls outside the measured operation.
 Median NDABI wall time measured 0.373, 0.440, and 0.529 times PostgREST.
 The 128-row case missed the frozen 0.500 gate in every process.
 The result supports no accepted Supabase performance claim.
+The v6.8 range-session campaign passed every security, allocation, and repeatability gate.
+Median NDABI wall time measured 0.374, 0.424, and 0.514 times PostgREST.
+Median 128-row allocations fell from 286 to 156.
+Two 32-row processes and four 128-row processes missed the frozen 0.450 gate.
+The result supports no accepted Supabase performance claim.
 The v5.2 result proves one PostgreSQL compare-and-swap write profile.
 Tokens, energy, public WAN, production custody, and general query or write support remain unproven.

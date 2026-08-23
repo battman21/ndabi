@@ -470,6 +470,18 @@ impl BoundedOutput {
         Ok(())
     }
 
+    pub fn reserve_total(&mut self, total: usize) -> Result<(), ProtocolError> {
+        if total > self.maximum_bytes {
+            return Err(ProtocolError::ResultBudgetExceeded);
+        }
+        if total > self.bytes.capacity() {
+            self.bytes
+                .try_reserve_exact(total - self.bytes.len())
+                .map_err(|_| ProtocolError::ResultBudgetExceeded)?;
+        }
+        Ok(())
+    }
+
     pub fn complete_row(&mut self) -> Result<(), ProtocolError> {
         let rows = self
             .rows
@@ -953,6 +965,17 @@ mod tests {
                 )
                 .unwrap_err(),
             ProtocolError::RowBudgetExceeded
+        );
+    }
+
+    #[test]
+    fn an_output_reservation_stays_inside_the_byte_budget() {
+        let mut output = BoundedOutput::new(8_192, 1);
+        output.reserve_total(8_192).expect("reservation");
+        assert!(output.bytes.capacity() >= 8_192);
+        assert_eq!(
+            output.reserve_total(8_193).unwrap_err(),
+            ProtocolError::ResultBudgetExceeded
         );
     }
 

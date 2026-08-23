@@ -1,0 +1,51 @@
+{
+  "campaign": "NDABI Supabase range-session campaign v6.8",
+  "campaign_id": "20260823T150337Z",
+  "process_count": 5,
+  "source_sha256": "69111fd4f01c7891a8ba8c4b2d50828731ae1d78fb446b7c6ea782b9e01f5576",
+  "binary_sha256": "ee3784375a168de1f3cd55583529fdf0fa60066cb7437be8949df1314fd739ce",
+  "postgres_image_id": "sha256:eb9fe6b5815523ffa3e3d8aee9db3532bd564b857634fcfa36979d76bed6ae10",
+  "postgrest_image_id": "sha256:367030c7d679ff6ab17bfde55017fe94863e74c30b6e160bdbe4993bbfaf545b",
+  "cryptography_version": "49.0.0",
+  "authenticator_least_privilege": true,
+  "rls_enabled_and_forced": true,
+  "security": {
+    "valid_token_accepted": true,
+    "changed_signature_refused": true,
+    "unknown_key_refused": true,
+    "wrong_issuer_refused": true,
+    "wrong_audience_refused": true,
+    "expired_token_refused": true,
+    "unsigned_subject_refused": true,
+    "elevated_role_refused": true,
+    "authorised_ndabi_rows_accepted": true,
+    "cross_subject_ndabi_rows_refused": true,
+    "second_subject_ndabi_rows_accepted": true,
+    "changed_ndabi_frame_refused": true,
+    "ndabi_replay_refused_before_query": true,
+    "invalid_ndabi_receipt_refused": true,
+    "valid_ndabi_result_accepted": true,
+    "cross_subject_postgrest_rows_hidden": true,
+    "user_write_refused": true
+  },
+  "security_passed": true,
+  "repeatability": [
+    {
+      "rows": 1,
+      "ratio": "ndabi_postgrest_p50_distance",
+      "coefficient_of_variation": 0.02343860889959621
+    },
+    {
+      "rows": 32,
+      "ratio": "ndabi_postgrest_p50_distance",
+      "coefficient_of_variation": 0.07610789260728872
+    },
+    {
+      "rows": 128,
+      "ratio": "ndabi_postgrest_p50_distance",
+      "coefficient_of_variation": 0.05145130263845186
+    }
+  ],
+  "repeatability_passed": true,
+  "accepted": false
+}
