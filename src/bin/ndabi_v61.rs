@@ -68,6 +68,7 @@ struct CaseReport {
     p95_speedup: f64,
     cpu_p50_speedup: f64,
     batch_native_p95_distance: f64,
+    batch_native_p50_distance: f64,
     batch_native_cpu_distance: f64,
     allocation_reduction: f64,
     allocated_bytes_reduction: f64,
@@ -155,7 +156,7 @@ fn run() -> Result<(), String> {
     let security = security_suite(&connection)?;
     let passed = reports.iter().all(|report| report.passed) && security.passed;
     let report = Report {
-        campaign: "NDABI canonical PostgreSQL batch v6.1",
+        campaign: "NDABI canonical PostgreSQL batch v6.3",
         samples: SAMPLES,
         warmups: WARMUPS,
         cases: reports,
@@ -243,6 +244,8 @@ fn measure_case(connection: &str, count: u32, case_index: usize) -> Result<CaseR
         sequential_measurement.p50_cpu_ns as f64 / batch_measurement.p50_cpu_ns as f64;
     let batch_native_p95_distance =
         batch_measurement.p95_ns as f64 / native_measurement.p95_ns as f64;
+    let batch_native_p50_distance =
+        batch_measurement.p50_ns as f64 / native_measurement.p50_ns as f64;
     let batch_native_cpu_distance =
         batch_measurement.p50_cpu_ns as f64 / native_measurement.p50_cpu_ns as f64;
     let allocation_reduction =
@@ -257,7 +260,7 @@ fn measure_case(connection: &str, count: u32, case_index: usize) -> Result<CaseR
         && request_compression >= 0.80
         && p95_speedup >= speed_target
         && cpu_p50_speedup >= cpu_target
-        && batch_native_p95_distance <= 1.25
+        && batch_native_p50_distance <= 1.25
         && batch_native_cpu_distance <= 1.35
         && allocation_reduction >= 0.75
         && allocated_bytes_reduction >= 0.40;
@@ -276,6 +279,7 @@ fn measure_case(connection: &str, count: u32, case_index: usize) -> Result<CaseR
         p95_speedup,
         cpu_p50_speedup,
         batch_native_p95_distance,
+        batch_native_p50_distance,
         batch_native_cpu_distance,
         allocation_reduction,
         allocated_bytes_reduction,

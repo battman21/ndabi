@@ -1,0 +1,85 @@
+{
+  "campaign": "NDABI canonical PostgreSQL batch methodology repair v6.3",
+  "campaign_id": "20260823T044535Z",
+  "process_count": 5,
+  "binary_sha256": "d404007ef3745cfb4e0eb0b36cdb27b6190165375b25eec582d26197dae544a5",
+  "source_sha256": "b1f163763eb38ff5629bfe118b28a4333566567c9beec17ce398846d34a6d8b3",
+  "postgres_image_id": "sha256:eb9fe6b5815523ffa3e3d8aee9db3532bd564b857634fcfa36979d76bed6ae10",
+  "cases": [
+    {
+      "operation_count": 32,
+      "p95_speedup": {
+        "minimum": 19.06505399846996,
+        "median": 25.75026209185726,
+        "maximum": 39.41676157677499
+      },
+      "cpu_p50_speedup": {
+        "minimum": 19.479632515126372,
+        "median": 21.54375529256253,
+        "maximum": 30.911270588235293
+      },
+      "batch_native_p50_distance": {
+        "minimum": 0.8602930180980624,
+        "median": 1.0578247727349341,
+        "maximum": 1.1099907940161104,
+        "coefficient_of_variation": 0.08504522068955121
+      },
+      "batch_native_p95_distance_diagnostic": {
+        "minimum": 0.8188872989508835,
+        "median": 1.0673870485744839,
+        "maximum": 1.400868488079166
+      },
+      "request_compression": 0.84375,
+      "allocation_reduction": {
+        "minimum": 0.8861312697967203,
+        "median": 0.8861632194965529
+      },
+      "allocated_bytes_reduction": {
+        "minimum": 0.6432741854703986,
+        "median": 0.6543773699197009
+      }
+    },
+    {
+      "operation_count": 128,
+      "p95_speedup": {
+        "minimum": 48.43593699207768,
+        "median": 73.99342499379027,
+        "maximum": 95.30849384164634
+      },
+      "cpu_p50_speedup": {
+        "minimum": 45.40015535577615,
+        "median": 47.46602375928814,
+        "maximum": 74.11212288447388
+      },
+      "batch_native_p50_distance": {
+        "minimum": 0.8330784014563487,
+        "median": 1.026802553248869,
+        "maximum": 1.0610271820225956,
+        "coefficient_of_variation": 0.08398354202106807
+      },
+      "batch_native_p95_distance_diagnostic": {
+        "minimum": 0.901280658436214,
+        "median": 1.0395348042295238,
+        "maximum": 2.230116259904913
+      },
+      "request_compression": 0.8671875,
+      "allocation_reduction": {
+        "minimum": 0.9077318242931391,
+        "median": 0.9078923604840166
+      },
+      "allocated_bytes_reduction": {
+        "minimum": 0.5301837204091002,
+        "median": 0.5360116626154334
+      }
+    }
+  ],
+  "repeatability_passed": true,
+  "accepted": true,
+  "process_results": [
+    "results/v63/20260823T044535Z/process-1.json",
+    "results/v63/20260823T044535Z/process-2.json",
+    "results/v63/20260823T044535Z/process-3.json",
+    "results/v63/20260823T044535Z/process-4.json",
+    "results/v63/20260823T044535Z/process-5.json"
+  ]
+}

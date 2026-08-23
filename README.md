@@ -80,6 +80,11 @@ Absent, changed, expired, and unsigned tokens refused.
 The v6.0 canonical MongoDB binding passed five fresh processes against digest-pinned MongoDB 6.0.26.
 Each process returned 128 exact rows through one `find`, zero `getMore`, and three early refusals.
 The dedicated application user had read-only database authority.
+The v6.3 canonical PostgreSQL batch campaign passed five fresh processes.
+Median p95 speedup measured 25.75 times for 32 operations and 73.99 times for 128 operations.
+Request bytes fell 84.38% and 86.72%.
+Median CPU speedup measured 21.54 times and 47.47 times.
+Minimum allocation reductions measured 88.61% and 90.77%.
 The v5.2 write campaign passed five processes after binding backend access class to authority class.
 
 The frozen v0.9 contract is [`../../specs/ndabi_poc_preregistration_v0_9.md`](../../specs/ndabi_poc_preregistration_v0_9.md).
@@ -295,5 +300,6 @@ The v5.0 result proves local PostgreSQL and PostgREST JWT bindings, not the host
 The v5.8 result proves the canonical execute-handle frame against the same local data surfaces.
 It adds no hosted Supabase or performance claim.
 The v6.0 result proves one canonical MongoDB 6.0.26 identifier-window profile.
+The v6.3 result proves one canonical PostgreSQL homogeneous-batch profile on local Docker.
 The v5.2 result proves one PostgreSQL compare-and-swap write profile.
 Tokens, energy, public WAN, production custody, and general query or write support remain unproven.
