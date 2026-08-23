@@ -73,6 +73,10 @@ The batch-one result was approximately equal, so operation fusion produced the l
 
 The v5.0 Supabase-compatible binding passed five processes.
 It proved trusted NDABI PostgreSQL reads and PostgREST JWT row scope.
+The v5.8 canonical binding passed five processes with stronger protocol and database identity controls.
+It used a least-privilege read-only service role and forced row-level security.
+Valid user identities returned only their rows.
+Absent, changed, expired, and unsigned tokens refused.
 The v5.2 write campaign passed five processes after binding backend access class to authority class.
 
 The frozen v0.9 contract is [`../../specs/ndabi_poc_preregistration_v0_9.md`](../../specs/ndabi_poc_preregistration_v0_9.md).
@@ -285,5 +289,7 @@ The v4.6 result proves persistent TLS 1.3 loopback and controlled server delay, 
 The v4.9 result proves one MongoDB 6.0.26 point-read profile.
 MongoDB 8.0 and 8.3 refused the available Docker kernel.
 The v5.0 result proves local PostgreSQL and PostgREST JWT bindings, not the hosted Supabase control plane.
+The v5.8 result proves the canonical execute-handle frame against the same local data surfaces.
+It adds no hosted Supabase or performance claim.
 The v5.2 result proves one PostgreSQL compare-and-swap write profile.
 Tokens, energy, public WAN, production custody, and general query or write support remain unproven.

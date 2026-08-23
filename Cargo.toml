@@ -7,7 +7,14 @@ publish = false
 # Keep this research prototype outside the product workspace. Its SQLite dependency and benchmark
 # profile must not change White Tree's build graph or feature unification.
 [workspace]
-members = ["crates/ndabi-mongodb", "crates/ndabi-postgres", "crates/ndabi-session", "crates/ndabi-write"]
+members = [
+    "crates/ndabi-mongodb",
+    "crates/ndabi-postgres",
+    "crates/ndabi-postgres-v1",
+    "crates/ndabi-protocol",
+    "crates/ndabi-session",
+    "crates/ndabi-write",
+]
 
 [[bin]]
 name = "ndabi-v06"
@@ -129,6 +136,10 @@ path = "src/bin/ndabi_v56.rs"
 name = "ndabi_v57"
 path = "src/bin/ndabi_v57.rs"
 
+[[bin]]
+name = "ndabi_v58"
+path = "src/bin/ndabi_v58.rs"
+
 [dependencies]
 blake3 = { version = "1.8", features = ["zeroize"] }
 crc32fast = "1.5"
@@ -147,6 +158,8 @@ subtle = "2.6"
 zeroize = "1.9"
 ndabi-mongodb = { path = "crates/ndabi-mongodb" }
 ndabi-postgres = { path = "crates/ndabi-postgres" }
+ndabi-postgres-v1 = { path = "crates/ndabi-postgres-v1" }
+ndabi-protocol = { path = "crates/ndabi-protocol" }
 ndabi-session = { path = "crates/ndabi-session" }
 ndabi-write = { path = "crates/ndabi-write" }
 mongodb = { version = "3.8", features = ["sync"] }

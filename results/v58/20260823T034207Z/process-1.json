@@ -1,0 +1,20 @@
+{
+  "process": 1,
+  "trusted_service_binding": true,
+  "complete_result_match": true,
+  "authority_context_bound": true,
+  "canonical_frame_bytes": 160,
+  "canonical_frame_passed": true,
+  "service_role_least_privilege": true,
+  "service_role_read_only": true,
+  "service_write_refused": true,
+  "rls_enabled_and_forced": true,
+  "user_one_scope_passed": true,
+  "user_two_scope_passed": true,
+  "absent_token_refused": true,
+  "changed_token_refused": true,
+  "expired_token_refused": true,
+  "unsigned_token_refused": true,
+  "user_write_refused": true,
+  "passed": true
+}

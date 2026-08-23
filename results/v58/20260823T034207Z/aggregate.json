@@ -1,0 +1,17 @@
+{
+  "campaign": "NDABI canonical Supabase binding v5.8",
+  "campaign_id": "20260823T034207Z",
+  "process_count": 5,
+  "binary_sha256": "f8a75d5bb9813d8ad911ea8c50eb3077b3206a8213fb6ac9751361abdf3c9b4c",
+  "source_sha256": "9278a3af510de3cf34d2fd677a3f8bb5d926b724bfe31192459572ffbdd5404f",
+  "postgres_image_id": "sha256:eb9fe6b5815523ffa3e3d8aee9db3532bd564b857634fcfa36979d76bed6ae10",
+  "postgrest_image_id": "sha256:367030c7d679ff6ab17bfde55017fe94863e74c30b6e160bdbe4993bbfaf545b",
+  "accepted": true,
+  "process_results": [
+    "results/v58/20260823T034207Z/process-1.json",
+    "results/v58/20260823T034207Z/process-2.json",
+    "results/v58/20260823T034207Z/process-3.json",
+    "results/v58/20260823T034207Z/process-4.json",
+    "results/v58/20260823T034207Z/process-5.json"
+  ]
+}
