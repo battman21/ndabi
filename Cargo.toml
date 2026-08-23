@@ -149,6 +149,10 @@ path = "src/bin/ndabi_v60.rs"
 name = "ndabi_v61"
 path = "src/bin/ndabi_v61.rs"
 
+[[bin]]
+name = "ndabi_vectors_v01"
+path = "src/bin/ndabi_vectors_v01.rs"
+
 [dependencies]
 blake3 = { version = "1.8", features = ["zeroize"] }
 crc32fast = "1.5"

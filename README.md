@@ -87,6 +87,11 @@ Median CPU speedup measured 21.54 times and 47.47 times.
 Minimum allocation reductions measured 88.61% and 90.77%.
 The v5.2 write campaign passed five processes after binding backend access class to authority class.
 
+The v0.1 RFC candidate freezes the implemented single and homogeneous-batch read frames.
+The committed public vectors include valid frames, invalid frames, receipts, and replay sequences.
+An independent Go decoder decodes both valid frames and rejects every single-bit mutation.
+This agreement establishes cross-language wire interoperability, not production readiness.
+
 The frozen v0.9 contract is [`../../specs/ndabi_poc_preregistration_v0_9.md`](../../specs/ndabi_poc_preregistration_v0_9.md).
 The frozen v1.0 contracts are [`../../specs/ndabi_poc_preregistration_v1_0.md`](../../specs/ndabi_poc_preregistration_v1_0.md)
 and [`../../specs/ndabi_poc_scale_campaign_v1_0.md`](../../specs/ndabi_poc_scale_campaign_v1_0.md).
@@ -235,8 +240,9 @@ It reports the current CPU governor. It does not change host power settings.
 
 ## Boundaries
 
-This is a local POC over SQLite, a reference application kernel, and a White Tree fixture store.
-It is not an NDABI specification, remote database benchmark, signed White Tree database, or production claim.
+This is a local POC over several recorded engine profiles and a reference application kernel.
+The v0.1 RFC candidate specifies only the implemented read-only wire subset.
+It is not a public standard or a production claim.
 The runner repeats four balanced orders for ten cycles. It reports deterministic bootstrap intervals.
 The token canary is a separate decoding and accounting test with one sample per form.
 The v0.9 paired comparison does not pin a core. Linux affinity, durable custody, shared-state concurrency,
