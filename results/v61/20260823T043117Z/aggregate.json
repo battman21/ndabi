@@ -1,0 +1,17 @@
+{
+  "campaign": "NDABI canonical PostgreSQL batch v6.1",
+  "campaign_id": "20260823T043117Z",
+  "required_process_count": 5,
+  "complete_process_count": 4,
+  "binary_sha256": "b0e5d2cbccae35637d5bff388a5d077b3efe29cf7df4a61dd86a8beadee469b8",
+  "source_sha256": "aac1439c442cd770225ac60a9c33cc8c23e3be2acf1c91da1cc3a8aca436beed",
+  "postgres_image_id": "sha256:eb9fe6b5815523ffa3e3d8aee9db3532bd564b857634fcfa36979d76bed6ae10",
+  "failure": "The fifth client exited non-zero. The runner did not preserve its stdout or stderr.",
+  "accepted": false,
+  "process_results": [
+    "results/v61/20260823T043117Z/process-1.json",
+    "results/v61/20260823T043117Z/process-2.json",
+    "results/v61/20260823T043117Z/process-3.json",
+    "results/v61/20260823T043117Z/process-4.json"
+  ]
+}
