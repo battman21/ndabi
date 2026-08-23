@@ -1,0 +1,11 @@
+[package]
+name = "ndabi-supabase-indexed-batch-session-v1"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+ndabi-postgres-v1 = { path = "../ndabi-postgres-v1" }
+ndabi-protocol = { path = "../ndabi-protocol" }
+ndabi-supabase-v1 = { path = "../ndabi-supabase-v1" }
+postgres = "0.19"

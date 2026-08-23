@@ -2954,6 +2954,7 @@ dependencies = [
  "ndabi-protocol",
  "ndabi-session",
  "ndabi-supabase-batch-session-v1",
+ "ndabi-supabase-indexed-batch-session-v1",
  "ndabi-supabase-packed-session-v1",
  "ndabi-supabase-range-session-v1",
  "ndabi-supabase-session-v1",
@@ -2976,6 +2977,16 @@ dependencies = [
 
 [[package]]
 name = "ndabi-supabase-batch-session-v1"
+version = "0.1.0"
+dependencies = [
+ "ndabi-postgres-v1",
+ "ndabi-protocol",
+ "ndabi-supabase-v1",
+ "postgres",
+]
+
+[[package]]
+name = "ndabi-supabase-indexed-batch-session-v1"
 version = "0.1.0"
 dependencies = [
  "ndabi-postgres-v1",
