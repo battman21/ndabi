@@ -2953,6 +2953,7 @@ dependencies = [
  "ndabi-postgres-v1",
  "ndabi-protocol",
  "ndabi-session",
+ "ndabi-supabase-session-v1",
  "ndabi-supabase-v1",
  "ndabi-write",
  "olx-core",
@@ -2968,6 +2969,16 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "zeroize",
+]
+
+[[package]]
+name = "ndabi-supabase-session-v1"
+version = "0.1.0"
+dependencies = [
+ "ndabi-postgres-v1",
+ "ndabi-protocol",
+ "ndabi-supabase-v1",
+ "postgres",
 ]
 
 [[package]]

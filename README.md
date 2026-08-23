@@ -325,5 +325,10 @@ The v6.6 user-session campaign failed all 32-row and 128-row performance gates.
 Its NDABI path used a transaction, role change, claim setup, deadline setup, data query, and commit.
 All seventeen security checks and all exact query-count checks passed.
 The client-thread CPU comparison was unequal because PostgREST server CPU ran in another process.
+The v6.7 dedicated-session campaign passed every security and repeatability gate.
+It moved session controls outside the measured operation.
+Median NDABI wall time measured 0.373, 0.440, and 0.529 times PostgREST.
+The 128-row case missed the frozen 0.500 gate in every process.
+The result supports no accepted Supabase performance claim.
 The v5.2 result proves one PostgreSQL compare-and-swap write profile.
 Tokens, energy, public WAN, production custody, and general query or write support remain unproven.
