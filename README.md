@@ -89,8 +89,10 @@ The v5.2 write campaign passed five processes after binding backend access class
 
 The v0.1 RFC candidate freezes the implemented single and homogeneous-batch read frames.
 The committed public vectors include valid frames, invalid frames, receipts, and replay sequences.
-An independent Go decoder decodes both valid frames and rejects every single-bit mutation.
-This agreement establishes cross-language wire interoperability, not production readiness.
+Independent Go and TypeScript decoders reproduce both valid frames and every execution receipt.
+Both reject every single-bit mutation.
+The v0.2 Rust codec adds authenticated negotiation, results, errors, cancellation, and streaming frames.
+This agreement establishes bounded cross-language wire interoperability, not production readiness.
 
 The frozen v0.9 contract is [`../../specs/ndabi_poc_preregistration_v0_9.md`](../../specs/ndabi_poc_preregistration_v0_9.md).
 The frozen v1.0 contracts are [`../../specs/ndabi_poc_preregistration_v1_0.md`](../../specs/ndabi_poc_preregistration_v1_0.md)

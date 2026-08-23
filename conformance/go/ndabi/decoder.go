@@ -88,15 +88,34 @@ type Item struct {
 
 // Pending is authenticated and admitted work. Commit its nonce only after successful execution.
 type Pending struct {
-	Nonce          uint64
-	PreviousNonce  uint64
-	DeadlineUnixUS uint64
-	ResultBudget   uint32
-	RowBudget      uint32
-	Operation      Operation
-	Items          []Item
+	nonce          uint64
+	deadlineUnixUS uint64
+	resultBudget   uint32
+	rowBudget      uint32
+	operation      Operation
+	items          []Item
 	replayKey      string
+	previousNonce  uint64
+	acceptedNonce  uint64
 }
+
+// Nonce returns the authenticated replay nonce.
+func (pending Pending) Nonce() uint64 { return pending.nonce }
+
+// DeadlineUnixUS returns the authenticated execution deadline.
+func (pending Pending) DeadlineUnixUS() uint64 { return pending.deadlineUnixUS }
+
+// ResultBudget returns the authenticated result-byte limit.
+func (pending Pending) ResultBudget() uint32 { return pending.resultBudget }
+
+// RowBudget returns the authenticated row limit.
+func (pending Pending) RowBudget() uint32 { return pending.rowBudget }
+
+// Operation returns the authenticated operation by value.
+func (pending Pending) Operation() Operation { return pending.operation }
+
+// Items returns a copy of the authenticated operands.
+func (pending Pending) Items() []Item { return append([]Item(nil), pending.items...) }
 
 // ReplayStore stores the last accepted nonce for each authority generation.
 type ReplayStore struct {
@@ -119,12 +138,12 @@ func (store *ReplayStore) Commit(pending Pending) error {
 	if store.nonces == nil {
 		store.nonces = make(map[string]uint64)
 	}
-	if store.nonces[pending.replayKey] != pending.PreviousNonce ||
-		pending.PreviousNonce == ^uint64(0) ||
-		pending.Nonce != pending.PreviousNonce+1 {
+	if store.nonces[pending.replayKey] != pending.previousNonce ||
+		pending.previousNonce == ^uint64(0) ||
+		pending.acceptedNonce != pending.previousNonce+1 {
 		return ErrReplayConflict
 	}
-	store.nonces[pending.replayKey] = pending.Nonce
+	store.nonces[pending.replayKey] = pending.acceptedNonce
 	return nil
 }
 
@@ -187,17 +206,18 @@ func Verify(frame []byte, authority Authority, limits Limits, replay *ReplayStor
 		return Pending{}, ErrUnsupportedFrame
 	}
 	pending := Pending{
-		Nonce:          binary.LittleEndian.Uint64(frame[32:40]),
-		DeadlineUnixUS: binary.LittleEndian.Uint64(frame[40:48]),
-		ResultBudget:   binary.LittleEndian.Uint32(frame[48:52]),
-		RowBudget:      binary.LittleEndian.Uint32(frame[52:56]),
-		Operation: Operation{
+		nonce:          binary.LittleEndian.Uint64(frame[32:40]),
+		deadlineUnixUS: binary.LittleEndian.Uint64(frame[40:48]),
+		resultBudget:   binary.LittleEndian.Uint32(frame[48:52]),
+		rowBudget:      binary.LittleEndian.Uint32(frame[52:56]),
+		operation: Operation{
 			Opcode:      binary.LittleEndian.Uint16(frame[10:12]),
 			PlanHandle:  binary.LittleEndian.Uint32(frame[56:60]),
 			ResultShape: binary.LittleEndian.Uint32(frame[60:64]),
 		},
 		replayKey: replayKey(authority, contextDigest),
 	}
+	pending.acceptedNonce = pending.nonce
 	batchCount := uint32(0)
 
 	switch frame[6] {
@@ -210,7 +230,7 @@ func Verify(frame []byte, authority Authority, limits Limits, replay *ReplayStor
 			!allZero(frame[84:96]) {
 			return Pending{}, ErrNonCanonicalFrame
 		}
-		pending.Items = []Item{{
+		pending.items = []Item{{
 			First:  int64(binary.LittleEndian.Uint64(frame[64:72])),
 			Second: int64(binary.LittleEndian.Uint64(frame[72:80])),
 			Third:  binary.LittleEndian.Uint32(frame[80:84]),
@@ -247,27 +267,27 @@ func Verify(frame []byte, authority Authority, limits Limits, replay *ReplayStor
 			singleFrameBytes+int(payloadBytes) != len(frame) {
 			return Pending{}, ErrNonCanonicalFrame
 		}
-		pending.Items = make([]Item, 0, batchCount)
+		pending.items = make([]Item, 0, batchCount)
 		for offset := batchHeaderBytes; offset < tagOffset; offset += batchOperandBytes {
-			pending.Items = append(pending.Items, Item{
+			pending.items = append(pending.items, Item{
 				First:  int64(binary.LittleEndian.Uint64(frame[offset : offset+8])),
 				Second: int64(binary.LittleEndian.Uint64(frame[offset+8 : offset+16])),
 				Third:  binary.LittleEndian.Uint32(frame[offset+16 : offset+20]),
 			})
 		}
 	}
-	if pending.DeadlineUnixUS <= nowUnixUS || pending.DeadlineUnixUS > authority.ExpiresUnixUS {
+	if pending.deadlineUnixUS <= nowUnixUS || pending.deadlineUnixUS > authority.ExpiresUnixUS {
 		return Pending{}, ErrExpired
 	}
-	if pending.ResultBudget == 0 || pending.ResultBudget > limits.MaximumResultBytes ||
-		pending.RowBudget == 0 || pending.RowBudget > limits.MaximumRows {
+	if pending.resultBudget == 0 || pending.resultBudget > limits.MaximumResultBytes ||
+		pending.rowBudget == 0 || pending.rowBudget > limits.MaximumRows {
 		return Pending{}, ErrBudgetExceeded
 	}
-	pending.PreviousNonce = replay.lastNonce(pending.replayKey)
-	if pending.PreviousNonce == ^uint64(0) || pending.Nonce != pending.PreviousNonce+1 {
+	pending.previousNonce = replay.lastNonce(pending.replayKey)
+	if pending.previousNonce == ^uint64(0) || pending.nonce != pending.previousNonce+1 {
 		return Pending{}, ErrReplay
 	}
-	if pending.Operation.Opcode == 0 || pending.Operation.PlanHandle == 0 || pending.Operation.ResultShape == 0 {
+	if pending.operation.Opcode == 0 || pending.operation.PlanHandle == 0 || pending.operation.ResultShape == 0 {
 		return Pending{}, ErrZeroOperationField
 	}
 	return pending, nil

@@ -13,12 +13,17 @@ use zeroize::{Zeroize, Zeroizing};
 
 mod batch;
 mod replay;
+mod transport;
 
 pub use batch::{
     batch_frame_bytes, BatchBackend, BatchExecution, BatchItem, BatchItems, BatchOperation,
     BATCH_OPERAND_BYTES, MAX_BATCH_OPERATIONS,
 };
 pub use replay::FileReplayStore;
+pub use transport::{
+    decode_transport, encode_transport, transport_frame_bytes, TransportFields, TransportFrame,
+    TransportKind, TRANSPORT_HEADER_BYTES, TRANSPORT_MIN_FRAME_BYTES,
+};
 
 pub const FRAME_BYTES: usize = 160;
 const AUTHENTICATED_BYTES: usize = 128;
@@ -34,6 +39,7 @@ const CONTEXT_DOMAIN: &[u8] = b"ndabi/wire/v1/context";
 const KEY_DOMAIN: &[u8] = b"ndabi/wire/v1/session-key";
 const RECEIPT_KEY_DOMAIN: &[u8] = b"ndabi/wire/v1/receipt-key";
 const RECEIPT_DOMAIN: &[u8] = b"ndabi/wire/v1/receipt";
+const TRANSPORT_KEY_DOMAIN: &[u8] = b"ndabi/wire/v2/transport-key";
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct BackendIdentity {
@@ -137,6 +143,7 @@ pub struct Authority {
     context_digest: [u8; 32],
     frame_key: Zeroizing<[u8; 32]>,
     receipt_key: Zeroizing<[u8; 32]>,
+    transport_key: Zeroizing<[u8; 32]>,
 }
 
 impl fmt::Debug for Authority {
@@ -150,6 +157,7 @@ impl fmt::Debug for Authority {
             .field("context_digest", &self.context_digest)
             .field("frame_key", &"[REDACTED]")
             .field("receipt_key", &"[REDACTED]")
+            .field("transport_key", &"[REDACTED]")
             .finish()
     }
 }
@@ -186,6 +194,14 @@ impl Authority {
             expires_unix_us,
             &context_digest,
         );
+        let transport_key = derive_key(
+            &root_key,
+            TRANSPORT_KEY_DOMAIN,
+            generation,
+            session,
+            expires_unix_us,
+            &context_digest,
+        );
         Ok(Self {
             generation,
             session,
@@ -194,6 +210,7 @@ impl Authority {
             context_digest,
             frame_key: Zeroizing::new(frame_key),
             receipt_key: Zeroizing::new(receipt_key),
+            transport_key: Zeroizing::new(transport_key),
         })
     }
 
@@ -687,6 +704,7 @@ pub enum ProtocolError {
     ReplayStoreLockUnavailable,
     ResultBudgetExceeded,
     RowBudgetExceeded,
+    TransportPayloadTooLarge,
     UnsupportedFrame,
     ZeroBudget,
     ZeroDigest,

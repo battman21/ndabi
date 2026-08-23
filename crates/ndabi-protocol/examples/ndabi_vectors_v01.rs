@@ -156,18 +156,19 @@ fn run() -> Result<(), String> {
 
     let manifest = json!({
         "schema": "ndabi-conformance-v0.1",
+        "integer_encoding": "decimal-string-for-64-bit",
         "status": "RFC-candidate test vectors",
         "warning": "All keys and identities are public test material.",
-        "clock_unix_us": NOW,
+        "clock_unix_us": NOW.to_string(),
         "server_limits": {
             "maximum_result_bytes": RESULT_BUDGET,
             "maximum_rows": ROW_BUDGET
         },
         "authority": {
             "root_key_hex": hex(&ROOT_KEY),
-            "generation": GENERATION,
-            "session": SESSION,
-            "expires_unix_us": EXPIRY,
+            "generation": GENERATION.to_string(),
+            "session": SESSION.to_string(),
+            "expires_unix_us": EXPIRY.to_string(),
             "tenant_hex": hex(&TENANT),
             "principal_hex": hex(&PRINCIPAL),
             "purpose": PURPOSE,
@@ -185,16 +186,16 @@ fn run() -> Result<(), String> {
                 "kind": "execute-handle",
                 "frame_hex": hex(&single_frame),
                 "decoded": {
-                    "nonce": 1,
-                    "deadline_unix_us": DEADLINE,
+                    "nonce": "1",
+                    "deadline_unix_us": DEADLINE.to_string(),
                     "result_budget": RESULT_BUDGET,
                     "row_budget": ROW_BUDGET,
                     "operation": {
                         "opcode": operation.opcode,
                         "plan_handle": operation.plan_handle,
                         "result_shape": operation.result_shape,
-                        "first": operation.first,
-                        "second": operation.second,
+                        "first": operation.first.to_string(),
+                        "second": operation.second.to_string(),
                         "third": operation.third
                     }
                 },
@@ -207,8 +208,8 @@ fn run() -> Result<(), String> {
                 "kind": "execute-batch-handle",
                 "frame_hex": hex(&batch_frame),
                 "decoded": {
-                    "nonce": 1,
-                    "deadline_unix_us": DEADLINE,
+                    "nonce": "1",
+                    "deadline_unix_us": DEADLINE.to_string(),
                     "result_budget": RESULT_BUDGET,
                     "row_budget": ROW_BUDGET,
                     "operation": {
@@ -217,8 +218,8 @@ fn run() -> Result<(), String> {
                         "result_shape": batch_operation.result_shape
                     },
                     "items": batch_items.iter().map(|item| json!({
-                        "first": item.first,
-                        "second": item.second,
+                        "first": item.first.to_string(),
+                        "second": item.second.to_string(),
                         "third": item.third
                     })).collect::<Vec<Value>>()
                 },
