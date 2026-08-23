@@ -321,5 +321,9 @@ The v6.4 result proves the v0.2 complete-result transport against the canonical 
 It retests the local PostgREST user-JWT control surface without treating Supabase as another engine.
 The v6.5 result measures that transport against equal native and v0.1 PostgreSQL work.
 It does not measure PostgREST performance, Supavisor, hosted Supabase, TLS, or WAN delay.
+The v6.6 user-session campaign failed all 32-row and 128-row performance gates.
+Its NDABI path used a transaction, role change, claim setup, deadline setup, data query, and commit.
+All seventeen security checks and all exact query-count checks passed.
+The client-thread CPU comparison was unequal because PostgREST server CPU ran in another process.
 The v5.2 result proves one PostgreSQL compare-and-swap write profile.
 Tokens, energy, public WAN, production custody, and general query or write support remain unproven.
