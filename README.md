@@ -347,5 +347,9 @@ The second run binds commit `9f43510` and rejects the candidate on wall time.
 Its database-side join plan took 296 to 333 milliseconds per batch.
 It reduced request bytes by 81% to 94% and database queries by 50% to 94%.
 Security, exactness, allocation, query-count, and repeatability gates passed.
+The v7.1 indexed batch campaign binds commit `f3d4f37` and passes every registered gate.
+Median NDABI wall time measured 0.33 to 0.75 milliseconds across the three batch sizes.
+Median wall ratios measured 0.04 to 0.20 against repeated PostgREST operations.
+The result applies only to the frozen direct PostgreSQL and Supavisor session-mode profile.
 The v5.2 result proves one PostgreSQL compare-and-swap write profile.
 Tokens, energy, public WAN, production custody, and general query or write support remain unproven.

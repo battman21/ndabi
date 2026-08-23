@@ -1,0 +1,62 @@
+{
+  "campaign": "NDABI Supabase indexed-batch-session campaign v7.1",
+  "campaign_id": "20260823T153807Z",
+  "process_count": 5,
+  "source_commit": "f3d4f3787ab8fd1e0dd9a07a8782fb198db04b93",
+  "source_sha256": "2829ab6af9f349963201daf3679c73118015a63c3e9594bb4de7cf52d1ce41ba",
+  "source_custody_passed": true,
+  "binary_sha256": "2a5d3c3a13e5c1687f17e88fbd3c1037b78215153c3ca0ffca43b0f8b24fbc46",
+  "postgres_image_id": "sha256:eb9fe6b5815523ffa3e3d8aee9db3532bd564b857634fcfa36979d76bed6ae10",
+  "postgrest_image_id": "sha256:367030c7d679ff6ab17bfde55017fe94863e74c30b6e160bdbe4993bbfaf545b",
+  "cryptography_version": "49.0.0",
+  "environment": {
+    "platform": "macOS-15.7.8-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "processor": "arm",
+    "python_version": "3.14.6",
+    "rustc_version": "rustc 1.92.0 (ded5c06cf 2025-12-08)",
+    "docker_server_version": "29.7.2",
+    "executable": "/opt/homebrew/opt/python@3.14/bin/python3.14"
+  },
+  "authenticator_least_privilege": true,
+  "rls_enabled_and_forced": true,
+  "security": {
+    "valid_token_accepted": true,
+    "changed_signature_refused": true,
+    "unknown_key_refused": true,
+    "wrong_issuer_refused": true,
+    "wrong_audience_refused": true,
+    "expired_token_refused": true,
+    "unsigned_subject_refused": true,
+    "elevated_role_refused": true,
+    "authorised_ndabi_rows_accepted": true,
+    "cross_subject_ndabi_rows_refused": true,
+    "second_subject_ndabi_rows_accepted": true,
+    "changed_ndabi_frame_refused": true,
+    "ndabi_replay_refused_before_query": true,
+    "invalid_ndabi_receipt_refused": true,
+    "valid_ndabi_result_accepted": true,
+    "cross_subject_postgrest_rows_hidden": true,
+    "user_write_refused": true
+  },
+  "security_passed": true,
+  "repeatability": [
+    {
+      "operations": 2,
+      "ratio": "ndabi_postgrest_p50_distance",
+      "coefficient_of_variation": 0.05181179432239883
+    },
+    {
+      "operations": 8,
+      "ratio": "ndabi_postgrest_p50_distance",
+      "coefficient_of_variation": 0.0811100243679225
+    },
+    {
+      "operations": 16,
+      "ratio": "ndabi_postgrest_p50_distance",
+      "coefficient_of_variation": 0.05716594182778038
+    }
+  ],
+  "repeatability_passed": true,
+  "accepted": true
+}
