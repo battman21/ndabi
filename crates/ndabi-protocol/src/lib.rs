@@ -12,6 +12,7 @@ use subtle::ConstantTimeEq;
 use zeroize::{Zeroize, Zeroizing};
 
 mod batch;
+mod connection;
 mod replay;
 mod transport;
 
@@ -19,10 +20,14 @@ pub use batch::{
     batch_frame_bytes, BatchBackend, BatchExecution, BatchItem, BatchItems, BatchOperation,
     BATCH_OPERAND_BYTES, MAX_BATCH_OPERATIONS,
 };
+pub use connection::{
+    NegotiatedTransport, RegisteredRequest, TransportConfig, TransportConnection, TransportPhase,
+    TransportRole, FEATURE_CANCELLATION, FEATURE_STREAMING, KNOWN_TRANSPORT_FEATURES,
+};
 pub use replay::FileReplayStore;
 pub use transport::{
-    decode_transport, encode_transport, transport_frame_bytes, TransportFields, TransportFrame,
-    TransportKind, TRANSPORT_HEADER_BYTES, TRANSPORT_MIN_FRAME_BYTES,
+    decode_transport, encode_transport, transport_frame_bytes, TransportDirection, TransportFields,
+    TransportFrame, TransportKind, TRANSPORT_HEADER_BYTES, TRANSPORT_MIN_FRAME_BYTES,
 };
 
 pub const FRAME_BYTES: usize = 160;
@@ -564,76 +569,95 @@ impl ServerSession {
         now_unix_us: u64,
         replay: &R,
     ) -> Result<Pending, ProtocolError> {
-        if frame.len() != FRAME_BYTES {
-            return Err(ProtocolError::LengthMismatch);
-        }
-        let expected_tag = self.authority.tag(&frame[..AUTHENTICATED_BYTES]);
-        if expected_tag
-            .ct_eq(&frame[AUTHENTICATED_BYTES..])
-            .unwrap_u8()
-            != 1
+        let request = authenticate_request(&self.authority, frame)?;
+        if request.deadline_unix_us <= now_unix_us
+            || request.deadline_unix_us > self.authority.expires_unix_us
         {
-            return Err(ProtocolError::AuthenticationFailed);
-        }
-        if frame[0..4] != MAGIC
-            || frame[4] != VERSION_MAJOR
-            || frame[5] != VERSION_MINOR
-            || frame[6] != EXECUTE_HANDLE
-            || frame[7] != READ_ACCESS
-        {
-            return Err(ProtocolError::UnsupportedFrame);
-        }
-        if get_u16(frame, 8) != 0
-            || get_u32(frame, 12) != FRAME_BYTES as u32
-            || frame[84..96].iter().any(|byte| *byte != 0)
-        {
-            return Err(ProtocolError::NonCanonicalFrame);
-        }
-        if get_u64(frame, 16) != self.authority.session
-            || get_u64(frame, 24) != self.authority.generation
-            || frame[96..128] != self.authority.context_digest
-        {
-            return Err(ProtocolError::AuthorityMismatch);
-        }
-        let nonce = get_u64(frame, 32);
-        let deadline_unix_us = get_u64(frame, 40);
-        let result_budget = get_u32(frame, 48);
-        let row_budget = get_u32(frame, 52);
-        if deadline_unix_us <= now_unix_us || deadline_unix_us > self.authority.expires_unix_us {
             return Err(ProtocolError::Expired);
         }
-        if result_budget == 0
-            || result_budget > self.maximum_result_bytes
-            || row_budget == 0
-            || row_budget > self.maximum_rows
+        if request.result_budget == 0
+            || request.result_budget > self.maximum_result_bytes
+            || request.row_budget == 0
+            || request.row_budget > self.maximum_rows
         {
             return Err(ProtocolError::BudgetExceeded);
         }
         let previous_nonce = replay.last_nonce(self.authority.replay_key())?;
-        if nonce
+        if request.nonce
             != previous_nonce
                 .checked_add(1)
                 .ok_or(ProtocolError::NonceEnded)?
         {
             return Err(ProtocolError::Replay);
         }
-        let operation = Operation::new(
+        Ok(Pending {
+            nonce: request.nonce,
+            previous_nonce,
+            deadline_unix_us: request.deadline_unix_us,
+            result_budget: request.result_budget,
+            row_budget: request.row_budget,
+            operation: request.operation,
+        })
+    }
+}
+
+struct AuthenticatedRequest {
+    nonce: u64,
+    deadline_unix_us: u64,
+    result_budget: u32,
+    row_budget: u32,
+    operation: Operation,
+}
+
+fn authenticate_request(
+    authority: &Authority,
+    frame: &[u8],
+) -> Result<AuthenticatedRequest, ProtocolError> {
+    if frame.len() != FRAME_BYTES {
+        return Err(ProtocolError::LengthMismatch);
+    }
+    let expected_tag = authority.tag(&frame[..AUTHENTICATED_BYTES]);
+    if expected_tag
+        .ct_eq(&frame[AUTHENTICATED_BYTES..])
+        .unwrap_u8()
+        != 1
+    {
+        return Err(ProtocolError::AuthenticationFailed);
+    }
+    if frame[0..4] != MAGIC
+        || frame[4] != VERSION_MAJOR
+        || frame[5] != VERSION_MINOR
+        || frame[6] != EXECUTE_HANDLE
+        || frame[7] != READ_ACCESS
+    {
+        return Err(ProtocolError::UnsupportedFrame);
+    }
+    if get_u16(frame, 8) != 0
+        || get_u32(frame, 12) != FRAME_BYTES as u32
+        || frame[84..96].iter().any(|byte| *byte != 0)
+    {
+        return Err(ProtocolError::NonCanonicalFrame);
+    }
+    if get_u64(frame, 16) != authority.session
+        || get_u64(frame, 24) != authority.generation
+        || frame[96..128] != authority.context_digest
+    {
+        return Err(ProtocolError::AuthorityMismatch);
+    }
+    Ok(AuthenticatedRequest {
+        nonce: get_u64(frame, 32),
+        deadline_unix_us: get_u64(frame, 40),
+        result_budget: get_u32(frame, 48),
+        row_budget: get_u32(frame, 52),
+        operation: Operation::new(
             get_u16(frame, 10),
             get_u32(frame, 56),
             get_u32(frame, 60),
             get_i64(frame, 64),
             get_i64(frame, 72),
             get_u32(frame, 80),
-        )?;
-        Ok(Pending {
-            nonce,
-            previous_nonce,
-            deadline_unix_us,
-            result_budget,
-            row_budget,
-            operation,
-        })
-    }
+        )?,
+    })
 }
 
 struct Pending {
@@ -689,9 +713,11 @@ pub enum ProtocolError {
     BatchTooSmall,
     BudgetExceeded,
     ClockFailed,
+    ConnectionState,
     DeadlineBeyondAuthority,
     Expired,
     ExpiredDuringExecution,
+    FeatureNotNegotiated,
     LengthMismatch,
     NonCanonicalFrame,
     NonceEnded,
@@ -702,9 +728,14 @@ pub enum ProtocolError {
     ReplayStoreInsecure,
     ReplayStoreIo,
     ReplayStoreLockUnavailable,
+    RequestLimitExceeded,
+    ReceiptMismatch,
     ResultBudgetExceeded,
     RowBudgetExceeded,
+    SequenceMismatch,
     TransportPayloadTooLarge,
+    TransportConfiguration,
+    UnknownCorrelation,
     UnsupportedFrame,
     ZeroBudget,
     ZeroDigest,

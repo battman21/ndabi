@@ -73,7 +73,8 @@ class ConformanceVectorTests(unittest.TestCase):
             [vector["id"] for vector in manifest["valid"]],
             ["hello", "accept", "result", "error", "cancel", "stream-start", "stream-chunk", "stream-end"],
         )
-        self.assertEqual(len(manifest["invalid"]), 5)
+        self.assertEqual(len(manifest["invalid"]), 6)
+        self.assertEqual(manifest["invalid"][-1]["id"], "result-reflected-direction")
 
 
 if __name__ == "__main__":

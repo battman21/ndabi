@@ -20,6 +20,13 @@ const TRANSPORT_FRAME_DOMAIN: &[u8] = b"ndabi/wire/v2/transport-frame";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
+pub enum TransportDirection {
+    ClientToServer = 1,
+    ServerToClient = 2,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
 pub enum TransportKind {
     Hello = 1,
     Accept = 2,
@@ -94,6 +101,7 @@ pub fn transport_frame_bytes(payload_bytes: usize) -> Result<usize, ProtocolErro
 
 pub fn encode_transport(
     authority: &Authority,
+    direction: TransportDirection,
     kind: TransportKind,
     fields: TransportFields,
     payload: &[u8],
@@ -124,13 +132,14 @@ pub fn encode_transport(
     output[96..128].copy_from_slice(&fields.execution_receipt);
     output[128..128 + payload.len()].copy_from_slice(payload);
     let tag_offset = output.len() - TAG_BYTES;
-    let tag = transport_tag(authority, &output[..tag_offset]);
+    let tag = transport_tag(authority, direction, &output[..tag_offset]);
     output[tag_offset..].copy_from_slice(&tag);
     Ok(())
 }
 
 pub fn decode_transport<'a>(
     authority: &Authority,
+    direction: TransportDirection,
     frame: &'a [u8],
     maximum_payload_bytes: u32,
     now_unix_us: u64,
@@ -140,7 +149,7 @@ pub fn decode_transport<'a>(
         return Err(ProtocolError::LengthMismatch);
     }
     let tag_offset = frame.len() - TAG_BYTES;
-    let mut expected_tag = transport_tag(authority, &frame[..tag_offset]);
+    let mut expected_tag = transport_tag(authority, direction, &frame[..tag_offset]);
     let authenticated = expected_tag.ct_eq(&frame[tag_offset..]).unwrap_u8() == 1;
     expected_tag.zeroize();
     if !authenticated {
@@ -190,9 +199,14 @@ pub fn decode_transport<'a>(
     })
 }
 
-fn transport_tag(authority: &Authority, authenticated: &[u8]) -> [u8; 32] {
+fn transport_tag(
+    authority: &Authority,
+    direction: TransportDirection,
+    authenticated: &[u8],
+) -> [u8; 32] {
     let mut digest = blake3::Hasher::new_keyed(&authority.transport_key);
     digest.update(TRANSPORT_FRAME_DOMAIN);
+    digest.update(&[direction as u8]);
     digest.update(authenticated);
     let output = *digest.finalize().as_bytes();
     digest.zeroize();
@@ -212,8 +226,7 @@ fn validate_semantics(
                 || fields.sequence != 0
                 || fields.rows != 0
                 || fields.result_shape != 0
-                || fields.features == 0
-                || fields.auxiliary < TRANSPORT_MIN_FRAME_BYTES as u32
+                || fields.auxiliary < (TRANSPORT_MIN_FRAME_BYTES + payload.len()) as u32
                 || !receipt_is_zero
                 || payload.len() != 8
             {
@@ -239,8 +252,7 @@ fn validate_semantics(
                 || fields.sequence != 0
                 || fields.rows != 0
                 || fields.result_shape != 0
-                || fields.features == 0
-                || fields.auxiliary < TRANSPORT_MIN_FRAME_BYTES as u32
+                || fields.auxiliary < (TRANSPORT_MIN_FRAME_BYTES + payload.len()) as u32
                 || !receipt_is_zero
                 || payload.len() != 8
                 || get_u16(payload, 0) != VERSION_MAJOR as u16
@@ -455,13 +467,23 @@ mod tests {
         output
     }
 
+    fn direction(kind: TransportKind) -> TransportDirection {
+        match kind {
+            TransportKind::Hello | TransportKind::Cancel => TransportDirection::ClientToServer,
+            _ => TransportDirection::ServerToClient,
+        }
+    }
+
     #[test]
     fn every_transport_kind_round_trips() {
         let authority = authority();
         for (kind, fields, payload) in cases() {
+            let direction = direction(kind);
             let mut frame = vec![0; transport_frame_bytes(payload.len()).expect("length")];
-            encode_transport(&authority, kind, fields, &payload, &mut frame).expect("encode");
-            let decoded = decode_transport(&authority, &frame, 4096, NOW).expect("decode");
+            encode_transport(&authority, direction, kind, fields, &payload, &mut frame)
+                .expect("encode");
+            let decoded =
+                decode_transport(&authority, direction, &frame, 4096, NOW).expect("decode");
             assert_eq!(decoded.kind, kind);
             assert_eq!(decoded.fields, fields);
             assert_eq!(decoded.payload, payload);
@@ -472,13 +494,15 @@ mod tests {
     fn every_transport_frame_bit_is_authenticated() {
         let authority = authority();
         for (kind, fields, payload) in cases() {
+            let direction = direction(kind);
             let mut frame = vec![0; transport_frame_bytes(payload.len()).expect("length")];
-            encode_transport(&authority, kind, fields, &payload, &mut frame).expect("encode");
+            encode_transport(&authority, direction, kind, fields, &payload, &mut frame)
+                .expect("encode");
             for byte_index in 0..frame.len() {
                 for bit in 0..8 {
                     let mut changed = frame.clone();
                     changed[byte_index] ^= 1 << bit;
-                    assert!(decode_transport(&authority, &changed, 4096, NOW).is_err());
+                    assert!(decode_transport(&authority, direction, &changed, 4096, NOW).is_err());
                 }
             }
         }
@@ -494,6 +518,7 @@ mod tests {
         assert_eq!(
             encode_transport(
                 &authority,
+                TransportDirection::ServerToClient,
                 TransportKind::Result,
                 fields,
                 b"result",
@@ -504,13 +529,33 @@ mod tests {
 
         let (kind, fields, payload) = cases()[2].clone();
         let mut frame = vec![0; transport_frame_bytes(payload.len()).expect("length")];
-        encode_transport(&authority, kind, fields, &payload, &mut frame).expect("encode");
+        encode_transport(
+            &authority,
+            TransportDirection::ServerToClient,
+            kind,
+            fields,
+            &payload,
+            &mut frame,
+        )
+        .expect("encode");
         assert_eq!(
-            decode_transport(&authority, &frame, 2, NOW),
+            decode_transport(
+                &authority,
+                TransportDirection::ServerToClient,
+                &frame,
+                2,
+                NOW,
+            ),
             Err(ProtocolError::LengthMismatch)
         );
         assert_eq!(
-            decode_transport(&authority, &frame, 4096, 2_000_000),
+            decode_transport(
+                &authority,
+                TransportDirection::ServerToClient,
+                &frame,
+                4096,
+                2_000_000,
+            ),
             Err(ProtocolError::Expired)
         );
         assert_eq!(
@@ -526,12 +571,24 @@ mod tests {
         assert_eq!(
             encode_transport(
                 &authority,
+                TransportDirection::ClientToServer,
                 TransportKind::Hello,
                 impossible_hello,
                 &negotiation_payload(1, 2, 1024),
                 &mut [0; 168],
             ),
             Err(ProtocolError::NonCanonicalFrame)
+        );
+
+        assert_eq!(
+            decode_transport(
+                &authority,
+                TransportDirection::ClientToServer,
+                &frame,
+                4096,
+                NOW,
+            ),
+            Err(ProtocolError::AuthenticationFailed)
         );
     }
 }

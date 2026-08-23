@@ -4,7 +4,7 @@
 
 use ndabi_protocol::{
     decode_transport, encode_transport, transport_frame_bytes, Authority, AuthorityContext,
-    BackendIdentity, ProtocolError, TransportFields, TransportKind,
+    BackendIdentity, ProtocolError, TransportDirection, TransportFields, TransportKind,
 };
 use serde_json::{json, Value};
 use zeroize::Zeroize;
@@ -134,15 +134,18 @@ fn run() -> Result<(), String> {
 
     let mut valid = Vec::with_capacity(cases.len());
     let mut frames = Vec::with_capacity(cases.len());
-    for (kind, fields, payload) in &cases {
+    for (direction, kind, fields, payload) in &cases {
         let mut frame = vec![0; transport_frame_bytes(payload.len()).map_err(display)?];
-        encode_transport(&authority, *kind, *fields, payload, &mut frame).map_err(display)?;
-        let decoded = decode_transport(&authority, &frame, 65_536, NOW).map_err(display)?;
+        encode_transport(&authority, *direction, *kind, *fields, payload, &mut frame)
+            .map_err(display)?;
+        let decoded =
+            decode_transport(&authority, *direction, &frame, 65_536, NOW).map_err(display)?;
         if decoded.kind != *kind || decoded.fields != *fields || decoded.payload != payload {
             return Err("a valid transport vector changed during decoding".to_string());
         }
         valid.push(json!({
             "id": kind_name(*kind),
+            "direction": direction_name(*direction),
             "kind": *kind as u8,
             "frame_hex": hex(&frame),
             "decoded": fields_json(*fields),
@@ -156,45 +159,72 @@ fn run() -> Result<(), String> {
     changed_tag[last] ^= 1;
     let mut reserved = frames[2].clone();
     reserved[10] = 1;
-    retag(&mut reserved, &context_digest)?;
+    retag(
+        &mut reserved,
+        &context_digest,
+        TransportDirection::ServerToClient,
+    )?;
     let mut zero_receipt = frames[2].clone();
     zero_receipt[96..128].fill(0);
-    retag(&mut zero_receipt, &context_digest)?;
+    retag(
+        &mut zero_receipt,
+        &context_digest,
+        TransportDirection::ServerToClient,
+    )?;
     let mut unknown_kind = frames[2].clone();
     unknown_kind[6] = 0xff;
-    retag(&mut unknown_kind, &context_digest)?;
+    retag(
+        &mut unknown_kind,
+        &context_digest,
+        TransportDirection::ServerToClient,
+    )?;
     let mut wrong_context = frames[2].clone();
     wrong_context[64] ^= 1;
-    retag(&mut wrong_context, &context_digest)?;
+    retag(
+        &mut wrong_context,
+        &context_digest,
+        TransportDirection::ServerToClient,
+    )?;
     let invalid = [
         (
             "result-tag-changed",
+            TransportDirection::ServerToClient,
             changed_tag,
             ProtocolError::AuthenticationFailed,
         ),
         (
             "result-reserved-set",
+            TransportDirection::ServerToClient,
             reserved,
             ProtocolError::NonCanonicalFrame,
         ),
         (
             "result-zero-receipt",
+            TransportDirection::ServerToClient,
             zero_receipt,
             ProtocolError::NonCanonicalFrame,
         ),
         (
             "unknown-kind",
+            TransportDirection::ServerToClient,
             unknown_kind,
             ProtocolError::UnsupportedFrame,
         ),
         (
             "transport-context-mismatch",
+            TransportDirection::ServerToClient,
             wrong_context,
             ProtocolError::AuthorityMismatch,
         ),
+        (
+            "result-reflected-direction",
+            TransportDirection::ClientToServer,
+            frames[2].clone(),
+            ProtocolError::AuthenticationFailed,
+        ),
     ];
-    for (_, frame, expected) in &invalid {
-        let actual = decode_transport(&authority, frame, 65_536, NOW)
+    for (_, direction, frame, expected) in &invalid {
+        let actual = decode_transport(&authority, *direction, frame, 65_536, NOW)
             .expect_err("an invalid transport vector must refuse");
         if actual != *expected {
             return Err(format!("an invalid transport vector returned {actual}"));
@@ -216,8 +246,9 @@ fn run() -> Result<(), String> {
             "context_digest_hex": hex(&context_digest),
         },
         "valid": valid,
-        "invalid": invalid.iter().map(|(id, frame, expected)| json!({
+        "invalid": invalid.iter().map(|(id, direction, frame, expected)| json!({
             "id": id,
+            "direction": direction_name(*direction),
             "frame_hex": hex(frame),
             "expected_error": expected.to_string(),
         })).collect::<Vec<Value>>(),
@@ -238,8 +269,12 @@ fn case(
     kind: TransportKind,
     fields: TransportFields,
     payload: Vec<u8>,
-) -> (TransportKind, TransportFields, Vec<u8>) {
-    (kind, fields, payload)
+) -> (TransportDirection, TransportKind, TransportFields, Vec<u8>) {
+    let direction = match kind {
+        TransportKind::Hello | TransportKind::Cancel => TransportDirection::ClientToServer,
+        _ => TransportDirection::ServerToClient,
+    };
+    (direction, kind, fields, payload)
 }
 
 fn negotiation_payload(first: u16, second: u16, maximum_chunk: u32) -> Vec<u8> {
@@ -276,7 +311,18 @@ fn kind_name(kind: TransportKind) -> &'static str {
     }
 }
 
-fn retag(frame: &mut [u8], context_digest: &[u8; 32]) -> Result<(), String> {
+fn direction_name(direction: TransportDirection) -> &'static str {
+    match direction {
+        TransportDirection::ClientToServer => "client-to-server",
+        TransportDirection::ServerToClient => "server-to-client",
+    }
+}
+
+fn retag(
+    frame: &mut [u8],
+    context_digest: &[u8; 32],
+    direction: TransportDirection,
+) -> Result<(), String> {
     let mut key_hasher = blake3::Hasher::new_keyed(&ROOT_KEY);
     key_hasher.update(TRANSPORT_KEY_DOMAIN);
     key_hasher.update(&GENERATION.to_le_bytes());
@@ -291,6 +337,7 @@ fn retag(frame: &mut [u8], context_digest: &[u8; 32]) -> Result<(), String> {
         .ok_or_else(|| "the transport frame is too short".to_string())?;
     let mut tag_hasher = blake3::Hasher::new_keyed(&transport_key);
     tag_hasher.update(TRANSPORT_FRAME_DOMAIN);
+    tag_hasher.update(&[direction as u8]);
     tag_hasher.update(&frame[..tag_offset]);
     let mut tag = *tag_hasher.finalize().as_bytes();
     tag_hasher.zeroize();
