@@ -1,0 +1,19 @@
+[package]
+name = "ndabi-supabase-v1"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+blake3 = "1.8"
+jsonwebtoken = { version = "10.4", features = ["aws_lc_rs"] }
+ndabi-postgres-v1 = { path = "../ndabi-postgres-v1" }
+ndabi-protocol = { path = "../ndabi-protocol" }
+postgres = "0.19"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zeroize = "1.9"
+
+[dev-dependencies]
+p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
+rand_core = { version = "0.6", features = ["getrandom"] }

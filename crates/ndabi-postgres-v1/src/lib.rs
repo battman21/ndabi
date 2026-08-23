@@ -89,6 +89,10 @@ impl RangeProfile {
             self.binding.result_shape,
         )
     }
+
+    pub fn sql(self) -> &'static str {
+        self.sql
+    }
 }
 
 pub struct RangeBackend {

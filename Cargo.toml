@@ -14,6 +14,7 @@ members = [
     "crates/ndabi-postgres-v1",
     "crates/ndabi-protocol",
     "crates/ndabi-session",
+    "crates/ndabi-supabase-v1",
     "crates/ndabi-write",
 ]
 
@@ -157,6 +158,10 @@ path = "src/bin/ndabi_v64.rs"
 name = "ndabi_v65"
 path = "src/bin/ndabi_v65.rs"
 
+[[bin]]
+name = "ndabi_v66"
+path = "src/bin/ndabi_v66.rs"
+
 [dependencies]
 blake3 = { version = "1.8", features = ["zeroize"] }
 crc32fast = "1.5"
@@ -169,6 +174,7 @@ tempfile = "3"
 arrow-array = "58.3"
 tokio = { version = "1.52", features = ["rt-multi-thread"] }
 postgres = "0.19"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 tokio-postgres = "0.7"
 futures-util = "0.3"
 subtle = "2.6"
@@ -179,6 +185,7 @@ ndabi-postgres = { path = "crates/ndabi-postgres" }
 ndabi-postgres-v1 = { path = "crates/ndabi-postgres-v1" }
 ndabi-protocol = { path = "crates/ndabi-protocol" }
 ndabi-session = { path = "crates/ndabi-session" }
+ndabi-supabase-v1 = { path = "crates/ndabi-supabase-v1" }
 ndabi-write = { path = "crates/ndabi-write" }
 mongodb = { version = "3.8", features = ["sync"] }
 rcgen = "0.14"
