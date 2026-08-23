@@ -1,0 +1,95 @@
+{
+  "campaign": "NDABI PostgreSQL transport performance v6.5",
+  "campaign_id": "20260823T115042Z",
+  "process_count": 5,
+  "source_sha256": "aad0a8747e05d5fce87e694742cd667f2d6d2c57d7ada55c95be5554475f5e1b",
+  "binary_sha256": "440eeeb111e70669629f7686cdc4debcdc362881aa4d2324dbdc38dd0de20e04",
+  "postgres_image_id": "sha256:eb9fe6b5815523ffa3e3d8aee9db3532bd564b857634fcfa36979d76bed6ae10",
+  "service_role_least_privilege": true,
+  "service_role_read_only": true,
+  "service_write_refused": true,
+  "repeatability": [
+    {
+      "rows": 1,
+      "ratio": "v1_native_p50_distance",
+      "coefficient_of_variation": 0.04630608899386088
+    },
+    {
+      "rows": 1,
+      "ratio": "v2_native_p50_distance",
+      "coefficient_of_variation": 0.003309336304816012
+    },
+    {
+      "rows": 1,
+      "ratio": "v2_v1_p50_distance",
+      "coefficient_of_variation": 0.044335639178590486
+    },
+    {
+      "rows": 1,
+      "ratio": "v2_v1_cpu_distance",
+      "coefficient_of_variation": 0.026297401143760585
+    },
+    {
+      "rows": 32,
+      "ratio": "v1_native_p50_distance",
+      "coefficient_of_variation": 0.036159728241341886
+    },
+    {
+      "rows": 32,
+      "ratio": "v2_native_p50_distance",
+      "coefficient_of_variation": 0.07183658393270981
+    },
+    {
+      "rows": 32,
+      "ratio": "v2_v1_p50_distance",
+      "coefficient_of_variation": 0.07743161438173547
+    },
+    {
+      "rows": 32,
+      "ratio": "v2_v1_cpu_distance",
+      "coefficient_of_variation": 0.0600460451682076
+    },
+    {
+      "rows": 128,
+      "ratio": "v1_native_p50_distance",
+      "coefficient_of_variation": 0.08484236977676571
+    },
+    {
+      "rows": 128,
+      "ratio": "v2_native_p50_distance",
+      "coefficient_of_variation": 0.08149179336464413
+    },
+    {
+      "rows": 128,
+      "ratio": "v2_v1_p50_distance",
+      "coefficient_of_variation": 0.028597711502378765
+    },
+    {
+      "rows": 128,
+      "ratio": "v2_v1_cpu_distance",
+      "coefficient_of_variation": 0.05226420426718718
+    },
+    {
+      "rows": 1024,
+      "ratio": "v1_native_p50_distance",
+      "coefficient_of_variation": 0.04462942794945197
+    },
+    {
+      "rows": 1024,
+      "ratio": "v2_native_p50_distance",
+      "coefficient_of_variation": 0.0635031188685495
+    },
+    {
+      "rows": 1024,
+      "ratio": "v2_v1_p50_distance",
+      "coefficient_of_variation": 0.03824195900382606
+    },
+    {
+      "rows": 1024,
+      "ratio": "v2_v1_cpu_distance",
+      "coefficient_of_variation": 0.018389016520612318
+    }
+  ],
+  "repeatability_passed": true,
+  "accepted": true
+}

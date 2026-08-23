@@ -96,6 +96,10 @@ The Rust connection binds direction and enforces correlation, sequence, budgets,
 The v6.4 Docker campaign passed five PostgreSQL transport and Supabase-compatible processes.
 Every client verified an exact request-bound result through the base v0.2 transport.
 The campaign also passed read-only service and user-JWT row-scope gates.
+The v6.5 transport campaign passed five fresh processes against one million PostgreSQL rows.
+Median v0.2 wall distance from native ranged from 1.035 to 1.207 times across four result sizes.
+Median v0.2 wall distance from v0.1 ranged from 0.994 to 1.134 times.
+The result proves bounded complete-transport cost, not a single-query speed gain.
 This agreement establishes bounded cross-language wire interoperability, not production readiness.
 
 The frozen v0.9 contract is [`../../specs/ndabi_poc_preregistration_v0_9.md`](../../specs/ndabi_poc_preregistration_v0_9.md).
@@ -315,5 +319,7 @@ The v6.0 result proves one canonical MongoDB 6.0.26 identifier-window profile.
 The v6.3 result proves one canonical PostgreSQL homogeneous-batch profile on local Docker.
 The v6.4 result proves the v0.2 complete-result transport against the canonical PostgreSQL profile.
 It retests the local PostgREST user-JWT control surface without treating Supabase as another engine.
+The v6.5 result measures that transport against equal native and v0.1 PostgreSQL work.
+It does not measure PostgREST performance, Supavisor, hosted Supabase, TLS, or WAN delay.
 The v5.2 result proves one PostgreSQL compare-and-swap write profile.
 Tokens, energy, public WAN, production custody, and general query or write support remain unproven.
