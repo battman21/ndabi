@@ -334,11 +334,13 @@ The v6.8 range-session campaign passed every security, allocation, and repeatabi
 Median NDABI wall time measured 0.374, 0.424, and 0.514 times PostgREST.
 Median 128-row allocations fell from 286 to 156.
 Two 32-row processes and four 128-row processes missed the frozen 0.450 gate.
-The result supports no accepted Supabase performance claim.
+Its stored source digest does not match commit `8eb2f90`.
+Treat its performance and allocation values as unattributed diagnostics.
 The v6.9 packed-session campaign passed every security, allocation, and repeatability gate.
 Median NDABI wall time measured 0.393, 0.463, and 0.511 times PostgREST.
 Median 128-row allocations fell from 156 to 18.
 Database-side packing did not lower the single-query wall floor.
-The result supports no accepted Supabase single-operation performance claim.
+Its stored source digest does not match commit `6e72ef5`.
+Treat its performance and allocation values as unattributed diagnostics.
 The v5.2 result proves one PostgreSQL compare-and-swap write profile.
 Tokens, energy, public WAN, production custody, and general query or write support remain unproven.

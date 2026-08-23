@@ -18,6 +18,6 @@ Median 128-row allocated bytes fell from 84,716 to 40,077.
 Database-side packing reduced memory without reducing the single-query wall floor.
 The next campaign must measure an NDABI batch instruction against repeated PostgREST operations.
 
-Source digest `7c28acfbec58d494edf8df4429120f3953746b11e886ad4ecb7478fad54e9695` binds the campaign source.
-Binary digest `39291d725d67932c3cf8a8a87c4ba61d941effa91917eb70f0d838e479c67063` binds the tested executable.
-This result supports no accepted Supabase single-operation performance claim.
+Source digest `7c28acfbec58d494edf8df4429120f3953746b11e886ad4ecb7478fad54e9695` does not match commit `6e72ef5`.
+The committed source digest is `922cf9b7ebea5769f108608e71541e36c5f5b2d72fb707f3c02fd319253f7acf`.
+The campaign therefore fails source custody and supports no accepted Supabase performance or allocation claim.
