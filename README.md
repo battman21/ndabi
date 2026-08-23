@@ -342,9 +342,10 @@ Median 128-row allocations fell from 156 to 18.
 Database-side packing did not lower the single-query wall floor.
 Its stored source digest does not match commit `6e72ef5`.
 Treat its performance and allocation values as unattributed diagnostics.
-The v7.0 batch-session campaign is rejected because its source changed during execution.
-Its database-side join plan took 297 to 332 milliseconds per batch.
+The first v7.0 batch-session run lacked source custody and remains an unattributed diagnostic.
+The second run binds commit `9f43510` and rejects the candidate on wall time.
+Its database-side join plan took 296 to 333 milliseconds per batch.
 It reduced request bytes by 81% to 94% and database queries by 50% to 94%.
-Treat every v7.0 value as an unattributed diagnostic.
+Security, exactness, allocation, query-count, and repeatability gates passed.
 The v5.2 result proves one PostgreSQL compare-and-swap write profile.
 Tokens, energy, public WAN, production custody, and general query or write support remain unproven.
