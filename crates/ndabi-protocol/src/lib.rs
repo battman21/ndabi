@@ -9,7 +9,11 @@ use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use subtle::ConstantTimeEq;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
+
+mod replay;
+
+pub use replay::FileReplayStore;
 
 pub const FRAME_BYTES: usize = 160;
 const AUTHENTICATED_BYTES: usize = 128;
@@ -155,6 +159,7 @@ impl Authority {
         if is_zero(&root_key) {
             return Err(ProtocolError::ZeroKey);
         }
+        let root_key = Zeroizing::new(root_key);
         if generation == 0 || session == 0 || expires_unix_us == 0 {
             return Err(ProtocolError::ZeroIdentity);
         }
@@ -202,7 +207,9 @@ impl Authority {
         let mut digest = blake3::Hasher::new_keyed(&self.frame_key);
         digest.update(FRAME_DOMAIN);
         digest.update(authenticated);
-        *digest.finalize().as_bytes()
+        let tag = *digest.finalize().as_bytes();
+        digest.zeroize();
+        tag
     }
 }
 
@@ -220,7 +227,9 @@ fn derive_key(
     digest.update(&session.to_le_bytes());
     digest.update(&expires_unix_us.to_le_bytes());
     digest.update(context_digest);
-    *digest.finalize().as_bytes()
+    let key = *digest.finalize().as_bytes();
+    digest.zeroize();
+    key
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -269,6 +278,16 @@ impl ClientSession {
         }
     }
 
+    pub fn resume(authority: Authority, last_accepted_nonce: u64) -> Result<Self, ProtocolError> {
+        let next_nonce = last_accepted_nonce
+            .checked_add(1)
+            .ok_or(ProtocolError::NonceEnded)?;
+        Ok(Self {
+            authority,
+            next_nonce,
+        })
+    }
+
     pub fn encode(
         &mut self,
         operation: Operation,
@@ -312,11 +331,11 @@ impl ClientSession {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ReplayKey {
-    context_digest: [u8; 32],
-    session: u64,
-    generation: u64,
+    pub(crate) context_digest: [u8; 32],
+    pub(crate) session: u64,
+    pub(crate) generation: u64,
 }
 
 pub trait ReplayStore {
@@ -621,7 +640,9 @@ fn receipt(
     digest.update(&nonce.to_le_bytes());
     digest.update(&rows.to_le_bytes());
     digest.update(bytes);
-    *digest.finalize().as_bytes()
+    let receipt = *digest.finalize().as_bytes();
+    digest.zeroize();
+    receipt
 }
 
 pub fn digest_label(domain: &[u8], value: &[u8]) -> [u8; 32] {
@@ -648,6 +669,10 @@ pub enum ProtocolError {
     OutputShape,
     Replay,
     ReplayConflict,
+    ReplayStoreAuthenticationFailed,
+    ReplayStoreInsecure,
+    ReplayStoreIo,
+    ReplayStoreLockUnavailable,
     ResultBudgetExceeded,
     RowBudgetExceeded,
     UnsupportedFrame,
@@ -705,6 +730,8 @@ fn put_i64(bytes: &mut [u8], offset: usize, value: i64) {
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
 
     use super::*;
 
@@ -909,5 +936,50 @@ mod tests {
                 .unwrap_err(),
             ProtocolError::ExpiredDuringExecution
         );
+    }
+
+    #[test]
+    fn a_file_replay_store_refuses_after_restart_and_accepts_the_next_nonce() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))
+            .expect("private directory");
+        let path = directory.path().join("replay.ndr");
+        let server = ServerSession::new(authority(20), 128, 4).expect("server");
+        let first_frame = frame();
+        {
+            let mut replay = FileReplayStore::open(&path, [21; 32]).expect("replay store");
+            server
+                .execute(
+                    &first_frame,
+                    &mut backend(),
+                    &mut replay,
+                    &TestClock::fixed(NOW),
+                )
+                .expect("first execution");
+        }
+        let mut restored = FileReplayStore::open(&path, [21; 32]).expect("restored store");
+        assert_eq!(
+            server
+                .execute(
+                    &first_frame,
+                    &mut backend(),
+                    &mut restored,
+                    &TestClock::fixed(NOW),
+                )
+                .unwrap_err(),
+            ProtocolError::Replay
+        );
+        let next_frame = ClientSession::resume(authority(20), 1)
+            .expect("resumed client")
+            .encode(operation(), 64, 2, DEADLINE)
+            .expect("next frame");
+        server
+            .execute(
+                &next_frame,
+                &mut backend(),
+                &mut restored,
+                &TestClock::fixed(NOW),
+            )
+            .expect("next execution");
     }
 }

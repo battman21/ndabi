@@ -23,3 +23,4 @@ It makes no new performance, token, memory, energy, or WAN claim.
 
 The aggregate file SHA-256 is `cd3de88eb210155abbda4292852b9a15afac6f02b866d9e04a7f38fd4de11cfd`.
 The aggregate records the source, binary, image, and five process reports.
+Commit `5d3b0af` preserves the accepted source and retained evidence.
