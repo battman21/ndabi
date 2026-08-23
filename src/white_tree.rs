@@ -1,5 +1,9 @@
 use std::mem::size_of;
 
+use ndabi_protocol::{
+    digest_label, Backend as CanonicalBackend, BackendIdentity, BoundedOutput, ExecutionLimits,
+    Operation as CanonicalOperation, ProtocolError,
+};
 use ndabi_session::{Backend as SessionBackend, RawOperation, SessionError};
 use olx_core::context::{AsOf, ContextPack, HandleSeeds, SeedSpec};
 use olx_core::fixtures;
@@ -25,6 +29,10 @@ const VERSION: u8 = 1;
 const EXECUTE_CONTEXT: u8 = 0x31;
 const QUERY_HANDLE: u16 = 41;
 const PREPARED_SNAPSHOT_HANDLE: i64 = 1;
+const CANONICAL_PLAN_HANDLE: u32 = 41;
+const CANONICAL_RESULT_SHAPE: u32 = 42;
+const WHITE_TREE_ENGINE_ID: u32 = 0x5754_0001;
+const WHITE_TREE_CONTEXT_PROFILE_ID: u32 = 0x5754_1001;
 const MEASUREMENT_CYCLES: usize = 10;
 const BALANCED_SCHEDULE: [[WhiteTreeArm; 4]; 4] = [
     [
@@ -195,6 +203,92 @@ impl SessionBackend for WhiteTreePreparedBackend {
         })?;
         Ok(self.response.clone())
     }
+}
+
+/// Execute the fixed governed White Tree profile through the canonical NDABI frame.
+pub struct CanonicalWhiteTreeBackend {
+    fixture: WhiteTreeFixture,
+    identity: BackendIdentity,
+    response: Vec<u8>,
+    executions: u64,
+}
+
+impl CanonicalWhiteTreeBackend {
+    pub fn new() -> Result<Self, String> {
+        Ok(Self {
+            fixture: fixture()?,
+            identity: canonical_backend_identity().map_err(|error| error.to_string())?,
+            response: Vec::with_capacity(1_024),
+            executions: 0,
+        })
+    }
+
+    pub fn executions(&self) -> u64 {
+        self.executions
+    }
+}
+
+impl CanonicalBackend for CanonicalWhiteTreeBackend {
+    fn identity(&self) -> BackendIdentity {
+        self.identity
+    }
+
+    fn execute(
+        &mut self,
+        operation: CanonicalOperation,
+        limits: ExecutionLimits,
+        output: &mut BoundedOutput,
+    ) -> Result<(), ProtocolError> {
+        if operation != canonical_operation()? {
+            return Err(ProtocolError::BackendRefused);
+        }
+        // Refuse inadequate declared limits before the engine reads its snapshot.
+        if limits.maximum_rows < 4 || limits.maximum_result_bytes < 1_024 {
+            return Err(ProtocolError::BudgetExceeded);
+        }
+        self.executions += 1;
+        let (pack, _) = execute(&self.fixture, WhiteTreeQuery::fixed())
+            .map_err(|_| ProtocolError::BackendRefused)?;
+        encode_wire_response(&mut self.response, &pack)
+            .map_err(|_| ProtocolError::BackendRefused)?;
+        output.write(&self.response)?;
+        for _ in &pack.members {
+            output.complete_row()?;
+        }
+        Ok(())
+    }
+}
+
+pub fn canonical_backend_identity() -> Result<BackendIdentity, ProtocolError> {
+    BackendIdentity::new(
+        WHITE_TREE_ENGINE_ID,
+        WHITE_TREE_CONTEXT_PROFILE_ID,
+        digest_label(
+            b"ndabi/white-tree/schema/v1",
+            b"context-pack:members,evidence,governed-receipt",
+        ),
+        digest_label(
+            b"ndabi/white-tree/policy/v1",
+            b"external-ml-profile:governance-before-members",
+        ),
+        digest_label(
+            b"ndabi/white-tree/plan/v1",
+            b"trajectory=100,seed=3,valid=5000,system=5000,max-hops=3",
+        ),
+    )
+}
+
+pub fn canonical_operation() -> Result<CanonicalOperation, ProtocolError> {
+    let query = WhiteTreeQuery::fixed();
+    let packed = (query.seed_ordinal << 16) | u32::from(query.max_hops);
+    CanonicalOperation::new(
+        u16::from(EXECUTE_CONTEXT),
+        CANONICAL_PLAN_HANDLE,
+        CANONICAL_RESULT_SHAPE,
+        query.trajectory_id as i64,
+        PREPARED_SNAPSHOT_HANDLE,
+        packed,
+    )
 }
 
 struct HotState {
@@ -831,7 +925,30 @@ fn refusal_suite(query: WhiteTreeQuery) -> Result<(u32, u32, u64), String> {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+
     use super::*;
+
+    struct FixedClock(Cell<u64>);
+
+    impl ndabi_protocol::Clock for FixedClock {
+        fn now_unix_us(&self) -> Result<u64, ProtocolError> {
+            Ok(self.0.get())
+        }
+    }
+
+    fn canonical_authority() -> ndabi_protocol::Authority {
+        let identity = canonical_backend_identity().expect("identity");
+        let context = ndabi_protocol::AuthorityContext::new(
+            *b"white-tree-test1",
+            *b"agent-principal1",
+            1,
+            digest_label(b"ndabi/white-tree/capability/v1", b"read:context"),
+            identity,
+        )
+        .expect("context");
+        ndabi_protocol::Authority::new_read([24; 32], 1, 24, 2_000, context).expect("authority")
+    }
 
     #[test]
     fn wire_round_trip_preserves_the_complete_governed_pack() {
@@ -891,5 +1008,76 @@ mod tests {
         let frame = client.encode(operation, 8_192, 1_500).expect("frame");
         let mut backend = WhiteTreePreparedBackend::new().expect("backend");
         assert!(server.execute(&frame, 1_000, &mut backend).is_err());
+    }
+
+    #[test]
+    fn canonical_session_executes_the_complete_governed_result() {
+        let authority = canonical_authority();
+        let mut client = ndabi_protocol::ClientSession::new(authority.clone());
+        let frame = client
+            .encode(canonical_operation().expect("operation"), 8_192, 8, 1_500)
+            .expect("frame");
+        let server = ndabi_protocol::ServerSession::new(authority, 8_192, 8).expect("server");
+        let result = server
+            .execute(
+                &frame,
+                &mut CanonicalWhiteTreeBackend::new().expect("backend"),
+                &mut ndabi_protocol::MemoryReplayStore::default(),
+                &FixedClock(Cell::new(1_000)),
+            )
+            .expect("execution");
+        let decoded = decode_wire_response(&result.bytes).expect("result");
+        assert_eq!(result.rows, 4);
+        assert_eq!(decoded.members.len(), 4);
+        assert_eq!(decoded.receipt.trajectory_id, 100);
+    }
+
+    #[test]
+    fn canonical_session_refuses_changed_operations_and_limits_before_execution() {
+        let authority = canonical_authority();
+        let server =
+            ndabi_protocol::ServerSession::new(authority.clone(), 8_192, 8).expect("server");
+        let changed = CanonicalOperation::new(
+            u16::from(EXECUTE_CONTEXT),
+            CANONICAL_PLAN_HANDLE,
+            CANONICAL_RESULT_SHAPE,
+            101,
+            PREPARED_SNAPSHOT_HANDLE,
+            (3 << 16) | 3,
+        )
+        .expect("changed operation");
+        let changed_frame = ndabi_protocol::ClientSession::new(authority.clone())
+            .encode(changed, 8_192, 8, 1_500)
+            .expect("changed frame");
+        let mut changed_backend = CanonicalWhiteTreeBackend::new().expect("backend");
+        assert_eq!(
+            server
+                .execute(
+                    &changed_frame,
+                    &mut changed_backend,
+                    &mut ndabi_protocol::MemoryReplayStore::default(),
+                    &FixedClock(Cell::new(1_000)),
+                )
+                .unwrap_err(),
+            ProtocolError::BackendRefused
+        );
+        assert_eq!(changed_backend.executions(), 0);
+
+        let budget_frame = ndabi_protocol::ClientSession::new(authority)
+            .encode(canonical_operation().expect("operation"), 512, 8, 1_500)
+            .expect("budget frame");
+        let mut budget_backend = CanonicalWhiteTreeBackend::new().expect("backend");
+        assert_eq!(
+            server
+                .execute(
+                    &budget_frame,
+                    &mut budget_backend,
+                    &mut ndabi_protocol::MemoryReplayStore::default(),
+                    &FixedClock(Cell::new(1_000)),
+                )
+                .unwrap_err(),
+            ProtocolError::BudgetExceeded
+        );
+        assert_eq!(budget_backend.executions(), 0);
     }
 }
