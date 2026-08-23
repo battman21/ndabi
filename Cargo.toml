@@ -18,6 +18,7 @@ members = [
     "crates/ndabi-supabase-session-v1",
     "crates/ndabi-supabase-range-session-v1",
     "crates/ndabi-supabase-packed-session-v1",
+    "crates/ndabi-supabase-batch-session-v1",
     "crates/ndabi-write",
 ]
 
@@ -177,6 +178,10 @@ path = "src/bin/ndabi_v68.rs"
 name = "ndabi_v69"
 path = "src/bin/ndabi_v69.rs"
 
+[[bin]]
+name = "ndabi_v70"
+path = "src/bin/ndabi_v70.rs"
+
 [dependencies]
 blake3 = { version = "1.8", features = ["zeroize"] }
 crc32fast = "1.5"
@@ -204,6 +209,7 @@ ndabi-supabase-v1 = { path = "crates/ndabi-supabase-v1" }
 ndabi-supabase-session-v1 = { path = "crates/ndabi-supabase-session-v1" }
 ndabi-supabase-range-session-v1 = { path = "crates/ndabi-supabase-range-session-v1" }
 ndabi-supabase-packed-session-v1 = { path = "crates/ndabi-supabase-packed-session-v1" }
+ndabi-supabase-batch-session-v1 = { path = "crates/ndabi-supabase-batch-session-v1" }
 ndabi-write = { path = "crates/ndabi-write" }
 mongodb = { version = "3.8", features = ["sync"] }
 rcgen = "0.14"

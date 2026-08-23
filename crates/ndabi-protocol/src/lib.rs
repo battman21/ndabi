@@ -361,6 +361,29 @@ impl ClientSession {
         self.next_nonce = next_nonce;
         Ok(frame)
     }
+
+    pub fn verify_execution_receipt(
+        &self,
+        frame: &[u8],
+        rows: u32,
+        bytes: &[u8],
+        candidate: &[u8; 32],
+    ) -> Result<(), ProtocolError> {
+        if frame.len() < 40 {
+            return Err(ProtocolError::LengthMismatch);
+        }
+        let expected = receipt(
+            &self.authority,
+            *blake3::hash(frame).as_bytes(),
+            get_u64(frame, 32),
+            rows,
+            bytes,
+        );
+        if expected.ct_eq(candidate).unwrap_u8() != 1 {
+            return Err(ProtocolError::ReceiptMismatch);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]

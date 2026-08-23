@@ -442,10 +442,12 @@ mod tests {
     #[test]
     fn one_batch_frame_dispatches_once_and_decodes_borrowed_items() {
         let server = ServerSession::new(authority(20), 128, 4).expect("server");
+        let client = ClientSession::new(authority(20));
+        let frame = frame();
         let mut backend = backend();
         let execution = server
             .execute_batch(
-                &frame(),
+                &frame,
                 &mut backend,
                 &mut MemoryReplayStore::default(),
                 &clock(),
@@ -458,6 +460,15 @@ mod tests {
         assert_eq!(execution.bytes, [1, 2, 3]);
         assert_eq!(execution.rows, 1);
         assert!(execution.receipt.iter().any(|byte| *byte != 0));
+        client
+            .verify_execution_receipt(&frame, execution.rows, &execution.bytes, &execution.receipt)
+            .expect("valid receipt");
+        assert_eq!(
+            client
+                .verify_execution_receipt(&frame, execution.rows, &execution.bytes, &[9; 32])
+                .unwrap_err(),
+            ProtocolError::ReceiptMismatch
+        );
     }
 
     #[test]
