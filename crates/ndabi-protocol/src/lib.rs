@@ -11,8 +11,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use subtle::ConstantTimeEq;
 use zeroize::{Zeroize, Zeroizing};
 
+mod batch;
 mod replay;
 
+pub use batch::{
+    batch_frame_bytes, BatchBackend, BatchExecution, BatchItem, BatchItems, BatchOperation,
+    BATCH_OPERAND_BYTES, MAX_BATCH_OPERATIONS,
+};
 pub use replay::FileReplayStore;
 
 pub const FRAME_BYTES: usize = 160;
@@ -24,6 +29,7 @@ const VERSION_MINOR: u8 = 0;
 const EXECUTE_HANDLE: u8 = 1;
 const READ_ACCESS: u8 = 1;
 const FRAME_DOMAIN: &[u8] = b"ndabi/wire/v1/frame";
+const BATCH_FRAME_DOMAIN: &[u8] = b"ndabi/wire/v1/batch-frame";
 const CONTEXT_DOMAIN: &[u8] = b"ndabi/wire/v1/context";
 const KEY_DOMAIN: &[u8] = b"ndabi/wire/v1/session-key";
 const RECEIPT_KEY_DOMAIN: &[u8] = b"ndabi/wire/v1/receipt-key";
@@ -204,8 +210,12 @@ impl Authority {
     }
 
     fn tag(&self, authenticated: &[u8]) -> [u8; TAG_BYTES] {
+        self.tag_for(FRAME_DOMAIN, authenticated)
+    }
+
+    fn tag_for(&self, domain: &[u8], authenticated: &[u8]) -> [u8; TAG_BYTES] {
         let mut digest = blake3::Hasher::new_keyed(&self.frame_key);
-        digest.update(FRAME_DOMAIN);
+        digest.update(domain);
         digest.update(authenticated);
         let tag = *digest.finalize().as_bytes();
         digest.zeroize();
@@ -658,6 +668,8 @@ pub enum ProtocolError {
     AuthorityMismatch,
     BackendIdentityMismatch,
     BackendRefused,
+    BatchLimitExceeded,
+    BatchTooSmall,
     BudgetExceeded,
     ClockFailed,
     DeadlineBeyondAuthority,
