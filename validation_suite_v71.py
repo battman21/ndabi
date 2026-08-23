@@ -8,8 +8,10 @@ import hashlib
 import json
 import math
 import os
+import platform
 import statistics
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -39,13 +41,15 @@ EXPECTED_QUERIES = sum(operations + 1 for operations in BATCH_SIZES) * (SAMPLES 
 SOURCE_PATHS = (
     "Cargo.toml",
     "Cargo.lock",
+    "src/lib.rs",
     "src/alloc.rs",
     "src/bin/ndabi_v71.rs",
     "validation_suite_v71.py",
+    "validation_suite_v58.py",
     "requirements-v71.txt",
     "crates/ndabi-protocol/Cargo.toml",
-    "crates/ndabi-protocol/src/batch.rs",
     "crates/ndabi-protocol/src/lib.rs",
+    "crates/ndabi-protocol/src/batch.rs",
     "crates/ndabi-protocol/src/connection.rs",
     "crates/ndabi-protocol/src/replay.rs",
     "crates/ndabi-protocol/src/transport.rs",
@@ -573,6 +577,17 @@ def main() -> int:
                 "postgres_image_id": command("docker", "image", "inspect", "--format", "{{.Id}}", POSTGRES_IMAGE).stdout.strip(),
                 "postgrest_image_id": command("docker", "image", "inspect", "--format", "{{.Id}}", POSTGREST_IMAGE).stdout.strip(),
                 "cryptography_version": cryptography.__version__,
+                "environment": {
+                    "platform": platform.platform(),
+                    "machine": platform.machine(),
+                    "processor": platform.processor(),
+                    "python_version": platform.python_version(),
+                    "rustc_version": command("rustc", "--version").stdout.strip(),
+                    "docker_server_version": command(
+                        "docker", "version", "--format", "{{.Server.Version}}"
+                    ).stdout.strip(),
+                    "executable": sys.executable,
+                },
                 "authenticator_least_privilege": role_state == "f|f|f|t",
                 "rls_enabled_and_forced": rls_state == "t|t",
                 "security": security,
