@@ -9,6 +9,7 @@ publish = false
 [workspace]
 members = [
     "crates/ndabi-mongodb",
+    "crates/ndabi-mongodb-v1",
     "crates/ndabi-postgres",
     "crates/ndabi-postgres-v1",
     "crates/ndabi-protocol",
@@ -140,6 +141,10 @@ path = "src/bin/ndabi_v57.rs"
 name = "ndabi_v58"
 path = "src/bin/ndabi_v58.rs"
 
+[[bin]]
+name = "ndabi_v60"
+path = "src/bin/ndabi_v60.rs"
+
 [dependencies]
 blake3 = { version = "1.8", features = ["zeroize"] }
 crc32fast = "1.5"
@@ -157,6 +162,7 @@ futures-util = "0.3"
 subtle = "2.6"
 zeroize = "1.9"
 ndabi-mongodb = { path = "crates/ndabi-mongodb" }
+ndabi-mongodb-v1 = { path = "crates/ndabi-mongodb-v1" }
 ndabi-postgres = { path = "crates/ndabi-postgres" }
 ndabi-postgres-v1 = { path = "crates/ndabi-postgres-v1" }
 ndabi-protocol = { path = "crates/ndabi-protocol" }

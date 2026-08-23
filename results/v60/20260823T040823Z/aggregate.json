@@ -1,0 +1,16 @@
+{
+  "campaign": "NDABI canonical MongoDB binding v6.0",
+  "campaign_id": "20260823T040823Z",
+  "process_count": 5,
+  "binary_sha256": "6dd91d464b71c4cf30adc47eb03b10683e914ef71a4eec51206820858b4f4609",
+  "source_sha256": "53e0ce5b8a115b68ef187da64c549a8132d03a10159abbc74b7992886c55b25d",
+  "mongodb_image_id": "sha256:5c498219ec01c0cd170bf7e5f32b0dfc9d008a6a5524e537c759f6401b1f57c3",
+  "accepted": true,
+  "process_results": [
+    "results/v60/20260823T040823Z/process-1.json",
+    "results/v60/20260823T040823Z/process-2.json",
+    "results/v60/20260823T040823Z/process-3.json",
+    "results/v60/20260823T040823Z/process-4.json",
+    "results/v60/20260823T040823Z/process-5.json"
+  ]
+}

@@ -2605,6 +2605,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ndabi-mongodb-v1"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "mongodb",
+ "ndabi-protocol",
+ "serde",
+]
+
+[[package]]
 name = "ndabi-postgres"
 version = "0.1.0"
 dependencies = [
@@ -2654,6 +2664,7 @@ dependencies = [
  "libc",
  "mongodb",
  "ndabi-mongodb",
+ "ndabi-mongodb-v1",
  "ndabi-postgres",
  "ndabi-postgres-v1",
  "ndabi-protocol",

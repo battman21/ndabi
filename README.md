@@ -77,6 +77,9 @@ The v5.8 canonical binding passed five processes with stronger protocol and data
 It used a least-privilege read-only service role and forced row-level security.
 Valid user identities returned only their rows.
 Absent, changed, expired, and unsigned tokens refused.
+The v6.0 canonical MongoDB binding passed five fresh processes against digest-pinned MongoDB 6.0.26.
+Each process returned 128 exact rows through one `find`, zero `getMore`, and three early refusals.
+The dedicated application user had read-only database authority.
 The v5.2 write campaign passed five processes after binding backend access class to authority class.
 
 The frozen v0.9 contract is [`../../specs/ndabi_poc_preregistration_v0_9.md`](../../specs/ndabi_poc_preregistration_v0_9.md).
@@ -291,5 +294,6 @@ MongoDB 8.0 and 8.3 refused the available Docker kernel.
 The v5.0 result proves local PostgreSQL and PostgREST JWT bindings, not the hosted Supabase control plane.
 The v5.8 result proves the canonical execute-handle frame against the same local data surfaces.
 It adds no hosted Supabase or performance claim.
+The v6.0 result proves one canonical MongoDB 6.0.26 identifier-window profile.
 The v5.2 result proves one PostgreSQL compare-and-swap write profile.
 Tokens, energy, public WAN, production custody, and general query or write support remain unproven.

@@ -1,0 +1,20 @@
+{
+  "campaign": "NDABI canonical MongoDB binding v6.0",
+  "frame_bytes": 160,
+  "response_bytes": 10752,
+  "response_rows": 128,
+  "complete_result_match": true,
+  "receipt_nonzero": true,
+  "authority_context_bound": true,
+  "find_commands": 1,
+  "get_more_commands": 0,
+  "refusals_passed": 3,
+  "refusals_total": 3,
+  "passed": true,
+  "process": 3,
+  "reader_count_passed": true,
+  "reader_write_refused": true,
+  "binary_sha256": "6dd91d464b71c4cf30adc47eb03b10683e914ef71a4eec51206820858b4f4609",
+  "source_sha256": "53e0ce5b8a115b68ef187da64c549a8132d03a10159abbc74b7992886c55b25d",
+  "mongodb_image_id": "sha256:5c498219ec01c0cd170bf7e5f32b0dfc9d008a6a5524e537c759f6401b1f57c3"
+}
