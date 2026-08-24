@@ -371,6 +371,9 @@ No concurrent result is accepted because the frozen repeatability gate failed.
 The frozen v7.6 repair retains every speed and repeatability threshold.
 It uses 4,095 NDABI samples and 127 PostgREST samples per worker.
 It rejects any measured worker or arm shorter than one second.
-No v7.6 performance result exists yet.
+Its formal campaign binds source commit `2e65c31` and passes every frozen gate.
+Median speed-ups measured 21.30, 16.01, and 43.97 times at concurrency 1, 8, and 32.
+P95-ratio variation fell to 13.50%, 11.38%, and 2.67%.
+Concurrent local Supavisor session performance is accepted for this finite workload.
 The v5.2 result proves one PostgreSQL compare-and-swap write profile.
 Tokens, energy, public WAN, production custody, and general query or write support remain unproven.

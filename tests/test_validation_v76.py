@@ -1,4 +1,6 @@
 import copy
+import gzip
+import json
 import unittest
 
 import validation_suite_v73 as campaign
@@ -71,6 +73,63 @@ class SupavisorDurationStableCampaignTests(unittest.TestCase):
                 campaign.validate_arm_measurement(report, "ndabi", 1)
         finally:
             campaign.MONITOR_BUILD_PROCESSES_DURING_ARM = previous
+
+    def test_accepted_evidence_revalidates(self):
+        aggregate = json.loads((duration_repair.RESULT_ROOT / "latest.json").read_text())
+        evidence = duration_repair.RESULT_ROOT / aggregate["campaign_id"]
+        stored = json.loads((evidence / "aggregate.json").read_text())
+        self.assertEqual(aggregate, stored)
+        self.assertEqual(
+            aggregate["source_commit"],
+            "2e65c31ac28a53343ec44837e509e98341ed498f",
+        )
+        self.assertTrue(aggregate["source_custody_passed"])
+        self.assertTrue(aggregate["security_passed"])
+        self.assertEqual(len(aggregate["security"]), 17)
+        self.assertTrue(all(aggregate["security"].values()))
+        self.assertTrue(aggregate["repeatability_passed"])
+        self.assertTrue(all(item["passed"] for item in aggregate["repeatability"]))
+        self.assertTrue(aggregate["accepted"])
+        self.assertEqual(aggregate["samples_per_worker"], duration_repair.SAMPLES_BY_ARM)
+        self.assertTrue(aggregate["build_process_monitor_enabled"])
+        self.assertEqual(
+            aggregate["minimum_arm_duration_ns"],
+            duration_repair.MINIMUM_ARM_DURATION_NS,
+        )
+        previous = (
+            campaign.SAMPLES_BY_ARM,
+            campaign.MINIMUM_ARM_DURATION_NS,
+            campaign.MONITOR_BUILD_PROCESSES_DURING_ARM,
+        )
+        try:
+            duration_repair.configure()
+            for process in range(1, aggregate["process_count"] + 1):
+                with gzip.open(
+                    evidence / f"process-{process}.json.gz", "rt", encoding="utf-8"
+                ) as source:
+                    report = json.load(source)
+                campaign.validate_process_report(report)
+                self.assertTrue(report["passed"])
+                for case in report["cases"]:
+                    for measurement in case["measurements"].values():
+                        self.assertEqual(
+                            measurement["observed_data_queries"],
+                            measurement["expected_data_queries"],
+                        )
+                        self.assertEqual(
+                            measurement["active_build_processes_during_arm"], []
+                        )
+                        self.assertEqual(measurement["build_monitor_errors"], [])
+                        self.assertGreaterEqual(
+                            measurement["total_elapsed_ns"],
+                            duration_repair.MINIMUM_ARM_DURATION_NS,
+                        )
+        finally:
+            (
+                campaign.SAMPLES_BY_ARM,
+                campaign.MINIMUM_ARM_DURATION_NS,
+                campaign.MONITOR_BUILD_PROCESSES_DURING_ARM,
+            ) = previous
 
 
 if __name__ == "__main__":

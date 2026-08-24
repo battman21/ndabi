@@ -1,0 +1,123 @@
+{
+  "campaign": "NDABI Supavisor concurrency campaign v7.6",
+  "campaign_id": "20260824T075353Z",
+  "smoke": false,
+  "process_count": 5,
+  "source_commit": "2e65c31ac28a53343ec44837e509e98341ed498f",
+  "source_sha256": "37db1790bb3fe9d554cdeb7d3b9a7b6672c291314930503f36b2e9c0d00ff9c7",
+  "source_custody_passed": true,
+  "binary_sha256": "ea3b41c3645255416c85d948afe9bb63658a3d469f30bf4b5f65c67921479d18",
+  "postgres_image_id": "sha256:eb9fe6b5815523ffa3e3d8aee9db3532bd564b857634fcfa36979d76bed6ae10",
+  "postgrest_image_id": "sha256:367030c7d679ff6ab17bfde55017fe94863e74c30b6e160bdbe4993bbfaf545b",
+  "supavisor_image_id": "sha256:f57c01457d930c906720b562f65b2ca6bbc97d39116eb53fbbc2831c99616167",
+  "concurrency_levels": [
+    1,
+    8,
+    32
+  ],
+  "operations_per_request": 16,
+  "samples_per_worker": {
+    "ndabi": 4095,
+    "postgrest": 127
+  },
+  "minimum_arm_duration_ns": 1000000000,
+  "build_process_monitor_enabled": true,
+  "build_process_monitor_interval_seconds": 0.25,
+  "pool_size_per_surface": 64,
+  "pooler_mode": "session",
+  "session_proof_passed": true,
+  "authenticator_least_privilege": true,
+  "rls_enabled_and_forced": true,
+  "security": {
+    "valid_token_accepted": true,
+    "changed_signature_refused": true,
+    "unknown_key_refused": true,
+    "wrong_issuer_refused": true,
+    "wrong_audience_refused": true,
+    "expired_token_refused": true,
+    "unsigned_subject_refused": true,
+    "elevated_role_refused": true,
+    "authorised_ndabi_rows_accepted": true,
+    "cross_subject_ndabi_rows_refused": true,
+    "second_subject_ndabi_rows_accepted": true,
+    "changed_ndabi_frame_refused": true,
+    "ndabi_replay_refused_before_query": true,
+    "invalid_ndabi_receipt_refused": true,
+    "valid_ndabi_result_accepted": true,
+    "cross_subject_postgrest_rows_hidden": true,
+    "user_write_refused": true
+  },
+  "security_passed": true,
+  "repeatability": [
+    {
+      "concurrency": 1,
+      "throughput_ratio_cv": 0.06378787491036389,
+      "p95_ratio_cv": 0.13503221445748528,
+      "passed": true
+    },
+    {
+      "concurrency": 8,
+      "throughput_ratio_cv": 0.06646749709287014,
+      "p95_ratio_cv": 0.11378203326736593,
+      "passed": true
+    },
+    {
+      "concurrency": 32,
+      "throughput_ratio_cv": 0.005706830121451899,
+      "p95_ratio_cv": 0.026703949416386426,
+      "passed": true
+    }
+  ],
+  "repeatability_passed": true,
+  "summary": [
+    {
+      "concurrency": 1,
+      "median_ndabi_logical_operations_per_second": 25227.964228040466,
+      "median_postgrest_logical_operations_per_second": 1190.7377944981117,
+      "median_ndabi_p95_request_ns": 857667,
+      "median_postgrest_p95_request_ns": 16350000,
+      "median_throughput_speedup": 21.29667478462936,
+      "median_p95_ratio": 0.04970440366972477,
+      "request_reduction": 0.9439252336448598,
+      "database_query_reduction": 0.9375,
+      "median_ndabi_mean_allocations": 156.62612942612944,
+      "median_ndabi_mean_allocated_bytes": 85724.90402930403
+    },
+    {
+      "concurrency": 8,
+      "median_ndabi_logical_operations_per_second": 100503.55317335138,
+      "median_postgrest_logical_operations_per_second": 6261.350527396297,
+      "median_ndabi_p95_request_ns": 2089625,
+      "median_postgrest_p95_request_ns": 25257667,
+      "median_throughput_speedup": 16.010736591330403,
+      "median_p95_ratio": 0.08152641334609408,
+      "request_reduction": 0.9439252336448598,
+      "database_query_reduction": 0.9375,
+      "median_ndabi_mean_allocations": 155.66462148962148,
+      "median_ndabi_mean_allocated_bytes": 82835.73748473749
+    },
+    {
+      "concurrency": 32,
+      "median_ndabi_logical_operations_per_second": 149335.59889476956,
+      "median_postgrest_logical_operations_per_second": 3403.138922532638,
+      "median_ndabi_p95_request_ns": 7938625,
+      "median_postgrest_p95_request_ns": 172465958,
+      "median_throughput_speedup": 43.965759740855205,
+      "median_p95_ratio": 0.045621419258425035,
+      "request_reduction": 0.9439252336448598,
+      "database_query_reduction": 0.9375,
+      "median_ndabi_mean_allocations": 155.39775641025642,
+      "median_ndabi_mean_allocated_bytes": 82038.43339438339
+    }
+  ],
+  "environment": {
+    "platform": "macOS-15.7.8-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "processor": "arm",
+    "python_version": "3.14.6",
+    "rustc_version": "rustc 1.92.0 (ded5c06cf 2025-12-08)",
+    "docker_server_version": "29.7.2",
+    "executable": "/opt/homebrew/opt/python@3.14/bin/python3.14"
+  },
+  "accepted": true
+}

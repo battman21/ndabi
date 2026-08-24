@@ -16,7 +16,7 @@ The aggregate failed the frozen p95-ratio repeatability gate.
 
 NDABI used one data query for each 16-operation request.
 PostgREST used sixteen data queries for the same result.
-This reduced requests by 94.39% and data queries by 93.75%.
+This reduced request bytes by at least 94.39% and data queries by 93.75% per logical request.
 All result bytes matched.
 All seventeen security checks passed through Supavisor session mode.
 The prepared-statement proof, forced RLS, least privilege, and source custody passed.
