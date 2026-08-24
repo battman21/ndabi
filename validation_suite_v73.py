@@ -27,6 +27,10 @@ POSTGRES_IMAGE = v72.POSTGRES_IMAGE
 POSTGREST_IMAGE = v72.POSTGREST_IMAGE
 SUPAVISOR_IMAGE = v72.SUPAVISOR_IMAGE
 RESULT_ROOT = ROOT / "results" / "v73"
+CAMPAIGN_NAME = "NDABI Supavisor concurrency campaign v7.3"
+CAMPAIGN_LABEL = "v7.3"
+SESSION_PROOF_LABEL = "ndabi-v73-session-proof"
+SESSION_PROOF_EXPECTED = "73"
 PROCESS_COUNT = 5
 TENANT_ID = "ndabi-v73"
 CONCURRENCY_LEVELS = (1, 8, 32)
@@ -37,6 +41,7 @@ SAMPLES = 31
 POOL_SIZE = 64
 MAX_CLIENTS = 200
 MINIMUM_HOST_IDLE_PERCENT = 80.0
+FORBIDDEN_BUILD_PROCESSES = {"cargo", "cargo-tauri", "clang", "rustc", "swiftc"}
 SOURCE_PATHS = v72.SOURCE_PATHS + (
     "validation_suite_v73.py",
     "requirements-v73.txt",
@@ -139,6 +144,18 @@ def parse_host_idle(output: str) -> float:
     return float(matches[-1])
 
 
+def active_build_processes() -> list[str]:
+    completed = command("ps", "-Ao", "comm=", check=False)
+    if completed.returncode != 0:
+        raise RuntimeError("the host process probe failed")
+    active = {
+        Path(line.strip()).name
+        for line in completed.stdout.splitlines()
+        if line.strip()
+    }
+    return sorted(active & FORBIDDEN_BUILD_PROCESSES)
+
+
 def await_quiet_host(timeout_seconds: int = 300) -> dict:
     if platform.system() != "Darwin":
         raise RuntimeError("the v7.3 host-idle gate supports macOS only")
@@ -146,17 +163,19 @@ def await_quiet_host(timeout_seconds: int = 300) -> dict:
     consecutive = []
     observations = []
     while time.monotonic() - started < timeout_seconds:
+        build_processes = active_build_processes()
         completed = command("top", "-l", "2", "-n", "0", "-s", "1", check=False)
         if completed.returncode != 0:
             raise RuntimeError("the host CPU idle probe failed")
         idle = parse_host_idle(completed.stdout)
         observations.append(idle)
-        if idle >= MINIMUM_HOST_IDLE_PERCENT:
+        if idle >= MINIMUM_HOST_IDLE_PERCENT and not build_processes:
             consecutive.append(idle)
             if len(consecutive) == 3:
                 return {
                     "minimum_idle_percent": min(consecutive),
                     "observations": observations,
+                    "active_build_processes": [],
                     "passed": True,
                 }
         else:
@@ -409,6 +428,7 @@ def validate_arm_measurement(measurement: dict, arm: str, concurrency: int) -> N
     host_idle = measurement.get("host_idle_preflight")
     require(isinstance(host_idle, dict), "the host-idle evidence is absent")
     require(host_idle.get("passed") is True, "the host-idle gate failed")
+    require(host_idle.get("active_build_processes") == [], "a build process contaminated the arm")
     require(
         host_idle.get("minimum_idle_percent", 0) >= MINIMUM_HOST_IDLE_PERCENT,
         "the host-idle threshold failed",
@@ -624,12 +644,12 @@ def main() -> int:
     if sys.argv[1:] not in ([], ["--smoke"]):
         raise SystemExit("use no argument for the formal campaign or --smoke")
     if cryptography.__version__ != "49.0.0":
-        raise SystemExit("install the pinned v7.3 cryptography dependency")
+        raise SystemExit(f"install the pinned {CAMPAIGN_LABEL} cryptography dependency")
     source_commit = None if smoke else committed_source()
     initial_source_sha256 = source_sha256()
     latest = RESULT_ROOT / "latest.json"
     if not smoke and latest.exists():
-        raise SystemExit("the first v7.3 formal campaign already exists")
+        raise SystemExit(f"the first {CAMPAIGN_LABEL} formal campaign already exists")
     command(
         "cargo",
         "build",
@@ -646,14 +666,14 @@ def main() -> int:
     if campaign is not None:
         campaign.mkdir(parents=True, exist_ok=False)
     suffix = str(time.time_ns())
-    network = f"ndabi-v73-{suffix}"
-    postgres = f"ndabi-v73-postgres-{suffix}"
-    postgrest = f"ndabi-v73-postgrest-{suffix}"
-    supavisor = f"ndabi-v73-supavisor-{suffix}"
+    network = f"{TENANT_ID}-{suffix}"
+    postgres = f"{TENANT_ID}-postgres-{suffix}"
+    postgrest = f"{TENANT_ID}-postgrest-{suffix}"
+    supavisor = f"{TENANT_ID}-supavisor-{suffix}"
     private, public_pem, jwks = v72.v71.key_material()
     expiry = int(time.time()) + 3_600
     process_reports = []
-    with tempfile.TemporaryDirectory(prefix="ndabi-v73-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{TENANT_ID}-") as temporary:
         custody = Path(temporary)
         public_key = v72.v71.write_private_file(custody, "public.pem", public_pem)
         valid_one = v72.v71.token(private, v72.v71.claims("user-1", expiry))
@@ -721,8 +741,8 @@ def main() -> int:
                 postgres,
                 supavisor,
                 tenant_id=TENANT_ID,
-                label="ndabi-v73-session-proof",
-                expected="73",
+                label=SESSION_PROOF_LABEL,
+                expected=SESSION_PROOF_EXPECTED,
             )
             security = v72.security_checks(
                 pooled_connection, endpoint, token_paths, public_key, valid_one
@@ -765,7 +785,7 @@ def main() -> int:
                 and source_custody_passed
             )
             aggregate = {
-                "campaign": "NDABI Supavisor concurrency campaign v7.3",
+                "campaign": CAMPAIGN_NAME,
                 "campaign_id": campaign_id,
                 "smoke": smoke,
                 "process_count": process_count,

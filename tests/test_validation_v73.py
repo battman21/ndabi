@@ -60,6 +60,7 @@ def measurement(arm: str, throughput: float, p95: int) -> dict:
         "host_idle_preflight": {
             "minimum_idle_percent": 90.0,
             "observations": [90.0, 91.0, 92.0],
+            "active_build_processes": [],
             "passed": True,
         },
     }
@@ -92,6 +93,7 @@ def validated_measurement(arm: str) -> dict:
         "host_idle_preflight": {
             "minimum_idle_percent": 90.0,
             "observations": [90.0, 91.0, 92.0],
+            "active_build_processes": [],
             "passed": True,
         },
     }
