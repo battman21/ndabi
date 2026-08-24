@@ -1,0 +1,117 @@
+{
+  "campaign": "NDABI Supavisor concurrency campaign v7.5",
+  "campaign_id": "20260824T063749Z",
+  "smoke": false,
+  "process_count": 5,
+  "source_commit": "72fc936c928dcbcb8fdda0e81401ba79148a70b8",
+  "source_sha256": "dc29f9174be57ab1cc953737fcf490d1810ee98abbacd9a791191e3e8ea9f058",
+  "source_custody_passed": true,
+  "binary_sha256": "ea3b41c3645255416c85d948afe9bb63658a3d469f30bf4b5f65c67921479d18",
+  "postgres_image_id": "sha256:eb9fe6b5815523ffa3e3d8aee9db3532bd564b857634fcfa36979d76bed6ae10",
+  "postgrest_image_id": "sha256:367030c7d679ff6ab17bfde55017fe94863e74c30b6e160bdbe4993bbfaf545b",
+  "supavisor_image_id": "sha256:f57c01457d930c906720b562f65b2ca6bbc97d39116eb53fbbc2831c99616167",
+  "concurrency_levels": [
+    1,
+    8,
+    32
+  ],
+  "operations_per_request": 16,
+  "samples_per_worker": 31,
+  "pool_size_per_surface": 64,
+  "pooler_mode": "session",
+  "session_proof_passed": true,
+  "authenticator_least_privilege": true,
+  "rls_enabled_and_forced": true,
+  "security": {
+    "valid_token_accepted": true,
+    "changed_signature_refused": true,
+    "unknown_key_refused": true,
+    "wrong_issuer_refused": true,
+    "wrong_audience_refused": true,
+    "expired_token_refused": true,
+    "unsigned_subject_refused": true,
+    "elevated_role_refused": true,
+    "authorised_ndabi_rows_accepted": true,
+    "cross_subject_ndabi_rows_refused": true,
+    "second_subject_ndabi_rows_accepted": true,
+    "changed_ndabi_frame_refused": true,
+    "ndabi_replay_refused_before_query": true,
+    "invalid_ndabi_receipt_refused": true,
+    "valid_ndabi_result_accepted": true,
+    "cross_subject_postgrest_rows_hidden": true,
+    "user_write_refused": true
+  },
+  "security_passed": true,
+  "repeatability": [
+    {
+      "concurrency": 1,
+      "throughput_ratio_cv": 0.05636294291691453,
+      "p95_ratio_cv": 0.1500740509825271,
+      "passed": false
+    },
+    {
+      "concurrency": 8,
+      "throughput_ratio_cv": 0.07541886077221657,
+      "p95_ratio_cv": 0.16120818645407953,
+      "passed": false
+    },
+    {
+      "concurrency": 32,
+      "throughput_ratio_cv": 0.09467144717616573,
+      "p95_ratio_cv": 0.15416782108255678,
+      "passed": false
+    }
+  ],
+  "repeatability_passed": false,
+  "summary": [
+    {
+      "concurrency": 1,
+      "median_ndabi_logical_operations_per_second": 23573.024095812936,
+      "median_postgrest_logical_operations_per_second": 1131.745694916956,
+      "median_ndabi_p95_request_ns": 763583,
+      "median_postgrest_p95_request_ns": 16844166,
+      "median_throughput_speedup": 20.904737197115136,
+      "median_p95_ratio": 0.04740284044817361,
+      "request_reduction": 0.9439252336448598,
+      "database_query_reduction": 0.9375,
+      "median_ndabi_mean_allocations": 156.58064516129033,
+      "median_ndabi_mean_allocated_bytes": 85486.7741935484
+    },
+    {
+      "concurrency": 8,
+      "median_ndabi_logical_operations_per_second": 83312.33728059125,
+      "median_postgrest_logical_operations_per_second": 6104.887756530676,
+      "median_ndabi_p95_request_ns": 2698875,
+      "median_postgrest_p95_request_ns": 24167708,
+      "median_throughput_speedup": 13.788800705467372,
+      "median_p95_ratio": 0.10196875304498881,
+      "request_reduction": 0.9439252336448598,
+      "database_query_reduction": 0.9375,
+      "median_ndabi_mean_allocations": 155.4959677419355,
+      "median_ndabi_mean_allocated_bytes": 82170.32258064517
+    },
+    {
+      "concurrency": 32,
+      "median_ndabi_logical_operations_per_second": 142082.17706561633,
+      "median_postgrest_logical_operations_per_second": 3625.9554627947773,
+      "median_ndabi_p95_request_ns": 8187333,
+      "median_postgrest_p95_request_ns": 163068041,
+      "median_throughput_speedup": 39.03619192552144,
+      "median_p95_ratio": 0.05020807847933857,
+      "request_reduction": 0.9439252336448598,
+      "database_query_reduction": 0.9375,
+      "median_ndabi_mean_allocations": 155.39213709677418,
+      "median_ndabi_mean_allocated_bytes": 81885.46774193548
+    }
+  ],
+  "environment": {
+    "platform": "macOS-15.7.8-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "processor": "arm",
+    "python_version": "3.14.6",
+    "rustc_version": "rustc 1.92.0 (ded5c06cf 2025-12-08)",
+    "docker_server_version": "29.7.2",
+    "executable": "/opt/homebrew/opt/python@3.14/bin/python3.14"
+  },
+  "accepted": false
+}

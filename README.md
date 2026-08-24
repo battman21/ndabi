@@ -364,7 +364,9 @@ Its first attempt retained one passing process before another compiler started.
 Its second attempt refused before saving a process because the idle percentage remained unstable.
 The v7.5 repair refuses compilers but uses latency and repeatability as the noise gates.
 Its first formal attempt refused when another Cargo and Rust build started.
-One source-bound v7.4 diagnostic process passed every process gate.
-No concurrent result is accepted because no attempt completed five processes.
+Its complete formal campaign ran five processes from source commit `72fc936`.
+All fifteen process-level cases passed with median speed-ups of 20.90, 13.79, and 39.04 times.
+The aggregate failed because p95-ratio variation measured 15.01%, 16.12%, and 15.42%.
+No concurrent result is accepted because the frozen repeatability gate failed.
 The v5.2 result proves one PostgreSQL compare-and-swap write profile.
 Tokens, energy, public WAN, production custody, and general query or write support remain unproven.
