@@ -356,5 +356,8 @@ Pooled NDABI measured 3.91, 10.55, and 18.25 times faster than repeated PostgRES
 Supavisor added 33.34%, 33.90%, and 27.81% median p50 overhead against direct NDABI.
 All seventeen pooled-path security checks and all session, custody, query, and repeatability gates passed.
 The campaign used local Docker. Hosted Supabase, TLS, WAN, and concurrency remain untested.
+The frozen v7.3 campaign tests 1, 8, and 32 concurrent Supavisor sessions.
+It uses equal 64-connection capacities for NDABI and PostgREST.
+Its smoke result is diagnostic until five committed-source processes pass every frozen gate.
 The v5.2 result proves one PostgreSQL compare-and-swap write profile.
 Tokens, energy, public WAN, production custody, and general query or write support remain unproven.

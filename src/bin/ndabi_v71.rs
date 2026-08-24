@@ -1,9 +1,11 @@
 //! Compare one admitted NDABI user session with persistent PostgREST requests.
 
 use std::fmt::Write;
+use std::fs::OpenOptions;
 use std::hint::black_box;
 use std::path::Path;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use ndabi_postgres_v1::{
     digest_label, memory_replay_store, AuthorityContext, OperationBinding, RangeProfile,
@@ -33,6 +35,7 @@ const ROWS_PER_OPERATION: u32 = 8;
 const START_SPACING: i64 = 100;
 const SAMPLES: usize = 63;
 const WARMUPS: usize = 7;
+const LOAD_WARMUPS: usize = 3;
 
 #[derive(Clone, Copy)]
 enum Arm {
@@ -98,6 +101,32 @@ struct Measurement {
     raw_cpu_ns: Vec<u64>,
 }
 
+#[derive(Serialize)]
+struct LoadWorkerReport {
+    schema: &'static str,
+    arm: &'static str,
+    worker: usize,
+    operations: u32,
+    rows_per_operation: u32,
+    warmups: usize,
+    samples: usize,
+    logical_operations: u64,
+    result_bytes: usize,
+    result_sha256: String,
+    measured_start_monotonic_ns: u64,
+    measured_end_monotonic_ns: u64,
+    total_elapsed_ns: u64,
+    total_cpu_ns: u64,
+    p50_ns: u64,
+    p95_ns: u64,
+    p99_ns: u64,
+    mean_allocations: f64,
+    mean_allocated_bytes: f64,
+    peak_additional_live_bytes: u64,
+    raw_ns: Vec<u64>,
+    passed: bool,
+}
+
 #[derive(Deserialize)]
 struct RestRow {
     id: i64,
@@ -143,6 +172,9 @@ fn run() -> Result<(), String> {
     }
     if arguments.first().map(String::as_str) == Some("--ndabi-probe") {
         return ndabi_probe(&arguments[1..]);
+    }
+    if arguments.first().map(String::as_str) == Some("--load-worker") {
+        return load_worker(&arguments[1..]);
     }
     if arguments.len() != 7 {
         return Err(
@@ -201,6 +233,208 @@ fn run() -> Result<(), String> {
         Ok(())
     } else {
         Err("the Supabase indexed-batch-session performance gate failed".to_string())
+    }
+}
+
+fn load_worker(arguments: &[String]) -> Result<(), String> {
+    if arguments.len() != 14 {
+        return Err(
+            "arm, connection, endpoint, token path, public-key path, key identifier, issuer, audience, start, operations, samples, worker, ready path, and release path are required"
+                .to_string(),
+        );
+    }
+    let arm = match arguments[0].as_str() {
+        "ndabi" => Arm::Ndabi,
+        "postgrest" => Arm::Postgrest,
+        _ => return Err("the load arm is invalid".to_string()),
+    };
+    let token = read_secret(&arguments[3])?;
+    let public_key = std::fs::read(&arguments[4]).map_err(|_| "the public key cannot be read")?;
+    let verifier = JwtVerifier::new_es256(
+        &public_key,
+        &arguments[5],
+        &arguments[6],
+        &arguments[7],
+        300,
+    )
+    .map_err(|error| error.to_string())?;
+    let user = verifier.admit(&token).map_err(|error| error.to_string())?;
+    let start = arguments[8]
+        .parse::<i64>()
+        .map_err(|_| "the load start is invalid")?;
+    let operations = arguments[9]
+        .parse::<u32>()
+        .map_err(|_| "the load operation count is invalid")?;
+    let sample_count = arguments[10]
+        .parse::<usize>()
+        .map_err(|_| "the load sample count is invalid")?;
+    let worker = arguments[11]
+        .parse::<usize>()
+        .map_err(|_| "the load worker is invalid")?;
+    if !(3..=10_000).contains(&sample_count) {
+        return Err("the load sample count is outside its bound".to_string());
+    }
+    let starts = starts(start, operations)?;
+    let expected = expected_batch(&starts);
+    let result_budget = u32::try_from(expected.len()).map_err(|error| error.to_string())?;
+    let total_rows = operations
+        .checked_mul(ROWS_PER_OPERATION)
+        .ok_or_else(|| "the load row budget overflowed".to_string())?;
+    let profile = profile()?;
+    let identity = identity(profile)?;
+    let session_index = worker
+        .checked_add(10_000)
+        .ok_or_else(|| "the load session identifier overflowed".to_string())?;
+    let mut ndabi = match arm {
+        Arm::Ndabi => Some(NdabiState::new(
+            &arguments[1],
+            &user,
+            profile,
+            identity,
+            &starts,
+            result_budget,
+            total_rows,
+            session_index,
+        )?),
+        Arm::Postgrest => None,
+    };
+    let rest = match arm {
+        Arm::Postgrest => Some(RestState::new(&arguments[2], &token)?),
+        Arm::Ndabi => None,
+    };
+    for _ in 0..LOAD_WARMUPS {
+        let bytes = execute_load_request(
+            arm,
+            ndabi.as_mut(),
+            rest.as_ref(),
+            &starts,
+            result_budget,
+            total_rows,
+        )?;
+        if bytes != expected {
+            return Err("the load warm-up result changed".to_string());
+        }
+    }
+    let ready_path = Path::new(&arguments[12]);
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(ready_path)
+        .map_err(|_| "the load ready marker cannot be created")?;
+    wait_for_release(Path::new(&arguments[13]))?;
+    let mut samples = Vec::with_capacity(sample_count);
+    let measured_start_monotonic_ns = monotonic_ns()?;
+    let total_cpu_started = thread_cpu_ns()?;
+    let total_started = Instant::now();
+    for _ in 0..sample_count {
+        let allocation_started = begin_measurement();
+        let started = Instant::now();
+        let bytes = execute_load_request(
+            arm,
+            ndabi.as_mut(),
+            rest.as_ref(),
+            &starts,
+            result_budget,
+            total_rows,
+        )?;
+        let wall_ns = elapsed_ns(started)?;
+        let allocation = end_measurement(allocation_started);
+        if bytes != expected {
+            return Err("the measured load result changed".to_string());
+        }
+        black_box(&bytes);
+        samples.push(Sample {
+            wall_ns,
+            cpu_ns: 0,
+            allocation,
+        });
+    }
+    let total_elapsed_ns = elapsed_ns(total_started)?;
+    let total_cpu_ns = thread_cpu_ns()?.saturating_sub(total_cpu_started);
+    let measured_end_monotonic_ns = monotonic_ns()?;
+    samples.sort_by_key(|sample| sample.wall_ns);
+    let raw_ns = samples
+        .iter()
+        .map(|sample| sample.wall_ns)
+        .collect::<Vec<_>>();
+    let logical_operations = u64::try_from(sample_count)
+        .map_err(|error| error.to_string())?
+        .checked_mul(u64::from(operations))
+        .ok_or_else(|| "the logical operation count overflowed".to_string())?;
+    let report = LoadWorkerReport {
+        schema: "ndabi-supavisor-load-worker-v7.3",
+        arm: arm.id(),
+        worker,
+        operations,
+        rows_per_operation: ROWS_PER_OPERATION,
+        warmups: LOAD_WARMUPS,
+        samples: sample_count,
+        logical_operations,
+        result_bytes: expected.len(),
+        result_sha256: hex(&Sha256::digest(&expected)),
+        measured_start_monotonic_ns,
+        measured_end_monotonic_ns,
+        total_elapsed_ns,
+        total_cpu_ns,
+        p50_ns: percentile(&raw_ns, 50),
+        p95_ns: percentile(&raw_ns, 95),
+        p99_ns: percentile(&raw_ns, 99),
+        mean_allocations: mean(
+            &samples
+                .iter()
+                .map(|sample| sample.allocation.allocations)
+                .collect::<Vec<_>>(),
+        ),
+        mean_allocated_bytes: mean(
+            &samples
+                .iter()
+                .map(|sample| sample.allocation.allocated_bytes)
+                .collect::<Vec<_>>(),
+        ),
+        peak_additional_live_bytes: samples
+            .iter()
+            .map(|sample| sample.allocation.peak_additional_live_bytes)
+            .max()
+            .unwrap_or(0),
+        raw_ns,
+        passed: true,
+    };
+    serde_json::to_writer(std::io::stdout(), &report).map_err(|error| error.to_string())?;
+    println!();
+    Ok(())
+}
+
+fn execute_load_request(
+    arm: Arm,
+    ndabi: Option<&mut NdabiState>,
+    rest: Option<&RestState>,
+    starts: &[i64],
+    result_budget: u32,
+    total_rows: u32,
+) -> Result<Vec<u8>, String> {
+    match arm {
+        Arm::Ndabi => ndabi
+            .ok_or_else(|| "the NDABI load state is absent".to_string())?
+            .execute(result_budget, total_rows),
+        Arm::Postgrest => rest
+            .ok_or_else(|| "the PostgREST load state is absent".to_string())?
+            .execute_batch(starts),
+    }
+}
+
+fn wait_for_release(path: &Path) -> Result<(), String> {
+    let started = Instant::now();
+    loop {
+        match std::fs::symlink_metadata(path) {
+            Ok(metadata) if metadata.file_type().is_file() => return Ok(()),
+            Ok(_) => return Err("the load release marker is not a regular file".to_string()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Err("the load release marker cannot be inspected".to_string()),
+        }
+        if started.elapsed() >= Duration::from_secs(60) {
+            return Err("the load release marker timed out".to_string());
+        }
+        thread::sleep(Duration::from_millis(2));
     }
 }
 
@@ -839,6 +1073,25 @@ fn unix_us() -> Result<u64, String> {
         .map_err(|_| "the system clock failed")?
         .as_micros();
     u64::try_from(micros).map_err(|error| error.to_string())
+}
+
+#[cfg(unix)]
+fn monotonic_ns() -> Result<u64, String> {
+    let mut time = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: The operating system writes one valid `timespec` into the provided pointer.
+    let status = unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut time) };
+    if status != 0 || time.tv_sec < 0 || time.tv_nsec < 0 {
+        return Err("the monotonic clock failed".to_string());
+    }
+    let seconds = u64::try_from(time.tv_sec).map_err(|error| error.to_string())?;
+    let nanoseconds = u64::try_from(time.tv_nsec).map_err(|error| error.to_string())?;
+    seconds
+        .checked_mul(1_000_000_000)
+        .and_then(|value| value.checked_add(nanoseconds))
+        .ok_or_else(|| "the monotonic clock overflowed".to_string())
 }
 
 fn elapsed_ns(started: Instant) -> Result<u64, String> {

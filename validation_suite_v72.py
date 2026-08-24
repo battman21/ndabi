@@ -163,8 +163,9 @@ def start_postgrest(
     network: str,
     postgres: str,
     jwks: str,
+    pool_size: int | None = None,
 ) -> str:
-    command(
+    arguments = [
         "docker",
         "run",
         "--detach",
@@ -188,8 +189,11 @@ def start_postgrest(
         "PGRST_DB_PRE_REQUEST=public.check_token",
         "--env",
         "PGRST_LOG_LEVEL=warn",
-        POSTGREST_IMAGE,
-    )
+    ]
+    if pool_size is not None:
+        arguments.extend(["--env", f"PGRST_DB_POOL={pool_size}"])
+    arguments.append(POSTGREST_IMAGE)
+    command(*arguments)
     for _ in range(60):
         logs = command("docker", "logs", name, check=False)
         if "API server listening" in logs.stdout + logs.stderr:
@@ -199,7 +203,14 @@ def start_postgrest(
     raise RuntimeError("PostgREST did not become ready")
 
 
-def start_supavisor(name: str, network: str, postgres: str) -> str:
+def start_supavisor(
+    name: str,
+    network: str,
+    postgres: str,
+    tenant_id: str = TENANT_ID,
+    pool_size: int = 20,
+    max_clients: int = 100,
+) -> str:
     command(
         "docker",
         "run",
@@ -243,11 +254,11 @@ def start_supavisor(name: str, network: str, postgres: str) -> str:
         "--env",
         "ERL_AFLAGS=-proto_dist inet_tcp",
         "--env",
-        f"POOLER_TENANT_ID={TENANT_ID}",
+        f"POOLER_TENANT_ID={tenant_id}",
         "--env",
-        "POOLER_DEFAULT_POOL_SIZE=20",
+        f"POOLER_DEFAULT_POOL_SIZE={pool_size}",
         "--env",
-        "POOLER_MAX_CLIENT_CONN=100",
+        f"POOLER_MAX_CLIENT_CONN={max_clients}",
         "--env",
         "POOLER_POOL_MODE=session",
         "--env",
@@ -270,7 +281,7 @@ def start_supavisor(name: str, network: str, postgres: str) -> str:
             "-p",
             "5432",
             "-U",
-            f"authenticator.{TENANT_ID}",
+            f"authenticator.{tenant_id}",
             "-d",
             "ndabi",
             "-At",
@@ -286,7 +297,13 @@ def start_supavisor(name: str, network: str, postgres: str) -> str:
     raise RuntimeError(f"Supavisor did not become ready: {logs.stderr[-2000:]}")
 
 
-def session_proof(postgres: str, supavisor: str) -> bool:
+def session_proof(
+    postgres: str,
+    supavisor: str,
+    tenant_id: str = TENANT_ID,
+    label: str = "ndabi-v72-session-proof",
+    expected: str = "72",
+) -> bool:
     completed = command(
         "docker",
         "exec",
@@ -298,25 +315,25 @@ def session_proof(postgres: str, supavisor: str) -> bool:
         supavisor,
         "-p",
         "5432",
-        "-U",
-        f"authenticator.{TENANT_ID}",
+            "-U",
+            f"authenticator.{tenant_id}",
         "-d",
         "ndabi",
         "-At",
         "-v",
         "ON_ERROR_STOP=1",
         "-c",
-        "SET application_name='ndabi-v72-session-proof'",
+        f"SET application_name='{label}'",
         "-c",
         "PREPARE ndabi_session_proof(integer) AS SELECT $1::integer",
         "-c",
-        "EXECUTE ndabi_session_proof(72)",
+        f"EXECUTE ndabi_session_proof({expected})",
         "-c",
         "SELECT current_setting('application_name')",
         check=False,
     )
     lines = {line.strip() for line in completed.stdout.splitlines() if line.strip()}
-    return completed.returncode == 0 and {"72", "ndabi-v72-session-proof"}.issubset(lines)
+    return completed.returncode == 0 and {expected, label}.issubset(lines)
 
 
 def security_checks(
