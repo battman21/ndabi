@@ -18,7 +18,7 @@ use ndabi_protocol::{
 use ndabi_showdown::alloc::{begin_measurement, end_measurement, AllocationDelta};
 use ndabi_supabase_indexed_batch_session_v1::IndexedBatchSessionBackend;
 use ndabi_supabase_v1::{AdmittedIdentity, JwtVerifier};
-use postgres::{Client, NoTls};
+use postgres::{Client, NoTls, Statement};
 use reqwest::blocking::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -41,6 +41,8 @@ const LOAD_WARMUPS: usize = 3;
 enum Arm {
     Postgrest = 0,
     Ndabi = 1,
+    Native = 2,
+    PostgrestRpc = 3,
 }
 
 impl Arm {
@@ -48,6 +50,8 @@ impl Arm {
         match self {
             Self::Postgrest => "postgrest-user-jwt",
             Self::Ndabi => "ndabi-indexed-batch-session",
+            Self::Native => "native-indexed-batch-session",
+            Self::PostgrestRpc => "postgrest-rpc-user-jwt",
         }
     }
 }
@@ -111,6 +115,8 @@ struct LoadWorkerReport {
     warmups: usize,
     samples: usize,
     logical_operations: u64,
+    request_application_bytes: Option<usize>,
+    request_bytes_kind: &'static str,
     result_bytes: usize,
     result_sha256: String,
     measured_start_monotonic_ns: u64,
@@ -156,6 +162,12 @@ struct RestState {
     client: HttpClient,
     endpoint: String,
     token: Zeroizing<String>,
+}
+
+struct NativeState {
+    client: Client,
+    statement: Statement,
+    identifiers: Vec<i64>,
 }
 
 fn main() {
@@ -237,15 +249,17 @@ fn run() -> Result<(), String> {
 }
 
 fn load_worker(arguments: &[String]) -> Result<(), String> {
-    if arguments.len() != 14 {
+    if !matches!(arguments.len(), 14 | 15) {
         return Err(
-            "arm, connection, endpoint, token path, public-key path, key identifier, issuer, audience, start, operations, samples, worker, ready path, and release path are required"
+            "arm, connection, endpoint, token path, public-key path, key identifier, issuer, audience, start, operations, samples, worker, ready path, release path, and optional schema are required"
                 .to_string(),
         );
     }
     let arm = match arguments[0].as_str() {
         "ndabi" => Arm::Ndabi,
+        "native" => Arm::Native,
         "postgrest" => Arm::Postgrest,
+        "postgrest_rpc" => Arm::PostgrestRpc,
         _ => return Err("the load arm is invalid".to_string()),
     };
     let token = read_secret(&arguments[3])?;
@@ -274,6 +288,11 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
     if !(3..=10_000).contains(&sample_count) {
         return Err("the load sample count is outside its bound".to_string());
     }
+    let worker_schema = match arguments.get(14).map(String::as_str) {
+        None | Some("ndabi-supavisor-load-worker-v7.3") => "ndabi-supavisor-load-worker-v7.3",
+        Some("ndabi-supavisor-load-worker-v8.0") => "ndabi-supavisor-load-worker-v8.0",
+        Some(_) => return Err("the load worker schema is unsupported".to_string()),
+    };
     let starts = starts(start, operations)?;
     let expected = expected_batch(&starts);
     let result_budget = u32::try_from(expected.len()).map_err(|error| error.to_string())?;
@@ -296,16 +315,45 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
             total_rows,
             session_index,
         )?),
-        Arm::Postgrest => None,
+        Arm::Postgrest | Arm::Native | Arm::PostgrestRpc => None,
+    };
+    let mut native = match arm {
+        Arm::Native => Some(NativeState::new(&arguments[1], &user)?),
+        Arm::Ndabi | Arm::Postgrest | Arm::PostgrestRpc => None,
     };
     let rest = match arm {
-        Arm::Postgrest => Some(RestState::new(&arguments[2], &token)?),
-        Arm::Ndabi => None,
+        Arm::Postgrest | Arm::PostgrestRpc => Some(RestState::new(&arguments[2], &token)?),
+        Arm::Ndabi | Arm::Native => None,
+    };
+    let (request_application_bytes, request_bytes_kind) = match arm {
+        Arm::Ndabi => (
+            ndabi.as_ref().map(|state| state.frame.len()),
+            "exact-ndabi-frame",
+        ),
+        Arm::Native => (None, "unavailable-postgresql-driver-wire"),
+        Arm::PostgrestRpc => (
+            Some(
+                rest.as_ref()
+                    .ok_or_else(|| "the PostgREST RPC load state is absent".to_string())?
+                    .rpc_body(&starts)?
+                    .len(),
+            ),
+            "exact-json-body",
+        ),
+        Arm::Postgrest => (
+            Some(
+                rest.as_ref()
+                    .ok_or_else(|| "the PostgREST load state is absent".to_string())?
+                    .request_lower_bound_bytes(&starts)?,
+            ),
+            "calculated-http-lower-bound",
+        ),
     };
     for _ in 0..LOAD_WARMUPS {
         let bytes = execute_load_request(
             arm,
             ndabi.as_mut(),
+            native.as_mut(),
             rest.as_ref(),
             &starts,
             result_budget,
@@ -332,6 +380,7 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
         let bytes = execute_load_request(
             arm,
             ndabi.as_mut(),
+            native.as_mut(),
             rest.as_ref(),
             &starts,
             result_budget,
@@ -362,7 +411,7 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
         .checked_mul(u64::from(operations))
         .ok_or_else(|| "the logical operation count overflowed".to_string())?;
     let report = LoadWorkerReport {
-        schema: "ndabi-supavisor-load-worker-v7.3",
+        schema: worker_schema,
         arm: arm.id(),
         worker,
         operations,
@@ -370,6 +419,8 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
         warmups: LOAD_WARMUPS,
         samples: sample_count,
         logical_operations,
+        request_application_bytes,
+        request_bytes_kind,
         result_bytes: expected.len(),
         result_sha256: hex(&Sha256::digest(&expected)),
         measured_start_monotonic_ns,
@@ -407,6 +458,7 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
 fn execute_load_request(
     arm: Arm,
     ndabi: Option<&mut NdabiState>,
+    native: Option<&mut NativeState>,
     rest: Option<&RestState>,
     starts: &[i64],
     result_budget: u32,
@@ -416,9 +468,15 @@ fn execute_load_request(
         Arm::Ndabi => ndabi
             .ok_or_else(|| "the NDABI load state is absent".to_string())?
             .execute(result_budget, total_rows),
+        Arm::Native => native
+            .ok_or_else(|| "the native load state is absent".to_string())?
+            .execute_batch(starts),
         Arm::Postgrest => rest
             .ok_or_else(|| "the PostgREST load state is absent".to_string())?
             .execute_batch(starts),
+        Arm::PostgrestRpc => rest
+            .ok_or_else(|| "the PostgREST RPC load state is absent".to_string())?
+            .execute_rpc_batch(starts),
     }
 }
 
@@ -561,6 +619,9 @@ fn measure_case(
             let bytes = match arm {
                 Arm::Postgrest => rest.execute_batch(&starts)?,
                 Arm::Ndabi => ndabi.execute(result_budget, total_rows)?,
+                Arm::Native | Arm::PostgrestRpc => {
+                    return Err("a load-only arm entered the legacy paired measurement".to_string())
+                }
             };
             let wall_ns = elapsed_ns(started)?;
             let allocation = end_measurement(allocation_started);
@@ -791,6 +852,62 @@ struct ProbeResult {
     valid_result_accepted: bool,
 }
 
+impl NativeState {
+    fn new(connection: &str, user: &AdmittedIdentity) -> Result<Self, String> {
+        if user.role() != "authenticated" {
+            return Err("the native control identity is invalid".to_string());
+        }
+        let mut client = Client::connect(connection, NoTls).map_err(|error| error.to_string())?;
+        client
+            .batch_execute(
+                "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY; SET ROLE authenticated",
+            )
+            .map_err(|error| error.to_string())?;
+        let context_statement = client
+            .prepare(
+                "SELECT set_config('request.jwt.claims',$1,false),set_config('statement_timeout',$2,false)",
+            )
+            .map_err(|error| error.to_string())?;
+        client
+            .query_one(&context_statement, &[&user.canonical_claims(), &"5000ms"])
+            .map_err(|error| error.to_string())?;
+        let state = client
+            .query_one(
+                "SELECT current_user,current_setting('transaction_read_only'),current_setting('request.jwt.claims')",
+                &[],
+            )
+            .map_err(|error| error.to_string())?;
+        let current_user: String = state.try_get(0).map_err(|error| error.to_string())?;
+        let read_only: String = state.try_get(1).map_err(|error| error.to_string())?;
+        let claims: String = state.try_get(2).map_err(|error| error.to_string())?;
+        if current_user != "authenticated" || read_only != "on" || claims != user.canonical_claims()
+        {
+            return Err("the native control session state changed".to_string());
+        }
+        let statement = client.prepare(SQL).map_err(|error| error.to_string())?;
+        Ok(Self {
+            client,
+            statement,
+            identifiers: Vec::with_capacity(32_768),
+        })
+    }
+
+    fn execute_batch(&mut self, starts: &[i64]) -> Result<Vec<u8>, String> {
+        self.identifiers.clear();
+        for start in starts {
+            let end = start
+                .checked_add(i64::from(ROWS_PER_OPERATION))
+                .ok_or_else(|| "the native control range overflowed".to_string())?;
+            self.identifiers.extend(*start..end);
+        }
+        let rows = self
+            .client
+            .query(&self.statement, &[&self.identifiers])
+            .map_err(|error| error.to_string())?;
+        encode_postgres_rows(starts, &rows)
+    }
+}
+
 impl RestState {
     fn new(endpoint: &str, token: &str) -> Result<Self, String> {
         let client = HttpClient::builder()
@@ -866,6 +983,109 @@ impl RestState {
         }
         Ok(output)
     }
+
+    fn execute_rpc_batch(&self, starts: &[i64]) -> Result<Vec<u8>, String> {
+        let body = self.rpc_body(starts)?;
+        let base = self
+            .endpoint
+            .strip_suffix("/supabase_items")
+            .ok_or_else(|| "the PostgREST RPC endpoint cannot be derived".to_string())?;
+        let response = self
+            .client
+            .post(format!("{base}/rpc/ndabi_items_batch"))
+            .bearer_auth(self.token.as_str())
+            .header("accept", "application/json")
+            .header("content-type", "application/json")
+            .body(body)
+            .send()
+            .map_err(|error| error.to_string())?;
+        if !response.status().is_success() {
+            return Err(format!("PostgREST RPC returned {}", response.status()));
+        }
+        let encoded = response.bytes().map_err(|error| error.to_string())?;
+        let rows: Vec<RestRow> =
+            serde_json::from_slice(&encoded).map_err(|error| error.to_string())?;
+        if rows.len() != starts.len() * ROWS_PER_OPERATION as usize {
+            return Err("the PostgREST RPC result changed".to_string());
+        }
+        encode_rest_batch(starts, &rows)
+    }
+
+    fn rpc_body(&self, starts: &[i64]) -> Result<Vec<u8>, String> {
+        let mut identifiers = Vec::with_capacity(starts.len() * ROWS_PER_OPERATION as usize);
+        for start in starts {
+            let end = start
+                .checked_add(i64::from(ROWS_PER_OPERATION))
+                .ok_or_else(|| "the PostgREST RPC range overflowed".to_string())?;
+            identifiers.extend(*start..end);
+        }
+        serde_json::to_vec(&serde_json::json!({"p_identifiers": identifiers}))
+            .map_err(|error| error.to_string())
+    }
+}
+
+fn encode_postgres_rows(starts: &[i64], rows: &[postgres::Row]) -> Result<Vec<u8>, String> {
+    if rows.len() != starts.len() * ROWS_PER_OPERATION as usize {
+        return Err("the native control result changed".to_string());
+    }
+    let mut output = Vec::with_capacity(batch_result_bytes(starts.len() as u32)? as usize);
+    output.extend_from_slice(&1_u16.to_be_bytes());
+    output.extend_from_slice(
+        &u32::try_from(starts.len())
+            .map_err(|error| error.to_string())?
+            .to_be_bytes(),
+    );
+    let mut row_index = 0_usize;
+    for start in starts {
+        output.extend_from_slice(&start.to_be_bytes());
+        output.extend_from_slice(&ROWS_PER_OPERATION.to_be_bytes());
+        for expected_id in *start..*start + i64::from(ROWS_PER_OPERATION) {
+            let row = &rows[row_index];
+            let id: i64 = row.try_get(0).map_err(|error| error.to_string())?;
+            let bucket: i32 = row.try_get(1).map_err(|error| error.to_string())?;
+            let owner: i32 = row.try_get(2).map_err(|error| error.to_string())?;
+            let score: i32 = row.try_get(3).map_err(|error| error.to_string())?;
+            let payload: &[u8] = row.try_get(4).map_err(|error| error.to_string())?;
+            if id != expected_id || payload.len() != 64 {
+                return Err("the native control row shape changed".to_string());
+            }
+            output.extend_from_slice(&id.to_be_bytes());
+            output.extend_from_slice(&bucket.to_be_bytes());
+            output.extend_from_slice(&owner.to_be_bytes());
+            output.extend_from_slice(&score.to_be_bytes());
+            output.extend_from_slice(payload);
+            row_index += 1;
+        }
+    }
+    Ok(output)
+}
+
+fn encode_rest_batch(starts: &[i64], rows: &[RestRow]) -> Result<Vec<u8>, String> {
+    if rows.len() != starts.len() * ROWS_PER_OPERATION as usize {
+        return Err("the PostgREST RPC result changed".to_string());
+    }
+    let mut output = Vec::with_capacity(batch_result_bytes(starts.len() as u32)? as usize);
+    output.extend_from_slice(&1_u16.to_be_bytes());
+    output.extend_from_slice(
+        &u32::try_from(starts.len())
+            .map_err(|error| error.to_string())?
+            .to_be_bytes(),
+    );
+    let mut row_index = 0_usize;
+    for start in starts {
+        output.extend_from_slice(&start.to_be_bytes());
+        output.extend_from_slice(&ROWS_PER_OPERATION.to_be_bytes());
+        let end = row_index + ROWS_PER_OPERATION as usize;
+        let item_rows = &rows[row_index..end];
+        for (offset, row) in item_rows.iter().enumerate() {
+            if row.id != *start + offset as i64 {
+                return Err("the PostgREST RPC row order changed".to_string());
+            }
+        }
+        encode_rest_rows_into(item_rows, &mut output)?;
+        row_index = end;
+    }
+    Ok(output)
 }
 
 fn authority(
@@ -1123,4 +1343,70 @@ fn hex(bytes: &[u8]) -> String {
         write!(output, "{byte:02x}").expect("a string write cannot fail");
     }
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rest_row(identifier: i64) -> RestRow {
+        RestRow {
+            id: identifier,
+            bucket: (identifier % 1_000) as i32,
+            owner: (identifier % 100) as i32,
+            score: (identifier % 10_000) as i32,
+            payload: format!("\\x{}", format!("{:02x}", identifier as u8).repeat(64)),
+        }
+    }
+
+    #[test]
+    fn the_rpc_control_uses_the_canonical_batch_shape() {
+        let starts = [1_000, 1_100];
+        let rows = starts
+            .iter()
+            .flat_map(|start| (*start..*start + i64::from(ROWS_PER_OPERATION)).map(rest_row))
+            .collect::<Vec<_>>();
+        let encoded = encode_rest_batch(&starts, &rows).expect("canonical REST rows");
+        assert_eq!(encoded, expected_batch(&starts));
+    }
+
+    #[test]
+    fn the_rpc_control_refuses_an_incomplete_result() {
+        let starts = [1_000, 1_100];
+        let rows = (1_000..1_000 + i64::from(ROWS_PER_OPERATION))
+            .map(rest_row)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            encode_rest_batch(&starts, &rows).expect_err("incomplete rows must refuse"),
+            "the PostgREST RPC result changed"
+        );
+    }
+
+    #[test]
+    fn the_rpc_control_refuses_changed_row_order() {
+        let starts = [1_000];
+        let mut rows = (1_000..1_000 + i64::from(ROWS_PER_OPERATION))
+            .map(rest_row)
+            .collect::<Vec<_>>();
+        rows.swap(0, 1);
+        assert_eq!(
+            encode_rest_batch(&starts, &rows).expect_err("changed order must refuse"),
+            "the PostgREST RPC row order changed"
+        );
+    }
+
+    #[test]
+    fn the_rpc_control_reports_the_exact_json_body_size() {
+        let rest =
+            RestState::new("http://127.0.0.1/supabase_items", "test-token").expect("REST control");
+        let body = rest.rpc_body(&[1_000, 1_100]).expect("RPC body");
+        let decoded: serde_json::Value = serde_json::from_slice(&body).expect("JSON body");
+        assert_eq!(
+            decoded["p_identifiers"]
+                .as_array()
+                .expect("identifier array")
+                .len(),
+            16
+        );
+    }
 }

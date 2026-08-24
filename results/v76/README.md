@@ -11,7 +11,7 @@ The committed gzip files preserve each complete raw process report.
 | 32 | 43.97× | 7.939 ms | 172.466 ms | 0.57% | 2.67% |
 
 Every worker and arm ran for at least 1.556 seconds.
-No compiler process entered any measured arm.
+The 250-millisecond monitor observed no compiler process during a measured arm.
 All canonical result bytes matched.
 All observed data-query counts matched their exact expected values.
 All seventeen security checks passed through Supavisor session mode.
@@ -19,7 +19,9 @@ The prepared-statement proof, forced RLS, least privilege, and source custody pa
 
 NDABI used one data query for each 16-operation request.
 PostgREST used sixteen data queries for the same request.
-This reduced request bytes by at least 94.39% and data queries by 93.75% per logical request.
+The application-frame calculation gave a 94.39% lower-bound reduction.
+The query reduction measured 93.75% for each logical request.
+The campaign did not measure TCP or TLS wire bytes.
 The campaign used different sample counts to give both surfaces stable measured durations.
 Do not compare the total query counts across the two benchmark arms.
 

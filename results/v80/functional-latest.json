@@ -1,0 +1,98 @@
+{
+  "campaign": "NDABI Supabase production stack v8.0",
+  "campaign_id": "20260824T134115Z",
+  "smoke": true,
+  "process_count": 1,
+  "source_commit": null,
+  "source_sha256": "b9234d1b0d8d4494e36ecda8098262e07621721b0d052207e5f065447681be4d",
+  "source_custody_passed": true,
+  "functional_passed": true,
+  "binary_sha256": "c607245ab7f8cf548abb7bd969479846a3b448fedac0792d1620ed1d35182f80",
+  "postgres_image_id": "sha256:eb9fe6b5815523ffa3e3d8aee9db3532bd564b857634fcfa36979d76bed6ae10",
+  "postgrest_image_id": "sha256:367030c7d679ff6ab17bfde55017fe94863e74c30b6e160bdbe4993bbfaf545b",
+  "supavisor_image_id": "sha256:f57c01457d930c906720b562f65b2ca6bbc97d39116eb53fbbc2831c99616167",
+  "concurrency_levels": [
+    1,
+    8,
+    32
+  ],
+  "operations_per_request": 16,
+  "samples_per_worker": {
+    "native": 3,
+    "ndabi": 3,
+    "postgrest_rpc": 3,
+    "postgrest": 3
+  },
+  "minimum_arm_duration_ns": 0,
+  "measurement_mode": "functional-only",
+  "performance_gates_enforced": false,
+  "build_process_monitor_enabled": false,
+  "build_process_monitor_interval_seconds": null,
+  "pool_size_per_surface": 64,
+  "pooler_mode": "session",
+  "session_proof_passed": true,
+  "authenticator_least_privilege": true,
+  "rls_enabled_and_forced": true,
+  "security": {
+    "valid_token_accepted": true,
+    "changed_signature_refused": true,
+    "unknown_key_refused": true,
+    "wrong_issuer_refused": true,
+    "wrong_audience_refused": true,
+    "expired_token_refused": true,
+    "unsigned_subject_refused": true,
+    "elevated_role_refused": true,
+    "authorised_ndabi_rows_accepted": true,
+    "cross_subject_ndabi_rows_refused": true,
+    "second_subject_ndabi_rows_accepted": true,
+    "changed_ndabi_frame_refused": true,
+    "ndabi_replay_refused_before_query": true,
+    "invalid_ndabi_receipt_refused": true,
+    "valid_ndabi_result_accepted": true,
+    "cross_subject_postgrest_rows_hidden": true,
+    "user_write_refused": true
+  },
+  "security_passed": true,
+  "repeatability": [],
+  "repeatability_evaluated": false,
+  "repeatability_passed": false,
+  "summary": [
+    {
+      "concurrency": 1,
+      "median_ndabi_p95_ns": 647167,
+      "median_native_p95_ns": 747625,
+      "median_ndabi_p95_to_native": 0.8656304965724795,
+      "median_ndabi_throughput_over_native": 1.038808664259928,
+      "median_ndabi_throughput_over_postgrest": 17.092509025270758,
+      "median_ndabi_throughput_over_postgrest_rpc": 4.425992779783393
+    },
+    {
+      "concurrency": 8,
+      "median_ndabi_p95_ns": 1399167,
+      "median_native_p95_ns": 3524250,
+      "median_ndabi_p95_to_native": 0.39701127899553096,
+      "median_ndabi_throughput_over_native": 2.6666666666666665,
+      "median_ndabi_throughput_over_postgrest": 13.29512051734274,
+      "median_ndabi_throughput_over_postgrest_rpc": 1.6911620615324319
+    },
+    {
+      "concurrency": 32,
+      "median_ndabi_p95_ns": 3796750,
+      "median_native_p95_ns": 4520083,
+      "median_ndabi_p95_to_native": 0.8399735137606986,
+      "median_ndabi_throughput_over_native": 1.0252557255363446,
+      "median_ndabi_throughput_over_postgrest": 37.457318729066714,
+      "median_ndabi_throughput_over_postgrest_rpc": 5.484384900878066
+    }
+  ],
+  "environment": {
+    "platform": "macOS-15.7.8-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "processor": "arm",
+    "python_version": "3.14.6",
+    "rustc_version": "rustc 1.92.0 (ded5c06cf 2025-12-08)",
+    "docker_server_version": "29.7.2",
+    "executable": "/opt/homebrew/opt/python@3.14/bin/python3.14"
+  },
+  "accepted": false
+}

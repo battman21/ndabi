@@ -141,6 +141,9 @@ def setup_database(postgres: str) -> tuple[str, str]:
         "ALTER TABLE supabase_items ENABLE ROW LEVEL SECURITY",
         "ALTER TABLE supabase_items FORCE ROW LEVEL SECURITY",
         "CREATE POLICY user_rows ON supabase_items FOR SELECT TO authenticated USING (owner_sub = (current_setting('request.jwt.claims',true)::json ->> 'sub'))",
+        "CREATE FUNCTION ndabi_items_batch(p_identifiers bigint[]) RETURNS TABLE(id bigint,bucket integer,owner integer,score integer,payload bytea) LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public AS $$SELECT item.id,item.bucket,item.owner,item.score,item.payload FROM public.supabase_items AS item WHERE cardinality(p_identifiers) BETWEEN 1 AND 4096 AND item.id=ANY(p_identifiers) ORDER BY item.id$$",
+        "REVOKE ALL ON FUNCTION ndabi_items_batch(bigint[]) FROM PUBLIC",
+        "GRANT EXECUTE ON FUNCTION ndabi_items_batch(bigint[]) TO authenticated",
         f"CREATE FUNCTION check_token() RETURNS void LANGUAGE plpgsql AS $$DECLARE claims json:=current_setting('request.jwt.claims',true)::json; BEGIN IF claims->>'iss'<>'{v71.ISSUER}' OR claims->>'aud'<>'{v71.AUDIENCE}' OR claims->>'role'<>'authenticated' OR coalesce(claims->>'sub','')='' THEN RAISE insufficient_privilege; END IF; END$$",
         "REVOKE ALL ON FUNCTION check_token() FROM PUBLIC",
         "GRANT EXECUTE ON FUNCTION check_token() TO authenticated",
@@ -447,7 +450,7 @@ def data_queries(postgres: str) -> int:
     return int(
         psql(
             postgres,
-            "SELECT coalesce(sum(calls),0)::bigint FROM pg_stat_statements WHERE query LIKE '%supabase_items%' AND query NOT LIKE '%pg_stat_statements%'",
+            "SELECT coalesce(sum(calls),0)::bigint FROM pg_stat_statements WHERE (query LIKE '%supabase_items%' OR query LIKE '%ndabi_items_batch%') AND query NOT LIKE '%pg_stat_statements%'",
         ).stdout.strip()
     )
 

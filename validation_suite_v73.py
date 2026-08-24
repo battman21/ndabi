@@ -43,6 +43,18 @@ SAMPLES_BY_ARM: dict[str, int] | None = None
 MINIMUM_ARM_DURATION_NS = 0
 MONITOR_BUILD_PROCESSES_DURING_ARM = False
 BUILD_MONITOR_INTERVAL_SECONDS = 0.25
+BUILD_BINARY = True
+REQUIRE_QUIET_HOST = True
+ARMS = ("ndabi", "postgrest")
+ARM_IDENTIFIERS = {
+    "ndabi": "ndabi-indexed-batch-session",
+    "postgrest": "postgrest-user-jwt",
+}
+QUERY_MULTIPLIERS = {"ndabi": 1, "postgrest": OPERATIONS}
+WORKER_SCHEMA = "ndabi-supavisor-load-worker-v7.3"
+MEASUREMENT_MODE = "performance"
+PERFORMANCE_GATES_ENFORCED = True
+SMOKE_RESULT_PATH: Path | None = None
 POOL_SIZE = 64
 MAX_CLIENTS = 200
 MINIMUM_HOST_IDLE_PERCENT = 80.0
@@ -143,7 +155,7 @@ def valid_digest(value: object) -> bool:
 
 
 def samples_for(arm: str) -> int:
-    if arm not in {"ndabi", "postgrest"}:
+    if arm not in ARMS:
         raise ValueError("the load arm is invalid")
     if SAMPLES_BY_ARM is None:
         return SAMPLES
@@ -154,7 +166,9 @@ def samples_for(arm: str) -> int:
 
 
 def expected_data_queries(arm: str, concurrency: int) -> int:
-    multiplier = 1 if arm == "ndabi" else OPERATIONS
+    multiplier = QUERY_MULTIPLIERS.get(arm)
+    if multiplier is None:
+        raise ValueError("the load arm has no query-count contract")
     return concurrency * (WARMUPS + samples_for(arm)) * multiplier
 
 
@@ -206,11 +220,8 @@ def await_quiet_host(timeout_seconds: int = 300) -> dict:
 
 
 def validate_worker(report: dict, arm: str, worker: int) -> None:
-    expected_arm = {
-        "ndabi": "ndabi-indexed-batch-session",
-        "postgrest": "postgrest-user-jwt",
-    }[arm]
-    require(report.get("schema") == "ndabi-supavisor-load-worker-v7.3", "invalid worker schema")
+    expected_arm = ARM_IDENTIFIERS[arm]
+    require(report.get("schema") == WORKER_SCHEMA, "invalid worker schema")
     require(report.get("arm") == expected_arm, "invalid worker arm")
     require(report.get("worker") == worker, "invalid worker identifier")
     require(report.get("operations") == OPERATIONS, "invalid operation count")
@@ -310,6 +321,7 @@ def run_load_arm(
                 str(worker),
                 str(ready_path),
                 str(release_path),
+                WORKER_SCHEMA,
             ]
             processes.append(
                 subprocess.Popen(arguments, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -495,11 +507,20 @@ def validate_arm_measurement(measurement: dict, arm: str, concurrency: int) -> N
     host_idle = measurement.get("host_idle_preflight")
     require(isinstance(host_idle, dict), "the host-idle evidence is absent")
     require(host_idle.get("passed") is True, "the host-idle gate failed")
-    require(host_idle.get("active_build_processes") == [], "a build process contaminated the arm")
-    require(
-        host_idle.get("minimum_idle_percent", 0) >= MINIMUM_HOST_IDLE_PERCENT,
-        "the host-idle threshold failed",
-    )
+    if REQUIRE_QUIET_HOST:
+        require(
+            host_idle.get("active_build_processes") == [],
+            "a build process contaminated the arm",
+        )
+        require(
+            host_idle.get("minimum_idle_percent", 0) >= MINIMUM_HOST_IDLE_PERCENT,
+            "the host-idle threshold failed",
+        )
+    else:
+        require(
+            host_idle.get("measurement_mode") == "functional-only",
+            "the functional host evidence is invalid",
+        )
 
 
 def compare_arms(ndabi: dict, postgrest: dict) -> dict:
@@ -717,16 +738,17 @@ def main() -> int:
     latest = RESULT_ROOT / "latest.json"
     if not smoke and latest.exists():
         raise SystemExit(f"the first {CAMPAIGN_LABEL} formal campaign already exists")
-    command(
-        "cargo",
-        "build",
-        "--manifest-path",
-        str(ROOT / "Cargo.toml"),
-        "--release",
-        "--locked",
-        "--bin",
-        "ndabi_v71",
-    )
+    if BUILD_BINARY:
+        command(
+            "cargo",
+            "build",
+            "--manifest-path",
+            str(ROOT / "Cargo.toml"),
+            "--release",
+            "--locked",
+            "--bin",
+            "ndabi_v71",
+        )
     process_count = 1 if smoke else PROCESS_COUNT
     campaign_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     campaign = None if smoke else RESULT_ROOT / campaign_id
@@ -834,22 +856,25 @@ def main() -> int:
                 for marker in custody.glob("*.release"):
                     marker.unlink()
             repeatability_evidence, repeatability_passed = (
-                repeatability(process_reports) if not smoke else ([], True)
+                repeatability(process_reports) if not smoke else ([], False)
             )
             final_source_sha256 = source_sha256()
             source_custody_passed = final_source_sha256 == initial_source_sha256
             if source_commit is not None:
                 source_custody_passed &= source_matches_commit(repository_root(), source_commit)
                 source_custody_passed &= tracked_worktree_clean(repository_root())
-            accepted = (
-                not smoke
-                and role_state == "f|f|f|t"
+            functional_passed = (
+                role_state == "f|f|f|t"
                 and rls_state == "t|t"
                 and session_proof_passed
                 and security_passed
-                and repeatability_passed
                 and all(report["passed"] for report in process_reports)
                 and source_custody_passed
+            )
+            accepted = (
+                not smoke
+                and functional_passed
+                and repeatability_passed
             )
             aggregate = {
                 "campaign": CAMPAIGN_NAME,
@@ -859,6 +884,7 @@ def main() -> int:
                 "source_commit": source_commit,
                 "source_sha256": final_source_sha256,
                 "source_custody_passed": source_custody_passed,
+                "functional_passed": functional_passed,
                 "binary_sha256": file_sha256(BINARY),
                 "postgres_image_id": command("docker", "image", "inspect", "--format", "{{.Id}}", POSTGRES_IMAGE).stdout.strip(),
                 "postgrest_image_id": command("docker", "image", "inspect", "--format", "{{.Id}}", POSTGREST_IMAGE).stdout.strip(),
@@ -868,9 +894,11 @@ def main() -> int:
                 "samples_per_worker": (
                     SAMPLES
                     if SAMPLES_BY_ARM is None
-                    else {arm: samples_for(arm) for arm in ("ndabi", "postgrest")}
+                    else {arm: samples_for(arm) for arm in ARMS}
                 ),
                 "minimum_arm_duration_ns": MINIMUM_ARM_DURATION_NS,
+                "measurement_mode": MEASUREMENT_MODE,
+                "performance_gates_enforced": PERFORMANCE_GATES_ENFORCED,
                 "build_process_monitor_enabled": MONITOR_BUILD_PROCESSES_DURING_ARM,
                 "build_process_monitor_interval_seconds": (
                     BUILD_MONITOR_INTERVAL_SECONDS
@@ -885,6 +913,7 @@ def main() -> int:
                 "security": security,
                 "security_passed": security_passed,
                 "repeatability": repeatability_evidence,
+                "repeatability_evaluated": not smoke,
                 "repeatability_passed": repeatability_passed,
                 "summary": campaign_summary(process_reports),
                 "environment": {
@@ -901,13 +930,19 @@ def main() -> int:
             if campaign is not None:
                 write_json(campaign / "aggregate.json", aggregate)
                 write_json(latest, aggregate)
+            elif SMOKE_RESULT_PATH is not None:
+                SMOKE_RESULT_PATH.parent.mkdir(parents=True, exist_ok=True)
+                if SMOKE_RESULT_PATH.is_symlink():
+                    raise RuntimeError("the smoke result path is a symbolic link")
+                temporary_result = SMOKE_RESULT_PATH.with_suffix(
+                    SMOKE_RESULT_PATH.suffix + ".tmp"
+                )
+                if temporary_result.exists() or temporary_result.is_symlink():
+                    raise RuntimeError("the smoke result temporary path already exists")
+                write_json(temporary_result, aggregate)
+                temporary_result.replace(SMOKE_RESULT_PATH)
             print(json.dumps(aggregate, indent=2))
-            functional = (
-                session_proof_passed
-                and security_passed
-                and all(report["passed"] for report in process_reports)
-            )
-            return 0 if (functional if smoke else accepted) else 1
+            return 0 if (functional_passed if smoke else accepted) else 1
         finally:
             command("docker", "rm", "--force", supavisor, check=False)
             command("docker", "rm", "--force", postgrest, check=False)
