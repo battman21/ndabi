@@ -420,10 +420,43 @@ impl ReplayStore for MemoryReplayStore {
         expected_last: u64,
         accepted: u64,
     ) -> Result<(), ProtocolError> {
-        if self.last_nonce(key)? != expected_last || accepted != expected_last.saturating_add(1) {
+        if self.last_nonce(key)? != expected_last || Some(accepted) != expected_last.checked_add(1)
+        {
             return Err(ProtocolError::ReplayConflict);
         }
         self.nonces.insert(key, accepted);
+        Ok(())
+    }
+}
+
+/// Track one admitted session without a general-purpose hash table.
+///
+/// Create one store for each session. Refuse a second replay key instead of sharing state.
+#[derive(Default)]
+pub struct SingleSessionReplayStore {
+    state: Option<(ReplayKey, u64)>,
+}
+
+impl ReplayStore for SingleSessionReplayStore {
+    fn last_nonce(&self, key: ReplayKey) -> Result<u64, ProtocolError> {
+        match self.state {
+            None => Ok(0),
+            Some((stored, nonce)) if stored == key => Ok(nonce),
+            Some(_) => Err(ProtocolError::ReplayConflict),
+        }
+    }
+
+    fn commit(
+        &mut self,
+        key: ReplayKey,
+        expected_last: u64,
+        accepted: u64,
+    ) -> Result<(), ProtocolError> {
+        if self.last_nonce(key)? != expected_last || Some(accepted) != expected_last.checked_add(1)
+        {
+            return Err(ProtocolError::ReplayConflict);
+        }
+        self.state = Some((key, accepted));
         Ok(())
     }
 }
@@ -474,6 +507,17 @@ impl BoundedOutput {
     fn new(maximum_bytes: u32, maximum_rows: u32) -> Self {
         Self {
             bytes: Vec::with_capacity((maximum_bytes as usize).min(4_096)),
+            maximum_bytes: maximum_bytes as usize,
+            maximum_rows,
+            rows: 0,
+        }
+    }
+
+    fn new_deferred(maximum_bytes: u32, maximum_rows: u32) -> Self {
+        Self {
+            // Let a bounded backend reserve its exact result once.
+            // An eager budget-sized allocation would let a valid large budget waste memory.
+            bytes: Vec::new(),
             maximum_bytes: maximum_bytes as usize,
             maximum_rows,
             rows: 0,
@@ -1014,6 +1058,23 @@ mod tests {
         assert_eq!(
             output.complete_rows(1).unwrap_err(),
             ProtocolError::RowBudgetExceeded
+        );
+    }
+
+    #[test]
+    fn the_single_session_replay_store_refuses_another_session() {
+        let first = authority(20).replay_key();
+        let second = authority(21).replay_key();
+        let mut replay = SingleSessionReplayStore::default();
+        replay.commit(first, 0, 1).expect("first nonce");
+        assert_eq!(replay.last_nonce(first), Ok(1));
+        assert_eq!(
+            replay.last_nonce(second),
+            Err(ProtocolError::ReplayConflict)
+        );
+        assert_eq!(
+            replay.commit(first, 1, 3),
+            Err(ProtocolError::ReplayConflict)
         );
     }
 

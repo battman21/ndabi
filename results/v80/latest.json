@@ -1,0 +1,23 @@
+{
+  "accepted": false,
+  "campaign": "NDABI Supabase production campaign v8.0",
+  "campaign_id": "20260824T160420Z",
+  "cold_stack_count": 0,
+  "cross_stack_repeatability": [],
+  "cross_stack_repeatability_passed": false,
+  "process_count_per_stack": 5,
+  "source_commit": "29f84a7c6908bbf542f6703515cce26dbb007ef3",
+  "source_custody_passed": true,
+  "source_sha256": "b9234d1b0d8d4494e36ecda8098262e07621721b0d052207e5f065447681be4d",
+  "stacks": [
+    {
+      "exit_code": 1,
+      "stack": 1,
+      "stderr_sha256": "4a3f97b751e48a0cb81f82317be8695e0edb41cae55a5ce7484728b5e98147c3",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "accepted": false
+    }
+  ],
+  "summary": [],
+  "evidence_manifest_sha256": "a688ee41f1d5e01d5a2ed4cc95389e41d4fe690b0e861919d520dbc224459bef"
+}

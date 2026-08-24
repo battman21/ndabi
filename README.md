@@ -375,19 +375,20 @@ Its formal campaign binds source commit `2e65c31` and passes every frozen gate.
 Median speed-ups measured 21.30, 16.01, and 43.97 times at concurrency 1, 8, and 32.
 P95-ratio variation fell to 13.50%, 11.38%, and 2.67%.
 Concurrent local Supavisor session performance is accepted for this finite workload.
-The candidate v8.0 campaign adds native fused and PostgREST RPC attribution controls.
-It requires three fresh Docker stacks and five repetitions within each stack.
-Performance smoke runs refused because another repository verifier remained active.
-A functional-only smoke then passed all four arms at concurrency 1, 8, and 32.
-It used three requests per worker and accepted no timing or repeatability result.
-No v8.0 performance result is accepted.
+The v8.0 campaign added native fused and PostgREST RPC attribution controls.
+Its first formal stack produced no complete repetition and accepted no performance result.
+The PostgREST RPC worker completed in 1.451 seconds against the two-second duration gate.
+The v8.1 repair doubles both HTTP control sample counts and retains every acceptance gate.
+Its preserved performance smoke passed the throughput, latency, correctness, query, and security gates.
+Its combined process CPU exceeded native by 47.17%, 32.26%, and 37.91% at concurrency 1, 8, and 32.
+No v8.1 performance result is accepted.
 The v5.2 result proves one PostgreSQL compare-and-swap write profile.
 Tokens, energy, public WAN, production custody, and general query or write support remain unproven.
 
-Run the v8.0 functional smoke campaign during development:
+Run the v8.1 functional smoke campaign during development:
 
 ```sh
-python3 validation_suite_v80.py --functional-smoke
+python3 validation_suite_v81.py --functional-smoke
 ```
 
 This command tests results, query counts, controls, resources, and security.
@@ -396,14 +397,14 @@ It disables every performance gate and cannot produce an accepted campaign.
 Run the performance smoke campaign only on a quiet host:
 
 ```sh
-python3 validation_suite_v80.py --smoke
+python3 validation_suite_v81.py --smoke
 ```
 
 Commit the frozen source before a formal campaign.
 Run the formal campaign without arguments:
 
 ```sh
-python3 validation_suite_v80.py
+python3 validation_suite_v81.py
 ```
 
 The formal command creates three fresh local Docker stacks.

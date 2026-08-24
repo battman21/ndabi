@@ -21,6 +21,9 @@ ROOT = Path(__file__).resolve().parent
 RESULT_ROOT = ROOT / "results" / "v80"
 CAMPAIGN_NAME = "NDABI Supabase production stack v8.0"
 CAMPAIGN_LABEL = "v8.0 stack"
+FORMAL_CAMPAIGN_NAME = "NDABI Supabase production campaign v8.0"
+CAMPAIGN_VERSION = "v8.0"
+ENTRYPOINT = Path(__file__).resolve()
 TENANT_ID = "ndabi-v80"
 SESSION_PROOF_LABEL = "ndabi-v80-session-proof"
 SESSION_PROOF_EXPECTED = "80"
@@ -333,7 +336,16 @@ def run_process(
             measurement["host_idle_preflight"] = host_idle
             measurement["container_resources_before"] = resources_before
             measurement["container_resources_after"] = resources_after
-            campaign.validate_arm_measurement(measurement, arm, concurrency)
+            try:
+                campaign.validate_arm_measurement(measurement, arm, concurrency)
+            except ValueError as error:
+                worker_errors = json.dumps(
+                    measurement.get("errors", []), sort_keys=True, separators=(",", ":")
+                )
+                raise ValueError(
+                    f"{arm} concurrency {concurrency} failed validation: {error}; "
+                    f"worker_errors={worker_errors}"
+                ) from error
             validate_container_resource_snapshot(resources_before)
             validate_container_resource_snapshot(resources_after)
             validate_request_byte_evidence(measurement, arm)
@@ -411,6 +423,13 @@ def campaign_summary(processes: list[dict]) -> list[dict]:
         summary.append(
             {
                 "concurrency": concurrency,
+                "all_repetitions_passed": all(case["passed"] for case in cases),
+                "median_ndabi_cpu_to_native": statistics.median(
+                    item["ndabi_cpu_to_native"] for item in comparisons
+                ),
+                "median_ndabi_p50_to_native": statistics.median(
+                    item["ndabi_p50_to_native"] for item in comparisons
+                ),
                 "median_ndabi_p95_ns": int(
                     statistics.median(item["p95_request_ns"] for item in measurements["ndabi"])
                 ),
@@ -605,21 +624,34 @@ def _validate_shard_root(value: str) -> Path:
     try:
         root.relative_to(result_root)
     except ValueError as error:
-        raise SystemExit("the stack-shard root is outside the v8 result root") from error
+        raise SystemExit(
+            f"the stack-shard root is outside the {CAMPAIGN_VERSION} result root"
+        ) from error
     return root
 
 
 def run_stack_shard(root: Path) -> int:
     configure(build_binary=False, result_root=root)
     sys.argv = [sys.argv[0]]
-    return campaign.main()
+    try:
+        return campaign.main()
+    except (RuntimeError, ValueError) as error:
+        root.mkdir(parents=True, exist_ok=True)
+        campaign.write_json(
+            root / "shard-failure.json",
+            {
+                "error": str(error),
+                "error_type": type(error).__name__,
+            },
+        )
+        return 1
 
 
 def run_formal_campaign() -> int:
     configure()
     latest = RESULT_ROOT / "latest.json"
     if latest.exists():
-        raise SystemExit("the first v8.0 formal campaign already exists")
+        raise SystemExit(f"the first {CAMPAIGN_VERSION} formal campaign already exists")
     source_commit = campaign.committed_source()
     initial_source_sha256 = campaign.source_sha256()
     campaign.command(
@@ -640,7 +672,7 @@ def run_formal_campaign() -> int:
     for stack in range(1, 4):
         stack_root = evidence_root / f"stack-{stack}"
         completed = subprocess.run(
-            [sys.executable, str(Path(__file__).resolve()), "--stack-shard", str(stack_root)],
+            [sys.executable, str(ENTRYPOINT), "--stack-shard", str(stack_root)],
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -648,14 +680,20 @@ def run_formal_campaign() -> int:
         )
         stack_latest = stack_root / "latest.json"
         if not stack_latest.is_file():
+            shard_failure = stack_root / "shard-failure.json"
             failure = {
                 "exit_code": completed.returncode,
                 "stack": stack,
                 "stderr_sha256": hashlib.sha256(completed.stderr.encode()).hexdigest(),
                 "stdout_sha256": hashlib.sha256(completed.stdout.encode()).hexdigest(),
+                "shard_failure_sha256": (
+                    campaign.file_sha256(shard_failure)
+                    if shard_failure.is_file()
+                    else None
+                ),
             }
             stack_root.mkdir(parents=True, exist_ok=True)
-            campaign.write_json(stack_root / "failure.json", failure)
+            campaign.write_json(stack_root / "orchestrator-failure.json", failure)
             stack_records.append({**failure, "accepted": False})
             break
         try:
@@ -709,7 +747,7 @@ def run_formal_campaign() -> int:
     )
     aggregate = {
         "accepted": accepted,
-        "campaign": "NDABI Supabase production campaign v8.0",
+        "campaign": FORMAL_CAMPAIGN_NAME,
         "campaign_id": campaign_id,
         "cold_stack_count": len(stack_processes),
         "cross_stack_repeatability": cross_stack,

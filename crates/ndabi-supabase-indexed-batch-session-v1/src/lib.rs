@@ -19,7 +19,7 @@ const ITEM_HEADER_BYTES: u64 = 12;
 pub struct IndexedBatchSessionBackend {
     client: Client,
     data_statement: Statement,
-    profile: RangeProfile,
+    operation: BatchOperation,
     identity: BackendIdentity,
     starts: Vec<i64>,
     identifiers: Vec<i64>,
@@ -75,11 +75,12 @@ impl IndexedBatchSessionBackend {
         let data_statement = client
             .prepare(profile.sql())
             .map_err(|_| ProtocolError::BackendRefused)?;
+        let operation = profile.batch_operation()?;
         let identity = profile.identity(schema_digest, policy_digest)?;
         Ok(Self {
             client,
             data_statement,
-            profile,
+            operation,
             identity,
             starts: Vec::with_capacity(4_096),
             identifiers: Vec::with_capacity(32_768),
@@ -109,7 +110,7 @@ impl BatchBackend for IndexedBatchSessionBackend {
         limits: ExecutionLimits,
         output: &mut BoundedOutput,
     ) -> Result<(), ProtocolError> {
-        if operation != self.profile.batch_operation()? {
+        if operation != self.operation {
             return Err(ProtocolError::BackendRefused);
         }
         let item_count =
@@ -140,7 +141,6 @@ impl BatchBackend for IndexedBatchSessionBackend {
         let mut previous_end = None;
         for item in items {
             previous_end = Some(append_identifiers(
-                self.profile,
                 item,
                 previous_end,
                 &mut self.starts,
@@ -158,12 +158,16 @@ impl BatchBackend for IndexedBatchSessionBackend {
             return Err(ProtocolError::BackendRefused);
         }
 
-        output.write(&operation.opcode.to_be_bytes())?;
-        output.write(&item_count.to_be_bytes())?;
+        let mut batch_header = [0_u8; 6];
+        batch_header[..2].copy_from_slice(&operation.opcode.to_be_bytes());
+        batch_header[2..].copy_from_slice(&item_count.to_be_bytes());
+        output.write(&batch_header)?;
         let mut row_index = 0_usize;
         for start in &self.starts {
-            output.write(&start.to_be_bytes())?;
-            output.write(&ROWS_PER_ITEM.to_be_bytes())?;
+            let mut item_header = [0_u8; ITEM_HEADER_BYTES as usize];
+            item_header[..8].copy_from_slice(&start.to_be_bytes());
+            item_header[8..].copy_from_slice(&ROWS_PER_ITEM.to_be_bytes());
+            output.write(&item_header)?;
             for expected_id in *start..*start + i64::from(ROWS_PER_ITEM) {
                 encode_row(&rows[row_index], expected_id, output)?;
                 row_index += 1;
@@ -172,19 +176,18 @@ impl BatchBackend for IndexedBatchSessionBackend {
         if row_index != rows.len() {
             return Err(ProtocolError::BackendRefused);
         }
+        output.complete_rows(total_rows)?;
         Ok(())
     }
 }
 
 fn append_identifiers(
-    profile: RangeProfile,
     item: BatchItem,
     previous_end: Option<i64>,
     starts: &mut Vec<i64>,
     identifiers: &mut Vec<i64>,
 ) -> Result<i64, ProtocolError> {
-    let expected = profile.operation(item.first, ROWS_PER_ITEM)?;
-    if item.second != 0 || item.third != ROWS_PER_ITEM || expected.first != item.first {
+    if item.first <= 0 || item.second != 0 || item.third != ROWS_PER_ITEM {
         return Err(ProtocolError::BackendRefused);
     }
     let end = item
@@ -212,33 +215,24 @@ fn encode_row(
     if id != expected_id || payload.len() != 64 {
         return Err(ProtocolError::BackendRefused);
     }
-    output.write(&id.to_be_bytes())?;
-    output.write(&bucket.to_be_bytes())?;
-    output.write(&owner.to_be_bytes())?;
-    output.write(&score.to_be_bytes())?;
-    output.write(payload)?;
-    output.complete_row()
+    let mut encoded = [0_u8; ENCODED_ROW_BYTES as usize];
+    encoded[..8].copy_from_slice(&id.to_be_bytes());
+    encoded[8..12].copy_from_slice(&bucket.to_be_bytes());
+    encoded[12..16].copy_from_slice(&owner.to_be_bytes());
+    encoded[16..20].copy_from_slice(&score.to_be_bytes());
+    encoded[20..].copy_from_slice(payload);
+    output.write(&encoded)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndabi_postgres_v1::OperationBinding;
-
-    fn profile() -> RangeProfile {
-        RangeProfile::new(
-            "SELECT id FROM test WHERE id = ANY($1) ORDER BY id",
-            OperationBinding::new(1, 1).expect("binding"),
-        )
-        .expect("profile")
-    }
 
     #[test]
     fn indexed_identifiers_are_exact_and_ordered() {
         let mut starts = Vec::new();
         let mut identifiers = Vec::new();
         let end = append_identifiers(
-            profile(),
             BatchItem::new(11, 0, ROWS_PER_ITEM),
             None,
             &mut starts,
@@ -260,13 +254,7 @@ mod tests {
         ];
         for (item, previous_end) in invalid {
             assert_eq!(
-                append_identifiers(
-                    profile(),
-                    item,
-                    previous_end,
-                    &mut Vec::new(),
-                    &mut Vec::new(),
-                ),
+                append_identifiers(item, previous_end, &mut Vec::new(), &mut Vec::new(),),
                 Err(ProtocolError::BackendRefused)
             );
         }

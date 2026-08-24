@@ -1,0 +1,16 @@
+{
+  "files": [
+    {
+      "bytes": 732,
+      "path": "aggregate.json",
+      "sha256": "135699256dcf34093ddfec6f704a47947e17f93f1e2debfa7978a40bfa8e0c49"
+    },
+    {
+      "bytes": 209,
+      "path": "stack-1/failure.json",
+      "sha256": "ceda894ae60bb10af0049a9553f7e1aa3de25f24a5a69241f200c2950a3ad6bf"
+    }
+  ],
+  "hash_algorithm": "sha256",
+  "schema": "ndabi-evidence-manifest-v1"
+}

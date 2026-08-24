@@ -8,12 +8,11 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use ndabi_postgres_v1::{
-    digest_label, memory_replay_store, AuthorityContext, OperationBinding, RangeProfile,
-    WireClientSession,
+    digest_label, AuthorityContext, OperationBinding, RangeProfile, WireClientSession,
 };
 use ndabi_protocol::{
-    batch_frame_bytes, Authority, BackendIdentity, BatchItem, MemoryReplayStore, ProtocolError,
-    ServerSession, SystemClock,
+    batch_frame_bytes, Authority, BackendIdentity, BatchItem, ProtocolError, ServerSession,
+    SingleSessionReplayStore, SystemClock,
 };
 use ndabi_showdown::alloc::{begin_measurement, end_measurement, AllocationDelta};
 use ndabi_supabase_indexed_batch_session_v1::IndexedBatchSessionBackend;
@@ -155,7 +154,7 @@ struct NdabiState {
     wire_client: WireClientSession,
     wire_server: ServerSession,
     backend: IndexedBatchSessionBackend,
-    replay: MemoryReplayStore,
+    replay: SingleSessionReplayStore,
 }
 
 struct RestState {
@@ -731,7 +730,7 @@ impl NdabiState {
             wire_server: ServerSession::new(authority, result_budget, total_rows)
                 .map_err(|error| error.to_string())?,
             backend,
-            replay: memory_replay_store(),
+            replay: SingleSessionReplayStore::default(),
         })
     }
 

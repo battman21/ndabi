@@ -217,7 +217,7 @@ impl ServerSession {
             maximum_result_bytes: pending.result_budget,
             maximum_rows: pending.row_budget,
         };
-        let mut output = BoundedOutput::new(pending.result_budget, pending.row_budget);
+        let mut output = BoundedOutput::new_deferred(pending.result_budget, pending.row_budget);
         backend.execute_batch(pending.operation, pending.items, limits, &mut output)?;
         if clock.now_unix_us()? >= pending.deadline_unix_us {
             return Err(ProtocolError::ExpiredDuringExecution);

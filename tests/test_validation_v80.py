@@ -139,11 +139,57 @@ class SupabaseProductionCampaignTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "cold-stack count"):
             production.cross_stack_repeatability(stacks[:2])
 
+    def test_summary_exposes_the_native_cpu_and_p50_gates(self):
+        processes = []
+        for process in range(1, production.PROCESS_COUNT + 1):
+            cases = []
+            for concurrency in production.campaign.CONCURRENCY_LEVELS:
+                measurements = passing_measurements()
+                for value in measurements.values():
+                    value["concurrency"] = concurrency
+                    value["workers"] = [
+                        {
+                            "result_bytes": 10_950,
+                            "result_sha256": "11" * 32,
+                            "worker": worker,
+                        }
+                        for worker in range(concurrency)
+                    ]
+                comparison = production.compare_measurements(measurements, concurrency)
+                cases.append(
+                    {
+                        "comparison": comparison,
+                        "concurrency": concurrency,
+                        "measurements": measurements,
+                        "passed": comparison["passed"],
+                    }
+                )
+            processes.append({"cases": cases, "process": process})
+        summary = production.campaign_summary(processes)
+        self.assertTrue(all(item["all_repetitions_passed"] for item in summary))
+        self.assertEqual(summary[0]["median_ndabi_cpu_to_native"], 1.2)
+        self.assertEqual(summary[0]["median_ndabi_p50_to_native"], 1.1)
+
     def test_stack_shard_root_cannot_escape_the_result_root(self):
         with tempfile.TemporaryDirectory() as temporary:
             outside = Path(temporary) / "outside"
             with self.assertRaisesRegex(SystemExit, "outside"):
                 production._validate_shard_root(str(outside))
+
+    def test_stack_shard_preserves_a_structured_validation_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "stack"
+            with mock.patch.object(
+                production.campaign,
+                "main",
+                side_effect=ValueError("controlled validation failure"),
+            ):
+                self.assertEqual(production.run_stack_shard(root), 1)
+            failure = json.loads(
+                (root / "shard-failure.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(failure["error_type"], "ValueError")
+            self.assertEqual(failure["error"], "controlled validation failure")
 
     def test_container_resource_snapshot_requires_the_complete_stack(self):
         names = (
