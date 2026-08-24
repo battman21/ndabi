@@ -13,6 +13,7 @@ import statistics
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -38,6 +39,10 @@ OPERATIONS = 16
 ROWS_PER_OPERATION = 8
 WARMUPS = 3
 SAMPLES = 31
+SAMPLES_BY_ARM: dict[str, int] | None = None
+MINIMUM_ARM_DURATION_NS = 0
+MONITOR_BUILD_PROCESSES_DURING_ARM = False
+BUILD_MONITOR_INTERVAL_SECONDS = 0.25
 POOL_SIZE = 64
 MAX_CLIENTS = 200
 MINIMUM_HOST_IDLE_PERCENT = 80.0
@@ -137,6 +142,22 @@ def valid_digest(value: object) -> bool:
     )
 
 
+def samples_for(arm: str) -> int:
+    if arm not in {"ndabi", "postgrest"}:
+        raise ValueError("the load arm is invalid")
+    if SAMPLES_BY_ARM is None:
+        return SAMPLES
+    samples = SAMPLES_BY_ARM.get(arm)
+    if not isinstance(samples, int) or not 3 <= samples <= 10_000:
+        raise ValueError("the load sample count is outside its bound")
+    return samples
+
+
+def expected_data_queries(arm: str, concurrency: int) -> int:
+    multiplier = 1 if arm == "ndabi" else OPERATIONS
+    return concurrency * (WARMUPS + samples_for(arm)) * multiplier
+
+
 def parse_host_idle(output: str) -> float:
     matches = re.findall(r"CPU usage:.*?([0-9]+(?:\.[0-9]+)?)% idle", output)
     if not matches:
@@ -195,8 +216,9 @@ def validate_worker(report: dict, arm: str, worker: int) -> None:
     require(report.get("operations") == OPERATIONS, "invalid operation count")
     require(report.get("rows_per_operation") == ROWS_PER_OPERATION, "invalid row count")
     require(report.get("warmups") == WARMUPS, "invalid warm-up count")
-    require(report.get("samples") == SAMPLES, "invalid sample count")
-    require(report.get("logical_operations") == SAMPLES * OPERATIONS, "invalid logical operation count")
+    samples = samples_for(arm)
+    require(report.get("samples") == samples, "invalid sample count")
+    require(report.get("logical_operations") == samples * OPERATIONS, "invalid logical operation count")
     require(report.get("result_bytes", 0) > 0, "invalid result size")
     require(valid_digest(report.get("result_sha256")), "invalid result digest")
     require(report.get("measured_start_monotonic_ns", 0) > 0, "invalid start time")
@@ -205,11 +227,15 @@ def validate_worker(report: dict, arm: str, worker: int) -> None:
         "invalid end time",
     )
     require(report.get("total_elapsed_ns", 0) > 0, "invalid elapsed time")
+    require(
+        report.get("total_elapsed_ns", 0) >= MINIMUM_ARM_DURATION_NS,
+        "the measured worker duration is too short",
+    )
     require(report.get("total_cpu_ns", 0) > 0, "invalid CPU time")
     raw = report.get("raw_ns")
     require(
         isinstance(raw, list)
-        and len(raw) == SAMPLES
+        and len(raw) == samples
         and all(isinstance(value, int) and value > 0 for value in raw),
         "invalid latency samples",
     )
@@ -244,9 +270,26 @@ def run_load_arm(
     public_key: Path,
     custody: Path,
 ) -> dict:
+    samples = samples_for(arm)
     ready_paths = [custody / f"{arm}-{concurrency}-{worker}.ready" for worker in range(concurrency)]
     release_path = custody / f"{arm}-{concurrency}.release"
     processes: list[subprocess.Popen] = []
+    monitor_stop = threading.Event()
+    monitored_build_processes: set[str] = set()
+    build_monitor_errors: list[str] = []
+
+    def monitor_build_processes() -> None:
+        while not monitor_stop.wait(BUILD_MONITOR_INTERVAL_SECONDS):
+            try:
+                monitored_build_processes.update(active_build_processes())
+            except RuntimeError as error:
+                build_monitor_errors.append(str(error))
+                return
+
+    monitor = None
+    if MONITOR_BUILD_PROCESSES_DURING_ARM:
+        monitor = threading.Thread(target=monitor_build_processes, daemon=True)
+        monitor.start()
     try:
         for worker, ready_path in enumerate(ready_paths):
             start = 1_000 + worker * 3_000
@@ -263,7 +306,7 @@ def run_load_arm(
                 v72.v71.AUDIENCE,
                 str(start),
                 str(OPERATIONS),
-                str(SAMPLES),
+                str(samples),
                 str(worker),
                 str(ready_path),
                 str(release_path),
@@ -310,6 +353,15 @@ def run_load_arm(
             reports.append(report)
     finally:
         stop_workers(processes)
+        if monitor is not None:
+            try:
+                monitored_build_processes.update(active_build_processes())
+            except RuntimeError as error:
+                build_monitor_errors.append(str(error))
+            monitor_stop.set()
+            monitor.join(timeout=2)
+            if monitor.is_alive():
+                build_monitor_errors.append("the build-process monitor did not stop")
     raw_ns = [value for report in reports for value in report["raw_ns"]]
     complete = len(reports) == concurrency and not errors
     total_elapsed_ns = 0
@@ -344,6 +396,8 @@ def run_load_arm(
         "peak_additional_live_bytes": max(
             (report["peak_additional_live_bytes"] for report in reports), default=0
         ),
+        "active_build_processes_during_arm": sorted(monitored_build_processes),
+        "build_monitor_errors": build_monitor_errors,
         "complete": complete,
     }
 
@@ -362,11 +416,12 @@ def validate_arm_measurement(measurement: dict, arm: str, concurrency: int) -> N
     require(measurement.get("errors") == [], "worker errors are present")
     raw_ns = [value for worker_report in workers for value in worker_report["raw_ns"]]
     require(measurement.get("completed_workers") == concurrency, "invalid completed workers")
+    samples = samples_for(arm)
     require(
-        measurement.get("completed_requests") == concurrency * SAMPLES,
+        measurement.get("completed_requests") == concurrency * samples,
         "invalid completed requests",
     )
-    logical_operations = concurrency * SAMPLES * OPERATIONS
+    logical_operations = concurrency * samples * OPERATIONS
     require(
         measurement.get("logical_operations") == logical_operations,
         "invalid logical operations",
@@ -375,6 +430,10 @@ def validate_arm_measurement(measurement: dict, arm: str, concurrency: int) -> N
         worker_report["measured_start_monotonic_ns"] for worker_report in workers
     )
     require(measurement.get("total_elapsed_ns") == elapsed, "invalid group elapsed time")
+    require(
+        measurement.get("total_elapsed_ns", 0) >= MINIMUM_ARM_DURATION_NS,
+        "the measured arm duration is too short",
+    )
     expected_throughput = logical_operations * 1_000_000_000 / elapsed
     require(
         math.isclose(
@@ -413,8 +472,16 @@ def validate_arm_measurement(measurement: dict, arm: str, concurrency: int) -> N
         == max(worker_report["peak_additional_live_bytes"] for worker_report in workers),
         "invalid peak live bytes",
     )
-    query_multiplier = 1 if arm == "ndabi" else OPERATIONS
-    expected_queries = concurrency * (WARMUPS + SAMPLES) * query_multiplier
+    if MONITOR_BUILD_PROCESSES_DURING_ARM:
+        require(
+            measurement.get("active_build_processes_during_arm") == [],
+            "a build process contaminated the measured arm",
+        )
+        require(
+            measurement.get("build_monitor_errors") == [],
+            "the build-process monitor failed",
+        )
+    expected_queries = expected_data_queries(arm, concurrency)
     require(
         measurement.get("expected_data_queries") == expected_queries,
         "invalid expected query count",
@@ -541,12 +608,12 @@ def run_process(
                 custody,
             )
             observed_queries = v72.data_queries(postgres)
-            query_multiplier = 1 if arm == "ndabi" else OPERATIONS
-            expected_queries = concurrency * (WARMUPS + SAMPLES) * query_multiplier
+            expected_queries = expected_data_queries(arm, concurrency)
             measurement["observed_data_queries"] = observed_queries
             measurement["expected_data_queries"] = expected_queries
             measurement["query_gate_passed"] = observed_queries == expected_queries
             measurement["host_idle_preflight"] = host_idle
+            validate_arm_measurement(measurement, arm, concurrency)
             measurements[arm] = measurement
         comparison = compare_arms(measurements["ndabi"], measurements["postgrest"])
         cases.append(
@@ -798,7 +865,18 @@ def main() -> int:
                 "supavisor_image_id": command("docker", "image", "inspect", "--format", "{{.Id}}", SUPAVISOR_IMAGE).stdout.strip(),
                 "concurrency_levels": list(CONCURRENCY_LEVELS),
                 "operations_per_request": OPERATIONS,
-                "samples_per_worker": SAMPLES,
+                "samples_per_worker": (
+                    SAMPLES
+                    if SAMPLES_BY_ARM is None
+                    else {arm: samples_for(arm) for arm in ("ndabi", "postgrest")}
+                ),
+                "minimum_arm_duration_ns": MINIMUM_ARM_DURATION_NS,
+                "build_process_monitor_enabled": MONITOR_BUILD_PROCESSES_DURING_ARM,
+                "build_process_monitor_interval_seconds": (
+                    BUILD_MONITOR_INTERVAL_SECONDS
+                    if MONITOR_BUILD_PROCESSES_DURING_ARM
+                    else None
+                ),
                 "pool_size_per_surface": POOL_SIZE,
                 "pooler_mode": "session",
                 "session_proof_passed": session_proof_passed,

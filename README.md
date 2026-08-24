@@ -368,5 +368,9 @@ Its complete formal campaign ran five processes from source commit `72fc936`.
 All fifteen process-level cases passed with median speed-ups of 20.90, 13.79, and 39.04 times.
 The aggregate failed because p95-ratio variation measured 15.01%, 16.12%, and 15.42%.
 No concurrent result is accepted because the frozen repeatability gate failed.
+The frozen v7.6 repair retains every speed and repeatability threshold.
+It uses 4,095 NDABI samples and 127 PostgREST samples per worker.
+It rejects any measured worker or arm shorter than one second.
+No v7.6 performance result exists yet.
 The v5.2 result proves one PostgreSQL compare-and-swap write profile.
 Tokens, energy, public WAN, production custody, and general query or write support remain unproven.
