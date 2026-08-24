@@ -1,4 +1,5 @@
 import unittest
+import json
 
 import validation_suite_v74 as repair
 
@@ -20,6 +21,17 @@ class SupavisorConcurrencyRepairTests(unittest.TestCase):
         self.assertIn(
             "../../specs/ndabi_supavisor_concurrency_campaign_v7_4.md", paths
         )
+
+    def test_retained_diagnostic_process_revalidates(self):
+        repair.configure()
+        path = (
+            repair.RESULT_ROOT
+            / "20260824T040118Z"
+            / "process-1.json"
+        )
+        report = json.loads(path.read_text(encoding="utf-8"))
+        repair.campaign.validate_process_report(report)
+        self.assertTrue(report["passed"])
 
 
 if __name__ == "__main__":

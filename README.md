@@ -363,6 +363,8 @@ The v7.4 repair requires 50% CPU idle and refuses active compiler processes.
 Its first attempt retained one passing process before another compiler started.
 Its second attempt refused before saving a process because the idle percentage remained unstable.
 The v7.5 repair refuses compilers but uses latency and repeatability as the noise gates.
-No concurrent result is accepted until five committed-source processes pass every frozen gate.
+Its first formal attempt refused when another Cargo and Rust build started.
+One source-bound v7.4 diagnostic process passed every process gate.
+No concurrent result is accepted because no attempt completed five processes.
 The v5.2 result proves one PostgreSQL compare-and-swap write profile.
 Tokens, energy, public WAN, production custody, and general query or write support remain unproven.
