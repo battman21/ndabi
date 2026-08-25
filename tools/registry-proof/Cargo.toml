@@ -1,0 +1,33 @@
+[package]
+name = "ndabi-registry-proof"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+libc = "0.2"
+mongodb = { version = "3.8", features = ["sync"] }
+ndabi-mongodb-v1 = { path = "../../crates/ndabi-mongodb-v1" }
+ndabi-postgres-v1 = { path = "../../crates/ndabi-postgres-v1" }
+ndabi-protocol = { path = "../../crates/ndabi-protocol", features = ["benchmark-governed-native"] }
+ndabi-supabase-v1 = { path = "../../crates/ndabi-supabase-v1" }
+postgres = "0.19"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+zeroize = "1.9"
+
+[[bin]]
+name = "ndabi_registry_v01"
+path = "src/bin/ndabi_registry_v01.rs"
+
+[[bin]]
+name = "ndabi_registry_postgres_v01"
+path = "src/bin/ndabi_registry_postgres_v01.rs"
+
+[[bin]]
+name = "ndabi_registry_mongodb_v01"
+path = "src/bin/ndabi_registry_mongodb_v01.rs"

@@ -1,0 +1,14 @@
+{
+  "campaign": "NDABI registered MongoDB profile v0.1",
+  "campaign_id": "20260825T113802Z",
+  "process_count": 5,
+  "source_sha256": "92557fc91e1d43021189f0ac586242a83611bea0394992c2d6195f5abe26d3fa",
+  "binary_sha256": "6fb61a254e8620c881eaab47eb93f713499195a8555808fc911eb563e3e48045",
+  "mongodb_image_id": "sha256:5c498219ec01c0cd170bf7e5f32b0dfc9d008a6a5524e537c759f6401b1f57c3",
+  "registered_profile": "0x4d471002",
+  "registry_digest": "b71f866c989204ded85ac532d041fe8e80c2606ea1ebe24a8887d3e8642d81b0",
+  "registry_digest_consistent": true,
+  "reader_count_passed": true,
+  "reader_write_refused": true,
+  "accepted": true
+}

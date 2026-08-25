@@ -1,0 +1,227 @@
+[package]
+name = "ndabi-showdown"
+version = "0.9.0"
+edition = "2021"
+publish = false
+
+# Keep this historical harness outside the reusable NDABI workspace.
+# The White Tree campaigns require the neighbouring onlife_v2 checkout.
+[workspace]
+
+[[bin]]
+name = "ndabi-v06"
+path = "src/bin/ndabi_v06.rs"
+
+[[bin]]
+name = "ndabi-v07"
+path = "src/bin/ndabi_v07.rs"
+
+[[bin]]
+name = "ndabi-v08"
+path = "src/bin/ndabi_v08.rs"
+
+[[bin]]
+name = "ndabi-v09"
+path = "src/bin/ndabi_v09.rs"
+
+[[bin]]
+name = "ndabi_v22"
+path = "src/bin/ndabi_v22.rs"
+
+[[bin]]
+name = "ndabi_v23"
+path = "src/bin/ndabi_v23.rs"
+
+[[bin]]
+name = "ndabi_v25"
+path = "src/bin/ndabi_v25.rs"
+
+[[bin]]
+name = "ndabi_v27"
+path = "src/bin/ndabi_v27.rs"
+
+[[bin]]
+name = "ndabi_v28"
+path = "src/bin/ndabi_v28.rs"
+
+[[bin]]
+name = "ndabi_v30"
+path = "src/bin/ndabi_v30.rs"
+
+[[bin]]
+name = "ndabi_v31"
+path = "src/bin/ndabi_v31.rs"
+
+[[bin]]
+name = "ndabi_v32"
+path = "src/bin/ndabi_v32.rs"
+
+[[bin]]
+name = "ndabi_v33"
+path = "src/bin/ndabi_v33.rs"
+
+[[bin]]
+name = "ndabi_fuzz_v01"
+path = "src/bin/ndabi_fuzz_v01.rs"
+
+[[bin]]
+name = "ndabi_v34"
+path = "src/bin/ndabi_v34.rs"
+
+[[bin]]
+name = "ndabi_v35"
+path = "src/bin/ndabi_v35.rs"
+
+[[bin]]
+name = "ndabi_v40"
+path = "src/bin/ndabi_v40.rs"
+
+[[bin]]
+name = "ndabi_v41"
+path = "src/bin/ndabi_v41.rs"
+
+[[bin]]
+name = "ndabi_v42"
+path = "src/bin/ndabi_v42.rs"
+
+[[bin]]
+name = "ndabi_v44"
+path = "src/bin/ndabi_v44.rs"
+
+[[bin]]
+name = "ndabi_v45"
+path = "src/bin/ndabi_v45.rs"
+
+[[bin]]
+name = "ndabi_v46"
+path = "src/bin/ndabi_v46.rs"
+
+[[bin]]
+name = "ndabi_v47"
+path = "src/bin/ndabi_v47.rs"
+
+[[bin]]
+name = "ndabi_v50"
+path = "src/bin/ndabi_v50.rs"
+
+[[bin]]
+name = "ndabi_v51"
+path = "src/bin/ndabi_v51.rs"
+
+[[bin]]
+name = "ndabi_v53"
+path = "src/bin/ndabi_v53.rs"
+
+[[bin]]
+name = "ndabi_v54"
+path = "src/bin/ndabi_v54.rs"
+
+[[bin]]
+name = "ndabi_v55"
+path = "src/bin/ndabi_v55.rs"
+
+[[bin]]
+name = "ndabi_v56"
+path = "src/bin/ndabi_v56.rs"
+
+[[bin]]
+name = "ndabi_v57"
+path = "src/bin/ndabi_v57.rs"
+
+[[bin]]
+name = "ndabi_v58"
+path = "src/bin/ndabi_v58.rs"
+
+[[bin]]
+name = "ndabi_v60"
+path = "src/bin/ndabi_v60.rs"
+
+[[bin]]
+name = "ndabi_v61"
+path = "src/bin/ndabi_v61.rs"
+
+[[bin]]
+name = "ndabi_v64"
+path = "src/bin/ndabi_v64.rs"
+
+[[bin]]
+name = "ndabi_v65"
+path = "src/bin/ndabi_v65.rs"
+
+[[bin]]
+name = "ndabi_v66"
+path = "src/bin/ndabi_v66.rs"
+
+[[bin]]
+name = "ndabi_v67"
+path = "src/bin/ndabi_v67.rs"
+
+[[bin]]
+name = "ndabi_v68"
+path = "src/bin/ndabi_v68.rs"
+
+[[bin]]
+name = "ndabi_v69"
+path = "src/bin/ndabi_v69.rs"
+
+[[bin]]
+name = "ndabi_v70"
+path = "src/bin/ndabi_v70.rs"
+
+[[bin]]
+name = "ndabi_v71"
+path = "src/bin/ndabi_v71.rs"
+
+[[bin]]
+name = "ndabi_v84"
+path = "src/bin/ndabi_v84.rs"
+
+[[bin]]
+name = "ndabi_registry_v01"
+path = "src/bin/ndabi_registry_v01.rs"
+
+[[bin]]
+name = "ndabi_registry_postgres_v01"
+path = "src/bin/ndabi_registry_postgres_v01.rs"
+
+[[bin]]
+name = "ndabi_registry_mongodb_v01"
+path = "src/bin/ndabi_registry_mongodb_v01.rs"
+
+[dependencies]
+blake3 = { version = "1.8", features = ["zeroize"] }
+crc32fast = "1.5"
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+olx-core = { version = "=0.1.0", path = "../../../onlife_v2/crates/olx-core", features = ["store-fixtures", "dev-software-signing"] }
+tempfile = "3"
+arrow-array = "58.3"
+tokio = { version = "1.52", features = ["rt-multi-thread"] }
+postgres = "0.19"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+tokio-postgres = "0.7"
+futures-util = "0.3"
+subtle = "2.6"
+zeroize = "1.9"
+ndabi-mongodb = { path = "../../crates/ndabi-mongodb" }
+ndabi-mongodb-v1 = { path = "../../crates/ndabi-mongodb-v1" }
+ndabi-postgres = { path = "../../crates/ndabi-postgres" }
+ndabi-postgres-v1 = { path = "../../crates/ndabi-postgres-v1" }
+ndabi-protocol = { path = "../../crates/ndabi-protocol", features = ["benchmark-governed-native"] }
+ndabi-session = { path = "../../crates/ndabi-session" }
+ndabi-supabase-v1 = { path = "../../crates/ndabi-supabase-v1" }
+ndabi-supabase-session-v1 = { path = "../../crates/ndabi-supabase-session-v1" }
+ndabi-supabase-range-session-v1 = { path = "../../crates/ndabi-supabase-range-session-v1" }
+ndabi-supabase-packed-session-v1 = { path = "../../crates/ndabi-supabase-packed-session-v1" }
+ndabi-supabase-batch-session-v1 = { path = "../../crates/ndabi-supabase-batch-session-v1" }
+ndabi-supabase-indexed-batch-session-v1 = { path = "../../crates/ndabi-supabase-indexed-batch-session-v1", features = ["benchmark-governed-native"] }
+ndabi-write = { path = "../../crates/ndabi-write" }
+mongodb = { version = "3.8", features = ["sync"] }
+rcgen = "0.14"
+rustls = "0.23"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"

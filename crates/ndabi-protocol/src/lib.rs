@@ -13,6 +13,8 @@ use zeroize::{Zeroize, Zeroizing};
 
 mod batch;
 mod connection;
+mod registry;
+mod registry_store;
 mod replay;
 mod transport;
 
@@ -30,6 +32,15 @@ pub use connection::{
     NegotiatedTransport, RegisteredRequest, TransportConfig, TransportConnection, TransportPhase,
     TransportRole, FEATURE_CANCELLATION, FEATURE_STREAMING, KNOWN_TRANSPORT_FEATURES,
 };
+pub use registry::{
+    decode_registry_discovery, encode_registry_discovery, registry_discovery_bytes,
+    CapabilityManifest, DiscoveredRegistry, PlanRegistry, RegisteredBackend,
+    RegisteredBatchBackend, RegisteredPlan, CAPABILITY_AGGREGATE, CAPABILITY_BATCH,
+    CAPABILITY_CANCELLATION, CAPABILITY_EXPLAIN, CAPABILITY_MUTATION, CAPABILITY_QUERY,
+    CAPABILITY_RELATIONSHIP, CAPABILITY_STREAMING, CAPABILITY_TRANSACTION, KNOWN_CAPABILITIES,
+    MAX_REGISTERED_PLANS, PLAN_REGISTRY_VERSION_MAJOR, PLAN_REGISTRY_VERSION_MINOR,
+};
+pub use registry_store::{FileRegistryStore, RegistryKeyProvider};
 pub use replay::FileReplayStore;
 pub use transport::{
     decode_transport, encode_transport, transport_frame_bytes, TransportDirection, TransportFields,
@@ -918,6 +929,7 @@ pub enum ProtocolError {
     BatchLimitExceeded,
     BatchTooSmall,
     BudgetExceeded,
+    CapabilityMismatch,
     ClockFailed,
     ConnectionState,
     DeadlineBeyondAuthority,
@@ -928,6 +940,19 @@ pub enum ProtocolError {
     NonCanonicalFrame,
     NonceEnded,
     OutputShape,
+    DuplicatePlan,
+    PlanLimitExceeded,
+    PlanNotRegistered,
+    PlanRegistryEmpty,
+    PlanRegistryMismatch,
+    PlanShapeMismatch,
+    RegistryGeneration,
+    RegistryInactive,
+    RegistryRevoked,
+    RegistryStoreAuthenticationFailed,
+    RegistryStoreInsecure,
+    RegistryStoreIo,
+    RegistryStoreLockUnavailable,
     Replay,
     ReplayConflict,
     ReplayStoreAuthenticationFailed,

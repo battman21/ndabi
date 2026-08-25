@@ -1,0 +1,26 @@
+FROM rust:1.92-bookworm AS builder
+
+WORKDIR /workspace
+COPY research/showdown/docker/build/Cargo.toml research/showdown/docker/build/Cargo.lock /workspace/campaign/
+COPY research/showdown/src /workspace/campaign/src
+
+RUN cargo build \
+    --release \
+    --locked \
+    --manifest-path /workspace/campaign/Cargo.toml \
+    --bin ndabi_v11
+
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends time \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /workspace/campaign/target/release/ndabi_v11 /usr/local/bin/ndabi_v11
+
+LABEL org.opencontainers.image.title="NDABI showdown v1.3 local campaign"
+LABEL org.whitetree.ndabi.campaign="v1.3"
+LABEL org.whitetree.ndabi.rust="1.92"
+
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/ndabi_v11"]

@@ -1,8 +1,9 @@
 //! Execute one admitted user profile through PostgreSQL row-level security.
 
-use ndabi_postgres_v1::RangeProfile;
+use ndabi_postgres_v1::{RangeProfile, POSTGRESQL_ENGINE_ID, POSTGRESQL_RANGE_REGISTRY_PROFILE_ID};
 use ndabi_protocol::{
-    Backend, BackendIdentity, BoundedOutput, ExecutionLimits, Operation, ProtocolError,
+    Backend, BackendIdentity, BoundedOutput, ExecutionLimits, Operation, PlanRegistry,
+    ProtocolError,
 };
 use postgres::{Client, Row, Statement};
 
@@ -20,10 +21,30 @@ pub struct UserRangeBackend {
 
 impl UserRangeBackend {
     pub fn new(
-        mut client: Client,
+        client: Client,
         profile: RangeProfile,
         schema_digest: [u8; 32],
         policy_digest: [u8; 32],
+        user: &AdmittedIdentity,
+    ) -> Result<Self, ProtocolError> {
+        let identity = profile.identity(schema_digest, policy_digest)?;
+        Self::initialise(client, profile, identity, user)
+    }
+
+    pub fn new_registered(
+        client: Client,
+        profile: RangeProfile,
+        registry: &PlanRegistry,
+        user: &AdmittedIdentity,
+    ) -> Result<Self, ProtocolError> {
+        let identity = registered_identity(profile, registry)?;
+        Self::initialise(client, profile, identity, user)
+    }
+
+    fn initialise(
+        mut client: Client,
+        profile: RangeProfile,
+        identity: BackendIdentity,
         user: &AdmittedIdentity,
     ) -> Result<Self, ProtocolError> {
         if user.role() != "authenticated" {
@@ -37,7 +58,6 @@ impl UserRangeBackend {
         let data_statement = client
             .prepare(profile.sql())
             .map_err(|_| ProtocolError::BackendRefused)?;
-        let identity = profile.identity(schema_digest, policy_digest)?;
         Ok(Self {
             client,
             context_statement,
@@ -108,6 +128,19 @@ impl UserRangeBackend {
     }
 }
 
+fn registered_identity(
+    profile: RangeProfile,
+    registry: &PlanRegistry,
+) -> Result<BackendIdentity, ProtocolError> {
+    if registry.identity().engine() != POSTGRESQL_ENGINE_ID
+        || registry.identity().profile() != POSTGRESQL_RANGE_REGISTRY_PROFILE_ID
+        || registry.plans() != [profile.registered_plan()?]
+    {
+        return Err(ProtocolError::PlanRegistryMismatch);
+    }
+    Ok(registry.identity())
+}
+
 impl Backend for UserRangeBackend {
     fn identity(&self) -> BackendIdentity {
         self.identity
@@ -142,4 +175,35 @@ fn encode_row(
     output.write(&score.to_le_bytes())?;
     output.write(&payload)?;
     output.complete_row()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ndabi_postgres_v1::OperationBinding;
+
+    const SQL: &str =
+        "SELECT id,bucket,owner,score,payload FROM items WHERE id = ANY($1) ORDER BY id";
+
+    fn profile() -> RangeProfile {
+        RangeProfile::new(SQL, OperationBinding::new(40, 41).expect("binding")).expect("profile")
+    }
+
+    #[test]
+    fn the_user_backend_accepts_only_the_exact_registered_profile() {
+        let profile = profile();
+        let registry = profile.plan_registry([1; 32], [2; 32]).expect("registry");
+        assert_eq!(
+            registered_identity(profile, &registry).expect("identity"),
+            registry.identity()
+        );
+
+        let changed_profile =
+            RangeProfile::new(SQL, OperationBinding::new(42, 41).expect("binding"))
+                .expect("profile");
+        assert_eq!(
+            registered_identity(changed_profile, &registry).unwrap_err(),
+            ProtocolError::PlanRegistryMismatch
+        );
+    }
 }

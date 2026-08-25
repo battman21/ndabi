@@ -7,7 +7,7 @@ PROTOTYPE_DIR="$(cd "$CONFORMANCE_DIR/.." && pwd)"
 
 cd "$PROTOTYPE_DIR"
 cargo test -p ndabi-protocol --locked
-python3 -m unittest tests.test_conformance_v01
+python3 conformance/test_vectors.py
 
 cd "$CONFORMANCE_DIR/go"
 go test ./...

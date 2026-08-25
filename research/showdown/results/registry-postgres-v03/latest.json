@@ -1,0 +1,29 @@
+{
+  "campaign": "NDABI registered PostgreSQL and Supabase-compatible RLS v0.3",
+  "campaign_id": "20260825T114053Z",
+  "process_count": 5,
+  "successful_execution_count": 15,
+  "source_sha256": "39fbfc635910458cc4827677c60976bda340da7bd58a49737272649bfeda80c5",
+  "binary_sha256": "b367b26a50fdbdc4acd576ec912bbc5cd1c8afbf0176839c4b8d5710046dbed0",
+  "postgres_image_id": "sha256:eb9fe6b5815523ffa3e3d8aee9db3532bd564b857634fcfa36979d76bed6ae10",
+  "registered_profile": "0x50471002",
+  "registry_digest": "9ca085b683f02b35cb28b732263c9267ac7aa345c1f22ae314d1a22c2c800b32",
+  "registry_digest_consistent": true,
+  "security": {
+    "service_role_least_privilege": true,
+    "authenticator_least_privilege": true,
+    "authenticated_role_cannot_login": true,
+    "rls_enabled_and_forced": true,
+    "service_write_refused": true,
+    "user_write_refused": true,
+    "changed_signature": true,
+    "expired": true,
+    "wrong_issuer": true,
+    "wrong_audience": true,
+    "elevated_role": true,
+    "user_one_cannot_read_user_two": true,
+    "user_two_cannot_read_user_one": true
+  },
+  "security_passed": true,
+  "accepted": true
+}

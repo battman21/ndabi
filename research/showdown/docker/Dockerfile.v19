@@ -1,0 +1,26 @@
+FROM rust:1.92-bookworm@sha256:e90e846de4124376164ddfbaab4b0774c7bdeef5e738866295e5a90a34a307a2 AS builder
+
+WORKDIR /workspace
+COPY research/showdown/docker/build-v19/Cargo.toml research/showdown/docker/build-v19/Cargo.lock /workspace/campaign/
+COPY research/showdown/src /workspace/campaign/src
+
+RUN RUSTFLAGS="-D warnings" cargo build \
+    --release \
+    --locked \
+    --manifest-path /workspace/campaign/Cargo.toml \
+    --bin ndabi_v19
+
+FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 AS runtime
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends time \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /workspace/campaign/target/release/ndabi_v19 /usr/local/bin/ndabi_v19
+
+LABEL org.opencontainers.image.title="NDABI showdown v1.9 literal lossless"
+LABEL org.whitetree.ndabi.campaign="v1.9"
+LABEL org.whitetree.ndabi.rust="1.92"
+
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/ndabi_v19"]

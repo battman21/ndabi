@@ -1,0 +1,80 @@
+[
+  {
+    "campaign": "NDABI registered PostgreSQL and Supabase-compatible RLS v0.3",
+    "mode": "service",
+    "registered_profile": "0x50471002",
+    "registry_digest": "9ca085b683f02b35cb28b732263c9267ac7aa345c1f22ae314d1a22c2c800b32",
+    "request_bytes": 160,
+    "result_rows": 2,
+    "result_bytes": 174,
+    "result_sha256": "53cbc27b5d77b6505bf280033558b92e3724f01c828e14a2f51dfaadc93b5cf4",
+    "changed_registry_refused": true,
+    "legacy_identity_refused": true,
+    "unknown_handle_refused": true,
+    "changed_shape_refused": true,
+    "excessive_limits_refused": true,
+    "changed_frame_refused": true,
+    "replay_refused": true,
+    "receipt_verified": true,
+    "passed": true,
+    "data_queries": 1,
+    "data_query_gate_passed": true,
+    "process": 4,
+    "identifiers": [
+      1,
+      2
+    ]
+  },
+  {
+    "campaign": "NDABI registered PostgreSQL and Supabase-compatible RLS v0.3",
+    "mode": "user-rls",
+    "registered_profile": "0x50471002",
+    "registry_digest": "9ca085b683f02b35cb28b732263c9267ac7aa345c1f22ae314d1a22c2c800b32",
+    "request_bytes": 160,
+    "result_rows": 2,
+    "result_bytes": 174,
+    "result_sha256": "53cbc27b5d77b6505bf280033558b92e3724f01c828e14a2f51dfaadc93b5cf4",
+    "changed_registry_refused": true,
+    "legacy_identity_refused": true,
+    "unknown_handle_refused": true,
+    "changed_shape_refused": true,
+    "excessive_limits_refused": true,
+    "changed_frame_refused": true,
+    "replay_refused": true,
+    "receipt_verified": true,
+    "passed": true,
+    "data_queries": 1,
+    "data_query_gate_passed": true,
+    "process": 4,
+    "identifiers": [
+      1,
+      2
+    ]
+  },
+  {
+    "campaign": "NDABI registered PostgreSQL and Supabase-compatible RLS v0.3",
+    "mode": "user-rls",
+    "registered_profile": "0x50471002",
+    "registry_digest": "9ca085b683f02b35cb28b732263c9267ac7aa345c1f22ae314d1a22c2c800b32",
+    "request_bytes": 160,
+    "result_rows": 2,
+    "result_bytes": 174,
+    "result_sha256": "6d251c5ee5893da61157b6d6fbd79cc38fd58058a9ba2a68f372fc00d70baa7a",
+    "changed_registry_refused": true,
+    "legacy_identity_refused": true,
+    "unknown_handle_refused": true,
+    "changed_shape_refused": true,
+    "excessive_limits_refused": true,
+    "changed_frame_refused": true,
+    "replay_refused": true,
+    "receipt_verified": true,
+    "passed": true,
+    "data_queries": 1,
+    "data_query_gate_passed": true,
+    "process": 4,
+    "identifiers": [
+      3,
+      4
+    ]
+  }
+]

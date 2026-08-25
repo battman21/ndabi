@@ -6,7 +6,8 @@
 
 use ndabi_protocol::{
     Authority, Backend, BackendIdentity, BatchBackend, BatchItems, BatchOperation, BoundedOutput,
-    Clock, Execution, ExecutionLimits, MemoryReplayStore, Operation, ProtocolError, ReplayStore,
+    CapabilityManifest, Clock, Execution, ExecutionLimits, MemoryReplayStore, Operation,
+    PlanRegistry, ProtocolError, RegisteredPlan, ReplayStore, CAPABILITY_BATCH, CAPABILITY_QUERY,
 };
 use postgres::{Client, Row, Statement};
 
@@ -16,8 +17,12 @@ pub use ndabi_protocol::{
 
 pub const POSTGRESQL_ENGINE_ID: u32 = 0x5047_0001;
 pub const POSTGRESQL_RANGE_PROFILE_ID: u32 = 0x5047_1001;
+pub const POSTGRESQL_RANGE_REGISTRY_PROFILE_ID: u32 = 0x5047_1002;
 pub const RANGE_OPCODE: u16 = 1;
 const PLAN_DOMAIN: &[u8] = b"ndabi/postgresql/range-profile/v1";
+const PARAMETER_SCHEMA_DOMAIN: &[u8] = b"ndabi/postgresql/range-parameters/v1";
+const MAXIMUM_RANGE_ROWS: u32 = 4_096;
+const MAXIMUM_RANGE_RESULT_BYTES: u32 = 6 + MAXIMUM_RANGE_ROWS * 84;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OperationBinding {
@@ -56,17 +61,41 @@ impl RangeProfile {
         schema_digest: [u8; 32],
         policy_digest: [u8; 32],
     ) -> Result<BackendIdentity, ProtocolError> {
-        let mut plan = blake3::Hasher::new();
-        plan.update(PLAN_DOMAIN);
-        plan.update(self.sql.as_bytes());
-        plan.update(&self.binding.plan_handle.to_le_bytes());
-        plan.update(&self.binding.result_shape.to_le_bytes());
         BackendIdentity::new(
             POSTGRESQL_ENGINE_ID,
             POSTGRESQL_RANGE_PROFILE_ID,
             schema_digest,
             policy_digest,
-            *plan.finalize().as_bytes(),
+            self.implementation_digest(),
+        )
+    }
+
+    pub fn registered_plan(self) -> Result<RegisteredPlan, ProtocolError> {
+        RegisteredPlan::new_read(
+            RANGE_OPCODE,
+            self.binding.plan_handle,
+            self.binding.result_shape,
+            MAXIMUM_RANGE_ROWS,
+            MAXIMUM_RANGE_RESULT_BYTES,
+            MAXIMUM_RANGE_ROWS,
+            CAPABILITY_QUERY | CAPABILITY_BATCH,
+            digest_label(PARAMETER_SCHEMA_DOMAIN, b"start:i64,second:zero,count:u32"),
+            self.implementation_digest(),
+        )
+    }
+
+    pub fn plan_registry(
+        self,
+        schema_digest: [u8; 32],
+        policy_digest: [u8; 32],
+    ) -> Result<PlanRegistry, ProtocolError> {
+        PlanRegistry::new(
+            POSTGRESQL_ENGINE_ID,
+            POSTGRESQL_RANGE_REGISTRY_PROFILE_ID,
+            schema_digest,
+            policy_digest,
+            CapabilityManifest::new(CAPABILITY_QUERY | CAPABILITY_BATCH)?,
+            [self.registered_plan()?],
         )
     }
 
@@ -93,6 +122,15 @@ impl RangeProfile {
     pub fn sql(self) -> &'static str {
         self.sql
     }
+
+    fn implementation_digest(self) -> [u8; 32] {
+        let mut plan = blake3::Hasher::new();
+        plan.update(PLAN_DOMAIN);
+        plan.update(self.sql.as_bytes());
+        plan.update(&self.binding.plan_handle.to_le_bytes());
+        plan.update(&self.binding.result_shape.to_le_bytes());
+        *plan.finalize().as_bytes()
+    }
 }
 
 pub struct RangeBackend {
@@ -107,10 +145,33 @@ pub struct RangeBackend {
 
 impl RangeBackend {
     pub fn new(
-        mut client: Client,
+        client: Client,
         profile: RangeProfile,
         schema_digest: [u8; 32],
         policy_digest: [u8; 32],
+    ) -> Result<Self, ProtocolError> {
+        let identity = profile.identity(schema_digest, policy_digest)?;
+        Self::initialise(client, profile, identity)
+    }
+
+    pub fn new_registered(
+        client: Client,
+        profile: RangeProfile,
+        registry: &PlanRegistry,
+    ) -> Result<Self, ProtocolError> {
+        if registry.identity().engine() != POSTGRESQL_ENGINE_ID
+            || registry.identity().profile() != POSTGRESQL_RANGE_REGISTRY_PROFILE_ID
+            || registry.plans() != [profile.registered_plan()?]
+        {
+            return Err(ProtocolError::PlanRegistryMismatch);
+        }
+        Self::initialise(client, profile, registry.identity())
+    }
+
+    fn initialise(
+        mut client: Client,
+        profile: RangeProfile,
+        identity: BackendIdentity,
     ) -> Result<Self, ProtocolError> {
         client
             .batch_execute("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY")
@@ -121,7 +182,6 @@ impl RangeBackend {
         let deadline_statement = client
             .prepare("SELECT set_config('statement_timeout', $1, false)")
             .map_err(|_| ProtocolError::BackendRefused)?;
-        let identity = profile.identity(schema_digest, policy_digest)?;
         Ok(Self {
             client,
             deadline_statement,
@@ -364,6 +424,22 @@ mod tests {
         let policy_changed = profile().identity([1; 32], [4; 32]).expect("identity");
         assert_ne!(first, schema_changed);
         assert_ne!(first, policy_changed);
+    }
+
+    #[test]
+    fn the_registered_profile_seals_the_existing_plan() {
+        let profile = profile();
+        let registry = profile.plan_registry([1; 32], [2; 32]).expect("registry");
+        assert_eq!(registry.plans(), [profile.registered_plan().expect("plan")]);
+        assert_eq!(registry.identity().engine(), POSTGRESQL_ENGINE_ID);
+        assert_eq!(
+            registry.identity().profile(),
+            POSTGRESQL_RANGE_REGISTRY_PROFILE_ID
+        );
+        assert_ne!(
+            registry.identity(),
+            profile.identity([1; 32], [2; 32]).expect("legacy identity")
+        );
     }
 
     #[test]

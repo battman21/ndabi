@@ -8,17 +8,20 @@ use std::time::Duration;
 use mongodb::bson::{doc, spec::BinarySubtype, Binary};
 use mongodb::sync::{Client, Collection};
 use ndabi_protocol::{
-    Backend, BackendIdentity, BoundedOutput, ExecutionLimits, Operation, ProtocolError,
+    digest_label, Backend, BackendIdentity, BoundedOutput, CapabilityManifest, ExecutionLimits,
+    Operation, PlanRegistry, ProtocolError, RegisteredPlan, CAPABILITY_QUERY,
 };
 use serde::Deserialize;
 
 pub const MONGODB_ENGINE_ID: u32 = 0x4d47_0001;
 pub const MONGODB_ID_WINDOW_PROFILE_ID: u32 = 0x4d47_1001;
+pub const MONGODB_ID_WINDOW_REGISTRY_PROFILE_ID: u32 = 0x4d47_1002;
 pub const FIND_ID_WINDOW: u16 = 0x22;
 pub const ROW_BYTES: usize = 84;
 pub const MAX_BATCH_ITEMS: usize = 128;
 pub const DATASET_ROWS: i64 = 1_000_000;
 const PLAN_DOMAIN: &[u8] = b"ndabi/mongodb/id-window/v1";
+const PARAMETER_SCHEMA_DOMAIN: &[u8] = b"ndabi/mongodb/id-window-parameters/v1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OperationBinding {
@@ -102,19 +105,41 @@ impl IdWindowProfile {
         schema_digest: [u8; 32],
         policy_digest: [u8; 32],
     ) -> Result<BackendIdentity, ProtocolError> {
-        let mut plan = blake3::Hasher::new();
-        plan.update(PLAN_DOMAIN);
-        plan.update(self.database.as_bytes());
-        plan.update(self.collection.as_bytes());
-        plan.update(b"find:_id-in;project:registered-fields;sort:_id-asc;single-batch");
-        plan.update(&self.binding.plan_handle.to_le_bytes());
-        plan.update(&self.binding.result_shape.to_le_bytes());
         BackendIdentity::new(
             MONGODB_ENGINE_ID,
             MONGODB_ID_WINDOW_PROFILE_ID,
             schema_digest,
             policy_digest,
-            *plan.finalize().as_bytes(),
+            self.implementation_digest(),
+        )
+    }
+
+    pub fn registered_plan(&self) -> Result<RegisteredPlan, ProtocolError> {
+        RegisteredPlan::new_read(
+            FIND_ID_WINDOW,
+            self.binding.plan_handle,
+            self.binding.result_shape,
+            1,
+            (MAX_BATCH_ITEMS * ROW_BYTES) as u32,
+            MAX_BATCH_ITEMS as u32,
+            CAPABILITY_QUERY,
+            digest_label(PARAMETER_SCHEMA_DOMAIN, b"first:i64,count:i64,stride:u32"),
+            self.implementation_digest(),
+        )
+    }
+
+    pub fn plan_registry(
+        &self,
+        schema_digest: [u8; 32],
+        policy_digest: [u8; 32],
+    ) -> Result<PlanRegistry, ProtocolError> {
+        PlanRegistry::new(
+            MONGODB_ENGINE_ID,
+            MONGODB_ID_WINDOW_REGISTRY_PROFILE_ID,
+            schema_digest,
+            policy_digest,
+            CapabilityManifest::new(CAPABILITY_QUERY)?,
+            [self.registered_plan()?],
         )
     }
 
@@ -155,6 +180,17 @@ impl IdWindowProfile {
         };
         window.identifiers()?;
         Ok(window)
+    }
+
+    fn implementation_digest(&self) -> [u8; 32] {
+        let mut plan = blake3::Hasher::new();
+        plan.update(PLAN_DOMAIN);
+        plan.update(self.database.as_bytes());
+        plan.update(self.collection.as_bytes());
+        plan.update(b"find:_id-in;project:registered-fields;sort:_id-asc;single-batch");
+        plan.update(&self.binding.plan_handle.to_le_bytes());
+        plan.update(&self.binding.result_shape.to_le_bytes());
+        *plan.finalize().as_bytes()
     }
 }
 
@@ -200,6 +236,28 @@ impl IdWindowBackend {
             collection,
             profile,
             identity,
+            executions: 0,
+        })
+    }
+
+    pub fn from_client_registered(
+        client: Client,
+        profile: IdWindowProfile,
+        registry: &PlanRegistry,
+    ) -> Result<Self, ProtocolError> {
+        if registry.identity().engine() != MONGODB_ENGINE_ID
+            || registry.identity().profile() != MONGODB_ID_WINDOW_REGISTRY_PROFILE_ID
+            || registry.plans() != [profile.registered_plan()?]
+        {
+            return Err(ProtocolError::PlanRegistryMismatch);
+        }
+        let collection = client
+            .database(&profile.database)
+            .collection(&profile.collection);
+        Ok(Self {
+            collection,
+            profile,
+            identity: registry.identity(),
             executions: 0,
         })
     }
@@ -319,6 +377,25 @@ mod tests {
         assert!(profile().operation(0, 1, 0).is_err());
         assert!(profile().operation(DATASET_ROWS - 1, 2, 1).is_err());
         assert!(profile().operation(i64::MAX, 2, u32::MAX).is_err());
+    }
+
+    #[test]
+    fn the_registered_profile_seals_the_existing_plan() {
+        let profile = profile();
+        let registry = profile.plan_registry([1; 32], [2; 32]).expect("registry");
+        assert_eq!(
+            registry.plans(),
+            [profile.registered_plan().expect("registered plan")]
+        );
+        assert_eq!(registry.identity().engine(), MONGODB_ENGINE_ID);
+        assert_eq!(
+            registry.identity().profile(),
+            MONGODB_ID_WINDOW_REGISTRY_PROFILE_ID
+        );
+        assert_ne!(
+            registry.identity(),
+            profile.identity([1; 32], [2; 32]).expect("legacy identity")
+        );
     }
 
     #[test]
