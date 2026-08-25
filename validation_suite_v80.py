@@ -56,6 +56,7 @@ LEGACY_RUN_PROCESS = campaign.run_process
 LEGACY_VALIDATE_PROCESS_REPORT = campaign.validate_process_report
 LEGACY_CAMPAIGN_SUMMARY = campaign.campaign_summary
 LEGACY_REPEATABILITY = campaign.repeatability
+LEGACY_SECURITY_CHECKS = campaign.v72.security_checks
 LEGACY_ARMS = campaign.ARMS
 LEGACY_ARM_IDENTIFIERS = campaign.ARM_IDENTIFIERS
 LEGACY_QUERY_MULTIPLIERS = campaign.QUERY_MULTIPLIERS
@@ -74,6 +75,7 @@ LEGACY_STATE = {
         "PROCESS_COUNT",
         "REQUIRE_QUIET_HOST",
         "RESULT_ROOT",
+        "SECURITY_CHECK_COUNT",
         "SAMPLES_BY_ARM",
         "SESSION_PROOF_EXPECTED",
         "SESSION_PROOF_LABEL",
@@ -489,8 +491,23 @@ def repeatability(processes: list[dict]) -> tuple[list[dict], bool]:
     return evidence, passed
 
 
+LEGACY_MODULE_STATE = {
+    "ARMS": ARMS,
+    "ARM_IDENTIFIERS": ARM_IDENTIFIERS,
+    "FUNCTIONAL_SAMPLES_BY_ARM": FUNCTIONAL_SAMPLES_BY_ARM,
+    "QUERY_MULTIPLIERS": QUERY_MULTIPLIERS,
+    "REQUEST_BYTES_KINDS": REQUEST_BYTES_KINDS,
+    "SAMPLES_BY_ARM": SAMPLES_BY_ARM,
+    "SOURCE_PATHS": SOURCE_PATHS,
+    "WORKER_SCHEMA": WORKER_SCHEMA,
+    "campaign_summary": campaign_summary,
+    "compare_measurements": compare_measurements,
+}
+
+
 def restore_legacy_campaign() -> None:
     global ENFORCE_PERFORMANCE
+    globals().update(LEGACY_MODULE_STATE)
     for name, value in LEGACY_STATE.items():
         setattr(campaign, name, value)
     campaign.ARMS = LEGACY_ARMS
@@ -502,6 +519,7 @@ def restore_legacy_campaign() -> None:
     campaign.validate_process_report = LEGACY_VALIDATE_PROCESS_REPORT
     campaign.campaign_summary = LEGACY_CAMPAIGN_SUMMARY
     campaign.repeatability = LEGACY_REPEATABILITY
+    campaign.v72.security_checks = LEGACY_SECURITY_CHECKS
     ENFORCE_PERFORMANCE = True
 
 

@@ -8,8 +8,8 @@ use std::fmt;
 use subtle::ConstantTimeEq;
 
 use super::{
-    get_i64, get_u16, get_u32, get_u64, put_i64, put_u16, put_u32, put_u64, receipt,
-    BackendIdentity, BoundedOutput, ClientSession, Clock, ExecutionLimits, ProtocolError,
+    digest_receipt, get_i64, get_u16, get_u32, get_u64, put_i64, put_u16, put_u32, put_u64,
+    receipt, BackendIdentity, BoundedOutput, ClientSession, Clock, ExecutionLimits, ProtocolError,
     ReplayStore, ServerSession, AUTHENTICATED_BYTES, BATCH_FRAME_DOMAIN, MAGIC, READ_ACCESS,
     TAG_BYTES, VERSION_MAJOR, VERSION_MINOR,
 };
@@ -206,6 +206,30 @@ impl ServerSession {
         replay: &mut R,
         clock: &C,
     ) -> Result<BatchExecution, ProtocolError> {
+        self.execute_batch_inner(frame, backend, replay, clock, false)
+    }
+
+    /// Hash the result while the backend writes it.
+    ///
+    /// This method uses the v0.2 digest receipt and leaves the v0.1 receipt unchanged.
+    pub fn execute_batch_incremental_receipt<B: BatchBackend, R: ReplayStore, C: Clock>(
+        &self,
+        frame: &[u8],
+        backend: &mut B,
+        replay: &mut R,
+        clock: &C,
+    ) -> Result<BatchExecution, ProtocolError> {
+        self.execute_batch_inner(frame, backend, replay, clock, true)
+    }
+
+    fn execute_batch_inner<B: BatchBackend, R: ReplayStore, C: Clock>(
+        &self,
+        frame: &[u8],
+        backend: &mut B,
+        replay: &mut R,
+        clock: &C,
+        incremental_receipt: bool,
+    ) -> Result<BatchExecution, ProtocolError> {
         let admitted_unix_us = clock.now_unix_us()?;
         let pending = self.verify_batch(frame, admitted_unix_us, replay)?;
         if backend.identity() != self.authority.context.backend() {
@@ -217,7 +241,11 @@ impl ServerSession {
             maximum_result_bytes: pending.result_budget,
             maximum_rows: pending.row_budget,
         };
-        let mut output = BoundedOutput::new_deferred(pending.result_budget, pending.row_budget);
+        let mut output = if incremental_receipt {
+            BoundedOutput::new_deferred_digesting(pending.result_budget, pending.row_budget)
+        } else {
+            BoundedOutput::new_deferred(pending.result_budget, pending.row_budget)
+        };
         backend.execute_batch(pending.operation, pending.items, limits, &mut output)?;
         if clock.now_unix_us()? >= pending.deadline_unix_us {
             return Err(ProtocolError::ExpiredDuringExecution);
@@ -228,13 +256,23 @@ impl ServerSession {
             pending.nonce,
         )?;
         let frame_digest = *blake3::hash(frame).as_bytes();
-        let execution_receipt = receipt(
-            &self.authority,
-            frame_digest,
-            pending.nonce,
-            output.rows,
-            &output.bytes,
-        );
+        let execution_receipt = if incremental_receipt {
+            digest_receipt(
+                &self.authority,
+                frame_digest,
+                pending.nonce,
+                output.rows,
+                output.exact_result_digest()?,
+            )
+        } else {
+            receipt(
+                &self.authority,
+                frame_digest,
+                pending.nonce,
+                output.rows,
+                &output.bytes,
+            )
+        };
         Ok(BatchExecution {
             operation: pending.operation,
             item_count: pending.item_count,
@@ -466,6 +504,55 @@ mod tests {
         assert_eq!(
             client
                 .verify_execution_receipt(&frame, execution.rows, &execution.bytes, &[9; 32])
+                .unwrap_err(),
+            ProtocolError::ReceiptMismatch
+        );
+    }
+
+    #[test]
+    fn the_incremental_receipt_binds_every_result_byte_without_a_server_rehash() {
+        let server = ServerSession::new(authority(20), 128, 4).expect("server");
+        let client = ClientSession::new(authority(20));
+        let frame = frame();
+        let execution = server
+            .execute_batch_incremental_receipt(
+                &frame,
+                &mut backend(),
+                &mut MemoryReplayStore::default(),
+                &clock(),
+            )
+            .expect("incremental execution");
+
+        client
+            .verify_digest_execution_receipt(
+                &frame,
+                execution.rows,
+                &execution.bytes,
+                &execution.receipt,
+            )
+            .expect("incremental receipt");
+        assert_eq!(
+            client
+                .verify_execution_receipt(
+                    &frame,
+                    execution.rows,
+                    &execution.bytes,
+                    &execution.receipt,
+                )
+                .unwrap_err(),
+            ProtocolError::ReceiptMismatch
+        );
+
+        let mut changed = execution.bytes.clone();
+        changed[1] ^= 1;
+        assert_eq!(
+            client
+                .verify_digest_execution_receipt(
+                    &frame,
+                    execution.rows,
+                    &changed,
+                    &execution.receipt,
+                )
                 .unwrap_err(),
             ProtocolError::ReceiptMismatch
         );

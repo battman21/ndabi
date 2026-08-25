@@ -382,13 +382,40 @@ The v8.1 repair doubles both HTTP control sample counts and retains every accept
 Its preserved performance smoke passed the throughput, latency, correctness, query, and security gates.
 Its combined process CPU exceeded native by 47.17%, 32.26%, and 37.91% at concurrency 1, 8, and 32.
 No v8.1 performance result is accepted.
+The v8.2 candidate separates incremental server receipt CPU, client verification CPU, and legacy receipt CPU.
+Its functional Docker smoke passed exact results and all 23 security checks.
+Its duration-qualified smoke rejected the incremental receipt optimisation.
+Combined CPU remained 32.74% to 38.99% above native.
+Incremental CPU was 1.12% to 5.21% above legacy NDABI.
+The small-write incremental hash strategy reduced no compute for this complete-result profile.
+No v8.2 performance result is accepted.
+The v8.3 candidate adds one exact fixed-buffer encoder and a matching native control.
+It measures each v8.3 client with the process CPU clock.
+It also reads cumulative CPU for PostgreSQL, Supavisor, and PostgREST during the measured interval.
+Functional smoke `20260824T231018Z` passed exact results and all seventeen applicable security checks.
+The first performance smoke produced no result because the host failed the frozen idle gate.
+No v8.3 speed or CPU result is accepted.
 The v5.2 result proves one PostgreSQL compare-and-swap write profile.
-Tokens, energy, public WAN, production custody, and general query or write support remain unproven.
+The remote model v0.2 canary preserves the exact human prompt across all surfaces.
+Claude reported 81.15% fewer complete input tokens for governed recall and the compact semantic result.
+Codex reported 31.62% fewer complete input tokens.
+All three providers returned the exact identifier sequence and reduced submitted bytes by 96.74%.
+Grok exposed no token counters.
 
-Run the v8.1 functional smoke campaign during development:
+The v8.4 separate-process transport candidate passed TLS 1.3 mTLS, certificate refusal, rotation, exact results, and receipts.
+Its qualified performance run failed the frozen gate.
+Its request was 39.85% smaller and missed the 40% gate.
+The final run passed complete host qualification but retained no source or binary digest.
+Treat its transport measurements as unattributed diagnostics.
+Its p95 result ranged from 28.57% faster to 30.54% slower.
+No v8.4 speed result is accepted.
+
+Energy, geographic WAN, production custody, and general query or write support remain unproven.
+
+Run the v8.3 functional smoke campaign during development:
 
 ```sh
-python3 validation_suite_v81.py --functional-smoke
+python3 validation_suite_v83.py --functional-smoke
 ```
 
 This command tests results, query counts, controls, resources, and security.
@@ -397,7 +424,7 @@ It disables every performance gate and cannot produce an accepted campaign.
 Run the performance smoke campaign only on a quiet host:
 
 ```sh
-python3 validation_suite_v81.py --smoke
+python3 validation_suite_v83.py --smoke
 ```
 
 Commit the frozen source before a formal campaign.

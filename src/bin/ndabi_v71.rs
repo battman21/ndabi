@@ -40,8 +40,31 @@ const LOAD_WARMUPS: usize = 3;
 enum Arm {
     Postgrest = 0,
     Ndabi = 1,
-    Native = 2,
-    PostgrestRpc = 3,
+}
+
+#[derive(Clone, Copy)]
+enum LoadArm {
+    Postgrest,
+    Ndabi,
+    NdabiFixed,
+    NdabiIncremental,
+    NdabiIncrementalServer,
+    Native,
+    PostgrestRpc,
+}
+
+impl LoadArm {
+    fn id(self) -> &'static str {
+        match self {
+            Self::Postgrest => "postgrest-user-jwt",
+            Self::Ndabi => "ndabi-indexed-batch-session",
+            Self::NdabiFixed => "ndabi-fixed-buffer-session",
+            Self::NdabiIncremental => "ndabi-incremental-receipt-session",
+            Self::NdabiIncrementalServer => "ndabi-incremental-server-session",
+            Self::Native => "native-indexed-batch-session",
+            Self::PostgrestRpc => "postgrest-rpc-user-jwt",
+        }
+    }
 }
 
 impl Arm {
@@ -49,8 +72,6 @@ impl Arm {
         match self {
             Self::Postgrest => "postgrest-user-jwt",
             Self::Ndabi => "ndabi-indexed-batch-session",
-            Self::Native => "native-indexed-batch-session",
-            Self::PostgrestRpc => "postgrest-rpc-user-jwt",
         }
     }
 }
@@ -182,7 +203,10 @@ fn run() -> Result<(), String> {
         return admit_only(&arguments[1..]);
     }
     if arguments.first().map(String::as_str) == Some("--ndabi-probe") {
-        return ndabi_probe(&arguments[1..]);
+        return ndabi_probe(&arguments[1..], false);
+    }
+    if arguments.first().map(String::as_str) == Some("--ndabi-incremental-probe") {
+        return ndabi_probe(&arguments[1..], true);
     }
     if arguments.first().map(String::as_str) == Some("--load-worker") {
         return load_worker(&arguments[1..]);
@@ -255,10 +279,13 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
         );
     }
     let arm = match arguments[0].as_str() {
-        "ndabi" => Arm::Ndabi,
-        "native" => Arm::Native,
-        "postgrest" => Arm::Postgrest,
-        "postgrest_rpc" => Arm::PostgrestRpc,
+        "ndabi" => LoadArm::Ndabi,
+        "ndabi_fixed" => LoadArm::NdabiFixed,
+        "ndabi_incremental" => LoadArm::NdabiIncremental,
+        "ndabi_incremental_server" => LoadArm::NdabiIncrementalServer,
+        "native" => LoadArm::Native,
+        "postgrest" => LoadArm::Postgrest,
+        "postgrest_rpc" => LoadArm::PostgrestRpc,
         _ => return Err("the load arm is invalid".to_string()),
     };
     let token = read_secret(&arguments[3])?;
@@ -290,6 +317,8 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
     let worker_schema = match arguments.get(14).map(String::as_str) {
         None | Some("ndabi-supavisor-load-worker-v7.3") => "ndabi-supavisor-load-worker-v7.3",
         Some("ndabi-supavisor-load-worker-v8.0") => "ndabi-supavisor-load-worker-v8.0",
+        Some("ndabi-supavisor-load-worker-v8.2") => "ndabi-supavisor-load-worker-v8.2",
+        Some("ndabi-supavisor-load-worker-v8.3") => "ndabi-supavisor-load-worker-v8.3",
         Some(_) => return Err("the load worker schema is unsupported".to_string()),
     };
     let starts = starts(start, operations)?;
@@ -304,7 +333,10 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
         .checked_add(10_000)
         .ok_or_else(|| "the load session identifier overflowed".to_string())?;
     let mut ndabi = match arm {
-        Arm::Ndabi => Some(NdabiState::new(
+        LoadArm::Ndabi
+        | LoadArm::NdabiFixed
+        | LoadArm::NdabiIncremental
+        | LoadArm::NdabiIncrementalServer => Some(NdabiState::new(
             &arguments[1],
             &user,
             profile,
@@ -313,24 +345,37 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
             result_budget,
             total_rows,
             session_index,
+            matches!(arm, LoadArm::NdabiFixed),
         )?),
-        Arm::Postgrest | Arm::Native | Arm::PostgrestRpc => None,
+        LoadArm::Postgrest | LoadArm::Native | LoadArm::PostgrestRpc => None,
     };
     let mut native = match arm {
-        Arm::Native => Some(NativeState::new(&arguments[1], &user)?),
-        Arm::Ndabi | Arm::Postgrest | Arm::PostgrestRpc => None,
+        LoadArm::Native => Some(NativeState::new(&arguments[1], &user)?),
+        LoadArm::Ndabi
+        | LoadArm::NdabiFixed
+        | LoadArm::NdabiIncremental
+        | LoadArm::NdabiIncrementalServer
+        | LoadArm::Postgrest
+        | LoadArm::PostgrestRpc => None,
     };
     let rest = match arm {
-        Arm::Postgrest | Arm::PostgrestRpc => Some(RestState::new(&arguments[2], &token)?),
-        Arm::Ndabi | Arm::Native => None,
+        LoadArm::Postgrest | LoadArm::PostgrestRpc => Some(RestState::new(&arguments[2], &token)?),
+        LoadArm::Ndabi
+        | LoadArm::NdabiFixed
+        | LoadArm::NdabiIncremental
+        | LoadArm::NdabiIncrementalServer
+        | LoadArm::Native => None,
     };
     let (request_application_bytes, request_bytes_kind) = match arm {
-        Arm::Ndabi => (
+        LoadArm::Ndabi
+        | LoadArm::NdabiFixed
+        | LoadArm::NdabiIncremental
+        | LoadArm::NdabiIncrementalServer => (
             ndabi.as_ref().map(|state| state.frame.len()),
             "exact-ndabi-frame",
         ),
-        Arm::Native => (None, "unavailable-postgresql-driver-wire"),
-        Arm::PostgrestRpc => (
+        LoadArm::Native => (None, "unavailable-postgresql-driver-wire"),
+        LoadArm::PostgrestRpc => (
             Some(
                 rest.as_ref()
                     .ok_or_else(|| "the PostgREST RPC load state is absent".to_string())?
@@ -339,7 +384,7 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
             ),
             "exact-json-body",
         ),
-        Arm::Postgrest => (
+        LoadArm::Postgrest => (
             Some(
                 rest.as_ref()
                     .ok_or_else(|| "the PostgREST load state is absent".to_string())?
@@ -371,7 +416,7 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
     wait_for_release(Path::new(&arguments[13]))?;
     let mut samples = Vec::with_capacity(sample_count);
     let measured_start_monotonic_ns = monotonic_ns()?;
-    let total_cpu_started = thread_cpu_ns()?;
+    let total_cpu_started = load_cpu_ns(worker_schema)?;
     let total_started = Instant::now();
     for _ in 0..sample_count {
         let allocation_started = begin_measurement();
@@ -398,7 +443,7 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
         });
     }
     let total_elapsed_ns = elapsed_ns(total_started)?;
-    let total_cpu_ns = thread_cpu_ns()?.saturating_sub(total_cpu_started);
+    let total_cpu_ns = load_cpu_ns(worker_schema)?.saturating_sub(total_cpu_started);
     let measured_end_monotonic_ns = monotonic_ns()?;
     samples.sort_by_key(|sample| sample.wall_ns);
     let raw_ns = samples
@@ -455,7 +500,7 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
 }
 
 fn execute_load_request(
-    arm: Arm,
+    arm: LoadArm,
     ndabi: Option<&mut NdabiState>,
     native: Option<&mut NativeState>,
     rest: Option<&RestState>,
@@ -464,16 +509,25 @@ fn execute_load_request(
     total_rows: u32,
 ) -> Result<Vec<u8>, String> {
     match arm {
-        Arm::Ndabi => ndabi
+        LoadArm::Ndabi => ndabi
             .ok_or_else(|| "the NDABI load state is absent".to_string())?
             .execute(result_budget, total_rows),
-        Arm::Native => native
+        LoadArm::NdabiFixed => ndabi
+            .ok_or_else(|| "the fixed-buffer NDABI load state is absent".to_string())?
+            .execute(result_budget, total_rows),
+        LoadArm::NdabiIncremental => ndabi
+            .ok_or_else(|| "the incremental NDABI load state is absent".to_string())?
+            .execute_incremental(result_budget, total_rows, true),
+        LoadArm::NdabiIncrementalServer => ndabi
+            .ok_or_else(|| "the incremental NDABI server state is absent".to_string())?
+            .execute_incremental(result_budget, total_rows, false),
+        LoadArm::Native => native
             .ok_or_else(|| "the native load state is absent".to_string())?
             .execute_batch(starts),
-        Arm::Postgrest => rest
+        LoadArm::Postgrest => rest
             .ok_or_else(|| "the PostgREST load state is absent".to_string())?
             .execute_batch(starts),
-        Arm::PostgrestRpc => rest
+        LoadArm::PostgrestRpc => rest
             .ok_or_else(|| "the PostgREST RPC load state is absent".to_string())?
             .execute_rpc_batch(starts),
     }
@@ -520,7 +574,7 @@ fn admit_only(arguments: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn ndabi_probe(arguments: &[String]) -> Result<(), String> {
+fn ndabi_probe(arguments: &[String], incremental_receipt: bool) -> Result<(), String> {
     if arguments.len() != 8 {
         return Err(
             "connection, token path, public-key path, key identifier, issuer, audience, start, and operations are required"
@@ -560,14 +614,16 @@ fn ndabi_probe(arguments: &[String]) -> Result<(), String> {
         result_budget,
         total_rows,
         99,
+        false,
     )?;
-    let probe = state.security_probe(result_budget, total_rows)?;
+    let probe = state.security_probe(result_budget, total_rows, incremental_receipt)?;
     println!(
-        "{{\"accepted\":true,\"rows\":{total_rows},\"result_sha256\":\"{}\",\"changed_frame_refused\":{},\"replay_refused_before_query\":{},\"invalid_receipt_refused\":{},\"valid_result_accepted\":{}}}",
+        "{{\"accepted\":true,\"rows\":{total_rows},\"result_sha256\":\"{}\",\"changed_frame_refused\":{},\"replay_refused_before_query\":{},\"invalid_receipt_refused\":{},\"changed_result_refused\":{},\"valid_result_accepted\":{}}}",
         hex(&Sha256::digest(probe.bytes)),
         probe.changed_frame_refused,
         probe.replay_refused_before_query,
         probe.invalid_receipt_refused,
+        probe.changed_result_refused,
         probe.valid_result_accepted,
     );
     Ok(())
@@ -600,6 +656,7 @@ fn measure_case(
         result_budget,
         total_rows,
         case_index,
+        false,
     )?;
     let rest = RestState::new(endpoint, token)?;
     let before_queries = ndabi.backend.data_queries();
@@ -618,9 +675,6 @@ fn measure_case(
             let bytes = match arm {
                 Arm::Postgrest => rest.execute_batch(&starts)?,
                 Arm::Ndabi => ndabi.execute(result_budget, total_rows)?,
-                Arm::Native | Arm::PostgrestRpc => {
-                    return Err("a load-only arm entered the legacy paired measurement".to_string())
-                }
             };
             let wall_ns = elapsed_ns(started)?;
             let allocation = end_measurement(allocation_started);
@@ -705,6 +759,7 @@ impl NdabiState {
         result_budget: u32,
         total_rows: u32,
         case_index: usize,
+        exact_output: bool,
     ) -> Result<Self, String> {
         let authority = authority(user, identity, 7_100 + case_index as u64)?;
         let items = starts
@@ -713,14 +768,25 @@ impl NdabiState {
             .collect::<Vec<_>>();
         let frame = vec![0; batch_frame_bytes(items.len()).map_err(|error| error.to_string())?];
         let client = Client::connect(connection, NoTls).map_err(|error| error.to_string())?;
-        let backend = IndexedBatchSessionBackend::new(
-            client,
-            profile,
-            schema_digest(),
-            policy_digest(),
-            user,
-            5_000,
-        )
+        let backend = if exact_output {
+            IndexedBatchSessionBackend::new_exact(
+                client,
+                profile,
+                schema_digest(),
+                policy_digest(),
+                user,
+                5_000,
+            )
+        } else {
+            IndexedBatchSessionBackend::new(
+                client,
+                profile,
+                schema_digest(),
+                policy_digest(),
+                user,
+                5_000,
+            )
+        }
         .map_err(|error| error.to_string())?;
         Ok(Self {
             profile,
@@ -771,64 +837,147 @@ impl NdabiState {
         Ok(execution.bytes)
     }
 
-    fn security_probe(
+    fn execute_incremental(
         &mut self,
         result_budget: u32,
         total_rows: u32,
-    ) -> Result<ProbeResult, String> {
+        verify_client_receipt: bool,
+    ) -> Result<Vec<u8>, String> {
         self.encode(result_budget, total_rows)?;
-        let queries_before = self.backend.data_queries();
-        let mut changed = self.frame.clone();
-        changed[60] ^= 1;
-        let changed_frame_refused = matches!(
-            self.wire_server.execute_batch(
-                &changed,
-                &mut self.backend,
-                &mut self.replay,
-                &SystemClock,
-            ),
-            Err(ProtocolError::AuthenticationFailed)
-        ) && self.backend.data_queries() == queries_before;
         let execution = self
             .wire_server
-            .execute_batch(
+            .execute_batch_incremental_receipt(
                 &self.frame,
                 &mut self.backend,
                 &mut self.replay,
                 &SystemClock,
             )
             .map_err(|error| error.to_string())?;
-        let queries_after = self.backend.data_queries();
-        let replay_refused_before_query = matches!(
+        if verify_client_receipt {
+            self.wire_client
+                .verify_digest_execution_receipt(
+                    &self.frame,
+                    execution.rows,
+                    &execution.bytes,
+                    &execution.receipt,
+                )
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(execution.bytes)
+    }
+
+    fn security_probe(
+        &mut self,
+        result_budget: u32,
+        total_rows: u32,
+        incremental_receipt: bool,
+    ) -> Result<ProbeResult, String> {
+        self.encode(result_budget, total_rows)?;
+        let queries_before = self.backend.data_queries();
+        let mut changed = self.frame.clone();
+        changed[60] ^= 1;
+        let changed_result = if incremental_receipt {
+            self.wire_server.execute_batch_incremental_receipt(
+                &changed,
+                &mut self.backend,
+                &mut self.replay,
+                &SystemClock,
+            )
+        } else {
+            self.wire_server.execute_batch(
+                &changed,
+                &mut self.backend,
+                &mut self.replay,
+                &SystemClock,
+            )
+        };
+        let changed_frame_refused =
+            matches!(changed_result, Err(ProtocolError::AuthenticationFailed))
+                && self.backend.data_queries() == queries_before;
+        let execution = if incremental_receipt {
+            self.wire_server.execute_batch_incremental_receipt(
+                &self.frame,
+                &mut self.backend,
+                &mut self.replay,
+                &SystemClock,
+            )
+        } else {
             self.wire_server.execute_batch(
                 &self.frame,
                 &mut self.backend,
                 &mut self.replay,
                 &SystemClock,
-            ),
-            Err(ProtocolError::Replay)
-        ) && self.backend.data_queries() == queries_after;
-        let invalid_receipt_refused = matches!(
-            self.wire_client.verify_execution_receipt(
-                &self.frame,
-                execution.rows,
-                &execution.bytes,
-                &[9; 32],
-            ),
-            Err(ProtocolError::ReceiptMismatch)
-        );
-        let valid_result_accepted = self
-            .wire_client
-            .verify_execution_receipt(
-                &self.frame,
-                execution.rows,
-                &execution.bytes,
-                &execution.receipt,
             )
-            .is_ok();
+        }
+        .map_err(|error| error.to_string())?;
+        let queries_after = self.backend.data_queries();
+        let replay_result = if incremental_receipt {
+            self.wire_server.execute_batch_incremental_receipt(
+                &self.frame,
+                &mut self.backend,
+                &mut self.replay,
+                &SystemClock,
+            )
+        } else {
+            self.wire_server.execute_batch(
+                &self.frame,
+                &mut self.backend,
+                &mut self.replay,
+                &SystemClock,
+            )
+        };
+        let replay_refused_before_query = matches!(replay_result, Err(ProtocolError::Replay))
+            && self.backend.data_queries() == queries_after;
+        let verify = |candidate: &[u8; 32]| {
+            if incremental_receipt {
+                self.wire_client.verify_digest_execution_receipt(
+                    &self.frame,
+                    execution.rows,
+                    &execution.bytes,
+                    candidate,
+                )
+            } else {
+                self.wire_client.verify_execution_receipt(
+                    &self.frame,
+                    execution.rows,
+                    &execution.bytes,
+                    candidate,
+                )
+            }
+        };
+        let invalid_receipt_refused =
+            matches!(verify(&[9; 32]), Err(ProtocolError::ReceiptMismatch));
+        let mut changed_result = execution.bytes.clone();
+        let first = changed_result
+            .first_mut()
+            .ok_or_else(|| "the NDABI probe result is empty".to_string())?;
+        *first ^= 1;
+        let changed_result_refused = if incremental_receipt {
+            matches!(
+                self.wire_client.verify_digest_execution_receipt(
+                    &self.frame,
+                    execution.rows,
+                    &changed_result,
+                    &execution.receipt,
+                ),
+                Err(ProtocolError::ReceiptMismatch)
+            )
+        } else {
+            matches!(
+                self.wire_client.verify_execution_receipt(
+                    &self.frame,
+                    execution.rows,
+                    &changed_result,
+                    &execution.receipt,
+                ),
+                Err(ProtocolError::ReceiptMismatch)
+            )
+        };
+        let valid_result_accepted = verify(&execution.receipt).is_ok();
         if !(changed_frame_refused
             && replay_refused_before_query
             && invalid_receipt_refused
+            && changed_result_refused
             && valid_result_accepted)
         {
             return Err("an NDABI indexed-batch-session refusal failed".to_string());
@@ -838,6 +987,7 @@ impl NdabiState {
             changed_frame_refused,
             replay_refused_before_query,
             invalid_receipt_refused,
+            changed_result_refused,
             valid_result_accepted,
         })
     }
@@ -848,6 +998,7 @@ struct ProbeResult {
     changed_frame_refused: bool,
     replay_refused_before_query: bool,
     invalid_receipt_refused: bool,
+    changed_result_refused: bool,
     valid_result_accepted: bool,
 }
 
@@ -1027,17 +1178,24 @@ fn encode_postgres_rows(starts: &[i64], rows: &[postgres::Row]) -> Result<Vec<u8
     if rows.len() != starts.len() * ROWS_PER_OPERATION as usize {
         return Err("the native control result changed".to_string());
     }
-    let mut output = Vec::with_capacity(batch_result_bytes(starts.len() as u32)? as usize);
-    output.extend_from_slice(&1_u16.to_be_bytes());
-    output.extend_from_slice(
+    let output_bytes = usize::try_from(batch_result_bytes(
+        u32::try_from(starts.len()).map_err(|error| error.to_string())?,
+    )?)
+    .map_err(|error| error.to_string())?;
+    let mut output = vec![0_u8; output_bytes];
+    output[..2].copy_from_slice(&1_u16.to_be_bytes());
+    output[2..6].copy_from_slice(
         &u32::try_from(starts.len())
             .map_err(|error| error.to_string())?
             .to_be_bytes(),
     );
+    let mut output_offset = 6_usize;
     let mut row_index = 0_usize;
     for start in starts {
-        output.extend_from_slice(&start.to_be_bytes());
-        output.extend_from_slice(&ROWS_PER_OPERATION.to_be_bytes());
+        output[output_offset..output_offset + 8].copy_from_slice(&start.to_be_bytes());
+        output[output_offset + 8..output_offset + 12]
+            .copy_from_slice(&ROWS_PER_OPERATION.to_be_bytes());
+        output_offset += 12;
         for expected_id in *start..*start + i64::from(ROWS_PER_OPERATION) {
             let row = &rows[row_index];
             let id: i64 = row.try_get(0).map_err(|error| error.to_string())?;
@@ -1048,13 +1206,17 @@ fn encode_postgres_rows(starts: &[i64], rows: &[postgres::Row]) -> Result<Vec<u8
             if id != expected_id || payload.len() != 64 {
                 return Err("the native control row shape changed".to_string());
             }
-            output.extend_from_slice(&id.to_be_bytes());
-            output.extend_from_slice(&bucket.to_be_bytes());
-            output.extend_from_slice(&owner.to_be_bytes());
-            output.extend_from_slice(&score.to_be_bytes());
-            output.extend_from_slice(payload);
+            output[output_offset..output_offset + 8].copy_from_slice(&id.to_be_bytes());
+            output[output_offset + 8..output_offset + 12].copy_from_slice(&bucket.to_be_bytes());
+            output[output_offset + 12..output_offset + 16].copy_from_slice(&owner.to_be_bytes());
+            output[output_offset + 16..output_offset + 20].copy_from_slice(&score.to_be_bytes());
+            output[output_offset + 20..output_offset + 84].copy_from_slice(payload);
+            output_offset += 84;
             row_index += 1;
         }
+    }
+    if output_offset != output.len() {
+        return Err("the native control output shape changed".to_string());
     }
     Ok(output)
 }
@@ -1334,6 +1496,32 @@ fn thread_cpu_ns() -> Result<u64, String> {
         .checked_mul(1_000_000_000)
         .and_then(|value| value.checked_add(nanoseconds))
         .ok_or_else(|| "the thread CPU clock overflowed".to_string())
+}
+
+fn load_cpu_ns(worker_schema: &str) -> Result<u64, String> {
+    if worker_schema == "ndabi-supavisor-load-worker-v8.3" {
+        process_cpu_ns()
+    } else {
+        thread_cpu_ns()
+    }
+}
+
+fn process_cpu_ns() -> Result<u64, String> {
+    let mut value = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // Measure all worker threads because a remote client can move work off the calling thread.
+    // SAFETY: The operating system writes one valid `timespec` into the provided pointer.
+    let result = unsafe { libc::clock_gettime(libc::CLOCK_PROCESS_CPUTIME_ID, &mut value) };
+    if result != 0 || value.tv_sec < 0 || value.tv_nsec < 0 {
+        return Err("the process CPU clock failed".to_string());
+    }
+    u64::try_from(value.tv_sec)
+        .map_err(|_| "the process CPU value overflowed".to_string())?
+        .checked_mul(1_000_000_000)
+        .and_then(|seconds| seconds.checked_add(value.tv_nsec as u64))
+        .ok_or_else(|| "the process CPU value overflowed".to_string())
 }
 
 fn hex(bytes: &[u8]) -> String {

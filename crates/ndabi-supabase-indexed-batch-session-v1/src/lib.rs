@@ -16,6 +16,12 @@ const ROWS_PER_ITEM: u32 = 8;
 const ENCODED_ROW_BYTES: u64 = 84;
 const ITEM_HEADER_BYTES: u64 = 12;
 
+#[derive(Clone, Copy)]
+enum OutputEncoding {
+    IncrementalWrites,
+    ExactBuffer,
+}
+
 pub struct IndexedBatchSessionBackend {
     client: Client,
     data_statement: Statement,
@@ -25,16 +31,57 @@ pub struct IndexedBatchSessionBackend {
     identifiers: Vec<i64>,
     data_queries: u64,
     database_result_rows: u64,
+    output_encoding: OutputEncoding,
 }
 
 impl IndexedBatchSessionBackend {
     pub fn new(
+        client: Client,
+        profile: RangeProfile,
+        schema_digest: [u8; 32],
+        policy_digest: [u8; 32],
+        user: &AdmittedIdentity,
+        maximum_statement_ms: u32,
+    ) -> Result<Self, ProtocolError> {
+        Self::new_with_output(
+            client,
+            profile,
+            schema_digest,
+            policy_digest,
+            user,
+            maximum_statement_ms,
+            OutputEncoding::IncrementalWrites,
+        )
+    }
+
+    /// Use one exact output buffer for a complete fixed-shape result.
+    pub fn new_exact(
+        client: Client,
+        profile: RangeProfile,
+        schema_digest: [u8; 32],
+        policy_digest: [u8; 32],
+        user: &AdmittedIdentity,
+        maximum_statement_ms: u32,
+    ) -> Result<Self, ProtocolError> {
+        Self::new_with_output(
+            client,
+            profile,
+            schema_digest,
+            policy_digest,
+            user,
+            maximum_statement_ms,
+            OutputEncoding::ExactBuffer,
+        )
+    }
+
+    fn new_with_output(
         mut client: Client,
         profile: RangeProfile,
         schema_digest: [u8; 32],
         policy_digest: [u8; 32],
         user: &AdmittedIdentity,
         maximum_statement_ms: u32,
+        output_encoding: OutputEncoding,
     ) -> Result<Self, ProtocolError> {
         if user.role() != "authenticated" || maximum_statement_ms == 0 {
             return Err(ProtocolError::BackendRefused);
@@ -86,6 +133,7 @@ impl IndexedBatchSessionBackend {
             identifiers: Vec::with_capacity(32_768),
             data_queries: 0,
             database_result_rows: 0,
+            output_encoding,
         })
     }
 
@@ -134,8 +182,6 @@ impl BatchBackend for IndexedBatchSessionBackend {
         }
         let required_bytes =
             usize::try_from(required_bytes).map_err(|_| ProtocolError::ResultBudgetExceeded)?;
-        output.reserve_total(required_bytes)?;
-
         self.starts.clear();
         self.identifiers.clear();
         let mut previous_end = None;
@@ -158,27 +204,89 @@ impl BatchBackend for IndexedBatchSessionBackend {
             return Err(ProtocolError::BackendRefused);
         }
 
-        let mut batch_header = [0_u8; 6];
-        batch_header[..2].copy_from_slice(&operation.opcode.to_be_bytes());
-        batch_header[2..].copy_from_slice(&item_count.to_be_bytes());
-        output.write(&batch_header)?;
-        let mut row_index = 0_usize;
-        for start in &self.starts {
-            let mut item_header = [0_u8; ITEM_HEADER_BYTES as usize];
-            item_header[..8].copy_from_slice(&start.to_be_bytes());
-            item_header[8..].copy_from_slice(&ROWS_PER_ITEM.to_be_bytes());
-            output.write(&item_header)?;
-            for expected_id in *start..*start + i64::from(ROWS_PER_ITEM) {
-                encode_row(&rows[row_index], expected_id, output)?;
-                row_index += 1;
+        match self.output_encoding {
+            OutputEncoding::IncrementalWrites => {
+                output.reserve_total(required_bytes)?;
+                encode_rows_incrementally(operation, item_count, &self.starts, &rows, output)?;
+                output.complete_rows(total_rows)?;
+            }
+            OutputEncoding::ExactBuffer => {
+                output.write_exact(required_bytes, total_rows, |bytes| {
+                    encode_rows_exact(operation, item_count, &self.starts, &rows, bytes)
+                })?;
             }
         }
-        if row_index != rows.len() {
-            return Err(ProtocolError::BackendRefused);
-        }
-        output.complete_rows(total_rows)?;
         Ok(())
     }
+}
+
+fn encode_rows_incrementally(
+    operation: BatchOperation,
+    item_count: u32,
+    starts: &[i64],
+    rows: &[Row],
+    output: &mut BoundedOutput,
+) -> Result<(), ProtocolError> {
+    let mut batch_header = [0_u8; 6];
+    batch_header[..2].copy_from_slice(&operation.opcode.to_be_bytes());
+    batch_header[2..].copy_from_slice(&item_count.to_be_bytes());
+    output.write(&batch_header)?;
+    let mut row_index = 0_usize;
+    for start in starts {
+        let mut item_header = [0_u8; ITEM_HEADER_BYTES as usize];
+        item_header[..8].copy_from_slice(&start.to_be_bytes());
+        item_header[8..].copy_from_slice(&ROWS_PER_ITEM.to_be_bytes());
+        output.write(&item_header)?;
+        for expected_id in *start..*start + i64::from(ROWS_PER_ITEM) {
+            let mut encoded = [0_u8; ENCODED_ROW_BYTES as usize];
+            encode_row(&rows[row_index], expected_id, &mut encoded)?;
+            output.write(&encoded)?;
+            row_index += 1;
+        }
+    }
+    if row_index != rows.len() {
+        return Err(ProtocolError::BackendRefused);
+    }
+    Ok(())
+}
+
+fn encode_rows_exact(
+    operation: BatchOperation,
+    item_count: u32,
+    starts: &[i64],
+    rows: &[Row],
+    output: &mut [u8],
+) -> Result<(), ProtocolError> {
+    output[..2].copy_from_slice(&operation.opcode.to_be_bytes());
+    output[2..6].copy_from_slice(&item_count.to_be_bytes());
+    let mut offset = 6_usize;
+    let mut row_index = 0_usize;
+    for start in starts {
+        let item_end = offset
+            .checked_add(ITEM_HEADER_BYTES as usize)
+            .ok_or(ProtocolError::OutputShape)?;
+        let item = output
+            .get_mut(offset..item_end)
+            .ok_or(ProtocolError::OutputShape)?;
+        item[..8].copy_from_slice(&start.to_be_bytes());
+        item[8..].copy_from_slice(&ROWS_PER_ITEM.to_be_bytes());
+        offset = item_end;
+        for expected_id in *start..*start + i64::from(ROWS_PER_ITEM) {
+            let row_end = offset
+                .checked_add(ENCODED_ROW_BYTES as usize)
+                .ok_or(ProtocolError::OutputShape)?;
+            let target = output
+                .get_mut(offset..row_end)
+                .ok_or(ProtocolError::OutputShape)?;
+            encode_row(&rows[row_index], expected_id, target)?;
+            row_index += 1;
+            offset = row_end;
+        }
+    }
+    if row_index != rows.len() || offset != output.len() {
+        return Err(ProtocolError::OutputShape);
+    }
+    Ok(())
 }
 
 fn append_identifiers(
@@ -202,11 +310,7 @@ fn append_identifiers(
     Ok(end)
 }
 
-fn encode_row(
-    row: &Row,
-    expected_id: i64,
-    output: &mut BoundedOutput,
-) -> Result<(), ProtocolError> {
+fn encode_row(row: &Row, expected_id: i64, output: &mut [u8]) -> Result<(), ProtocolError> {
     let id: i64 = row.try_get(0).map_err(|_| ProtocolError::BackendRefused)?;
     let bucket: i32 = row.try_get(1).map_err(|_| ProtocolError::BackendRefused)?;
     let owner: i32 = row.try_get(2).map_err(|_| ProtocolError::BackendRefused)?;
@@ -215,13 +319,15 @@ fn encode_row(
     if id != expected_id || payload.len() != 64 {
         return Err(ProtocolError::BackendRefused);
     }
-    let mut encoded = [0_u8; ENCODED_ROW_BYTES as usize];
-    encoded[..8].copy_from_slice(&id.to_be_bytes());
-    encoded[8..12].copy_from_slice(&bucket.to_be_bytes());
-    encoded[12..16].copy_from_slice(&owner.to_be_bytes());
-    encoded[16..20].copy_from_slice(&score.to_be_bytes());
-    encoded[20..].copy_from_slice(payload);
-    output.write(&encoded)
+    if output.len() != ENCODED_ROW_BYTES as usize {
+        return Err(ProtocolError::OutputShape);
+    }
+    output[..8].copy_from_slice(&id.to_be_bytes());
+    output[8..12].copy_from_slice(&bucket.to_be_bytes());
+    output[12..16].copy_from_slice(&owner.to_be_bytes());
+    output[16..20].copy_from_slice(&score.to_be_bytes());
+    output[20..].copy_from_slice(payload);
+    Ok(())
 }
 
 #[cfg(test)]

@@ -54,6 +54,7 @@ QUERY_MULTIPLIERS = {"ndabi": 1, "postgrest": OPERATIONS}
 WORKER_SCHEMA = "ndabi-supavisor-load-worker-v7.3"
 MEASUREMENT_MODE = "performance"
 PERFORMANCE_GATES_ENFORCED = True
+SECURITY_CHECK_COUNT = 17
 SMOKE_RESULT_PATH: Path | None = None
 POOL_SIZE = 64
 MAX_CLIENTS = 200
@@ -836,7 +837,9 @@ def main() -> int:
             security = v72.security_checks(
                 pooled_connection, endpoint, token_paths, public_key, valid_one
             )
-            security_passed = len(security) == 17 and all(security.values())
+            security_passed = (
+                len(security) == SECURITY_CHECK_COUNT and all(security.values())
+            )
             for process in range(1, process_count + 1):
                 report = run_process(
                     process,

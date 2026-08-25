@@ -8,9 +8,9 @@ use subtle::ConstantTimeEq;
 use zeroize::Zeroize;
 
 use super::{
-    authenticate_request, decode_transport, encode_transport, transport_frame_bytes, Authority,
-    ProtocolError, TransportDirection, TransportFields, TransportFrame, TransportKind,
-    TRANSPORT_MIN_FRAME_BYTES,
+    authenticate_request, decode_transport, digest_receipt, encode_transport,
+    transport_frame_bytes, Authority, ProtocolError, TransportDirection, TransportFields,
+    TransportFrame, TransportKind, TRANSPORT_MIN_FRAME_BYTES,
 };
 
 pub const FEATURE_STREAMING: u32 = 0x0000_0001;
@@ -20,7 +20,6 @@ pub const KNOWN_TRANSPORT_FEATURES: u32 = FEATURE_STREAMING | FEATURE_CANCELLATI
 const VERSION_MAJOR: u16 = 2;
 const VERSION_MINOR: u16 = 0;
 const NEGOTIATION_PAYLOAD_BYTES: usize = 8;
-const TRANSPORT_RECEIPT_DOMAIN: &[u8] = b"ndabi/wire/v2/execution-receipt";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TransportRole {
@@ -220,7 +219,7 @@ impl TransportConnection {
             .get(&nonce)
             .ok_or(ProtocolError::UnknownCorrelation)?;
         let result_digest = *blake3::hash(result).as_bytes();
-        Ok(transport_receipt(
+        Ok(digest_receipt(
             &self.authority,
             request.request_digest,
             nonce,
@@ -238,7 +237,7 @@ impl TransportConnection {
             return Err(ProtocolError::ConnectionState);
         };
         let digest = *stream.result_digest.clone().finalize().as_bytes();
-        Ok(transport_receipt(
+        Ok(digest_receipt(
             &self.authority,
             request.request_digest,
             nonce,
@@ -490,7 +489,7 @@ impl TransportConnection {
             return Err(ProtocolError::ResultBudgetExceeded);
         }
         let result_digest = *blake3::hash(payload).as_bytes();
-        let mut expected = transport_receipt(
+        let mut expected = digest_receipt(
             &self.authority,
             request.request_digest,
             fields.correlation_nonce,
@@ -606,7 +605,7 @@ impl TransportConnection {
             return Err(ProtocolError::OutputShape);
         }
         let digest = *stream.result_digest.clone().finalize().as_bytes();
-        let mut expected = transport_receipt(
+        let mut expected = digest_receipt(
             &self.authority,
             request.request_digest,
             fields.correlation_nonce,
@@ -672,25 +671,6 @@ fn parse_offer(fields: TransportFields, payload: &[u8]) -> Result<Offer, Protoco
         return Err(ProtocolError::TransportConfiguration);
     }
     Ok(offer)
-}
-
-fn transport_receipt(
-    authority: &Authority,
-    request_digest: [u8; 32],
-    nonce: u64,
-    rows: u32,
-    result_digest: [u8; 32],
-) -> [u8; 32] {
-    let mut digest = blake3::Hasher::new_keyed(&authority.receipt_key);
-    digest.update(TRANSPORT_RECEIPT_DOMAIN);
-    digest.update(&authority.context_digest);
-    digest.update(&request_digest);
-    digest.update(&nonce.to_le_bytes());
-    digest.update(&rows.to_le_bytes());
-    digest.update(&result_digest);
-    let output = *digest.finalize().as_bytes();
-    digest.zeroize();
-    output
 }
 
 fn get_u16(bytes: &[u8], offset: usize) -> Result<u16, ProtocolError> {

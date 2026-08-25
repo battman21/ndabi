@@ -44,6 +44,7 @@ const CONTEXT_DOMAIN: &[u8] = b"ndabi/wire/v1/context";
 const KEY_DOMAIN: &[u8] = b"ndabi/wire/v1/session-key";
 const RECEIPT_KEY_DOMAIN: &[u8] = b"ndabi/wire/v1/receipt-key";
 const RECEIPT_DOMAIN: &[u8] = b"ndabi/wire/v1/receipt";
+const DIGEST_RECEIPT_DOMAIN: &[u8] = b"ndabi/wire/v2/execution-receipt";
 const TRANSPORT_KEY_DOMAIN: &[u8] = b"ndabi/wire/v2/transport-key";
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -384,6 +385,33 @@ impl ClientSession {
         }
         Ok(())
     }
+
+    /// Verify the v0.2 digest receipt over the exact result bytes.
+    ///
+    /// A streaming consumer can calculate the same result digest while it stages decoded data.
+    /// It must not commit staged state before this verification succeeds.
+    pub fn verify_digest_execution_receipt(
+        &self,
+        frame: &[u8],
+        rows: u32,
+        bytes: &[u8],
+        candidate: &[u8; 32],
+    ) -> Result<(), ProtocolError> {
+        if frame.len() < 40 {
+            return Err(ProtocolError::LengthMismatch);
+        }
+        let expected = digest_receipt(
+            &self.authority,
+            *blake3::hash(frame).as_bytes(),
+            get_u64(frame, 32),
+            rows,
+            *blake3::hash(bytes).as_bytes(),
+        );
+        if expected.ct_eq(candidate).unwrap_u8() != 1 {
+            return Err(ProtocolError::ReceiptMismatch);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -501,6 +529,8 @@ pub struct BoundedOutput {
     maximum_bytes: usize,
     maximum_rows: u32,
     rows: u32,
+    result_digest: Option<blake3::Hasher>,
+    digest_invalidated: bool,
 }
 
 impl BoundedOutput {
@@ -510,6 +540,8 @@ impl BoundedOutput {
             maximum_bytes: maximum_bytes as usize,
             maximum_rows,
             rows: 0,
+            result_digest: None,
+            digest_invalidated: false,
         }
     }
 
@@ -521,6 +553,21 @@ impl BoundedOutput {
             maximum_bytes: maximum_bytes as usize,
             maximum_rows,
             rows: 0,
+            result_digest: None,
+            digest_invalidated: false,
+        }
+    }
+
+    fn new_deferred_digesting(maximum_bytes: u32, maximum_rows: u32) -> Self {
+        Self {
+            // Hash each accepted write while the backend already touches the result bytes.
+            // A later patch invalidates this state and uses the exact final bytes as a safe fallback.
+            bytes: Vec::new(),
+            maximum_bytes: maximum_bytes as usize,
+            maximum_rows,
+            rows: 0,
+            result_digest: Some(blake3::Hasher::new()),
+            digest_invalidated: false,
         }
     }
 
@@ -534,6 +581,9 @@ impl BoundedOutput {
             return Err(ProtocolError::ResultBudgetExceeded);
         }
         self.bytes.extend_from_slice(bytes);
+        if let Some(digest) = self.result_digest.as_mut() {
+            digest.update(bytes);
+        }
         Ok(())
     }
 
@@ -546,6 +596,41 @@ impl BoundedOutput {
                 .try_reserve_exact(total - self.bytes.len())
                 .map_err(|_| ProtocolError::ResultBudgetExceeded)?;
         }
+        Ok(())
+    }
+
+    /// Fill one exact result after one byte-budget and row-budget check.
+    ///
+    /// The temporary buffer prevents a failed encoder from exposing partial output.
+    pub fn write_exact<F>(
+        &mut self,
+        total: usize,
+        rows: u32,
+        encode: F,
+    ) -> Result<(), ProtocolError>
+    where
+        F: FnOnce(&mut [u8]) -> Result<(), ProtocolError>,
+    {
+        if !self.bytes.is_empty() || self.rows != 0 {
+            return Err(ProtocolError::OutputShape);
+        }
+        if total > self.maximum_bytes {
+            return Err(ProtocolError::ResultBudgetExceeded);
+        }
+        if rows > self.maximum_rows {
+            return Err(ProtocolError::RowBudgetExceeded);
+        }
+        let mut bytes = Vec::new();
+        bytes
+            .try_reserve_exact(total)
+            .map_err(|_| ProtocolError::ResultBudgetExceeded)?;
+        bytes.resize(total, 0);
+        encode(&mut bytes)?;
+        if let Some(digest) = self.result_digest.as_mut() {
+            digest.update(&bytes);
+        }
+        self.bytes = bytes;
+        self.rows = rows;
         Ok(())
     }
 
@@ -572,11 +657,24 @@ impl BoundedOutput {
             .get_mut(offset..end)
             .ok_or(ProtocolError::OutputShape)?;
         target.copy_from_slice(&value.to_le_bytes());
+        self.digest_invalidated = self.result_digest.is_some();
         Ok(())
     }
 
     pub fn rows(&self) -> u32 {
         self.rows
+    }
+
+    fn exact_result_digest(&self) -> Result<[u8; 32], ProtocolError> {
+        let digest = self
+            .result_digest
+            .as_ref()
+            .ok_or(ProtocolError::OutputShape)?;
+        if self.digest_invalidated {
+            Ok(*blake3::hash(&self.bytes).as_bytes())
+        } else {
+            Ok(*digest.clone().finalize().as_bytes())
+        }
     }
 }
 
@@ -777,6 +875,25 @@ fn receipt(
     let receipt = *digest.finalize().as_bytes();
     digest.zeroize();
     receipt
+}
+
+fn digest_receipt(
+    authority: &Authority,
+    request_digest: [u8; 32],
+    nonce: u64,
+    rows: u32,
+    result_digest: [u8; 32],
+) -> [u8; 32] {
+    let mut digest = blake3::Hasher::new_keyed(&authority.receipt_key);
+    digest.update(DIGEST_RECEIPT_DOMAIN);
+    digest.update(&authority.context_digest);
+    digest.update(&request_digest);
+    digest.update(&nonce.to_le_bytes());
+    digest.update(&rows.to_le_bytes());
+    digest.update(&result_digest);
+    let output = *digest.finalize().as_bytes();
+    digest.zeroize();
+    output
 }
 
 pub fn digest_label(domain: &[u8], value: &[u8]) -> [u8; 32] {
@@ -1040,6 +1157,18 @@ mod tests {
     }
 
     #[test]
+    fn an_output_patch_invalidates_the_incremental_digest_safely() {
+        let mut output = BoundedOutput::new_deferred_digesting(16, 1);
+        output.write(&[0, 0, 0, 0, 5]).expect("initial output");
+        output.patch_u32(0, 7).expect("patch");
+
+        assert_eq!(
+            output.exact_result_digest().expect("result digest"),
+            *blake3::hash(&[7, 0, 0, 0, 5]).as_bytes()
+        );
+    }
+
+    #[test]
     fn an_output_reservation_stays_inside_the_byte_budget() {
         let mut output = BoundedOutput::new(8_192, 1);
         output.reserve_total(8_192).expect("reservation");
@@ -1059,6 +1188,49 @@ mod tests {
             output.complete_rows(1).unwrap_err(),
             ProtocolError::RowBudgetExceeded
         );
+    }
+
+    #[test]
+    fn an_exact_output_commits_only_a_complete_bounded_result() {
+        let mut output = BoundedOutput::new_deferred_digesting(8, 2);
+        output
+            .write_exact(4, 2, |bytes| {
+                bytes.copy_from_slice(&[1, 2, 3, 4]);
+                Ok(())
+            })
+            .expect("exact output");
+        assert_eq!(output.bytes, [1, 2, 3, 4]);
+        assert_eq!(output.rows(), 2);
+        assert_eq!(
+            output.exact_result_digest().expect("result digest"),
+            *blake3::hash(&[1, 2, 3, 4]).as_bytes()
+        );
+    }
+
+    #[test]
+    fn an_exact_output_refuses_budgets_and_discards_a_failed_encoder() {
+        let mut byte_limited = BoundedOutput::new_deferred(3, 2);
+        assert_eq!(
+            byte_limited.write_exact(4, 2, |_| Ok(())).unwrap_err(),
+            ProtocolError::ResultBudgetExceeded
+        );
+        let mut row_limited = BoundedOutput::new_deferred(4, 1);
+        assert_eq!(
+            row_limited.write_exact(4, 2, |_| Ok(())).unwrap_err(),
+            ProtocolError::RowBudgetExceeded
+        );
+        let mut failed = BoundedOutput::new_deferred(4, 2);
+        assert_eq!(
+            failed
+                .write_exact(4, 2, |bytes| {
+                    bytes[0] = 9;
+                    Err(ProtocolError::BackendRefused)
+                })
+                .unwrap_err(),
+            ProtocolError::BackendRefused
+        );
+        assert!(failed.bytes.is_empty());
+        assert_eq!(failed.rows(), 0);
     }
 
     #[test]
