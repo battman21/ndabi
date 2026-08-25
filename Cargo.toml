@@ -212,14 +212,14 @@ ndabi-mongodb = { path = "crates/ndabi-mongodb" }
 ndabi-mongodb-v1 = { path = "crates/ndabi-mongodb-v1" }
 ndabi-postgres = { path = "crates/ndabi-postgres" }
 ndabi-postgres-v1 = { path = "crates/ndabi-postgres-v1" }
-ndabi-protocol = { path = "crates/ndabi-protocol" }
+ndabi-protocol = { path = "crates/ndabi-protocol", features = ["benchmark-governed-native"] }
 ndabi-session = { path = "crates/ndabi-session" }
 ndabi-supabase-v1 = { path = "crates/ndabi-supabase-v1" }
 ndabi-supabase-session-v1 = { path = "crates/ndabi-supabase-session-v1" }
 ndabi-supabase-range-session-v1 = { path = "crates/ndabi-supabase-range-session-v1" }
 ndabi-supabase-packed-session-v1 = { path = "crates/ndabi-supabase-packed-session-v1" }
 ndabi-supabase-batch-session-v1 = { path = "crates/ndabi-supabase-batch-session-v1" }
-ndabi-supabase-indexed-batch-session-v1 = { path = "crates/ndabi-supabase-indexed-batch-session-v1" }
+ndabi-supabase-indexed-batch-session-v1 = { path = "crates/ndabi-supabase-indexed-batch-session-v1", features = ["benchmark-governed-native"] }
 ndabi-write = { path = "crates/ndabi-write" }
 mongodb = { version = "3.8", features = ["sync"] }
 rcgen = "0.14"

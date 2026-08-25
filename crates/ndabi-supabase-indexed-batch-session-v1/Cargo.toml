@@ -4,8 +4,12 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[features]
+benchmark-governed-native = ["ndabi-protocol/benchmark-governed-native"]
+
 [dependencies]
 ndabi-postgres-v1 = { path = "../ndabi-postgres-v1" }
 ndabi-protocol = { path = "../ndabi-protocol" }
 ndabi-supabase-v1 = { path = "../ndabi-supabase-v1" }
+libc = "0.2"
 postgres = "0.19"

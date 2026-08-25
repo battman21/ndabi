@@ -11,8 +11,9 @@ use ndabi_postgres_v1::{
     digest_label, AuthorityContext, OperationBinding, RangeProfile, WireClientSession,
 };
 use ndabi_protocol::{
-    batch_frame_bytes, Authority, BackendIdentity, BatchItem, ProtocolError, ServerSession,
-    SingleSessionReplayStore, SystemClock,
+    batch_frame_bytes, Authority, BackendComponentProfile, BackendIdentity, BatchItem, BatchItems,
+    BoundedOutput, ComponentTiming, ExecutionLimits, GovernedBatchClientSession,
+    ProfiledBatchBackend, ProtocolError, ServerSession, SingleSessionReplayStore, SystemClock,
 };
 use ndabi_showdown::alloc::{begin_measurement, end_measurement, AllocationDelta};
 use ndabi_supabase_indexed_batch_session_v1::IndexedBatchSessionBackend;
@@ -44,9 +45,11 @@ enum Arm {
 
 #[derive(Clone, Copy)]
 enum LoadArm {
+    GovernedNative,
     Postgrest,
     Ndabi,
     NdabiFixed,
+    NdabiV85,
     NdabiIncremental,
     NdabiIncrementalServer,
     Native,
@@ -56,9 +59,11 @@ enum LoadArm {
 impl LoadArm {
     fn id(self) -> &'static str {
         match self {
+            Self::GovernedNative => "governed-native-indexed-batch-session",
             Self::Postgrest => "postgrest-user-jwt",
             Self::Ndabi => "ndabi-indexed-batch-session",
             Self::NdabiFixed => "ndabi-fixed-buffer-session",
+            Self::NdabiV85 => "ndabi-v85-equal-security-session",
             Self::NdabiIncremental => "ndabi-incremental-receipt-session",
             Self::NdabiIncrementalServer => "ndabi-incremental-server-session",
             Self::Native => "native-indexed-batch-session",
@@ -153,6 +158,69 @@ struct LoadWorkerReport {
     passed: bool,
 }
 
+#[derive(Serialize)]
+struct ComponentProbeReport {
+    schema: &'static str,
+    operations: u32,
+    rows: u32,
+    result_bytes: usize,
+    result_sha256: String,
+    warmups: usize,
+    samples: usize,
+    components: ComponentProbeComponents,
+    fixed_profiles: Vec<FixedComponentProfile>,
+    passed: bool,
+}
+
+#[derive(Serialize)]
+struct FixedComponentProfile {
+    result_bytes: usize,
+    samples: usize,
+    components: FixedComponentTotals,
+    passed: bool,
+}
+
+#[derive(Serialize)]
+struct FixedComponentTotals {
+    request_encoding: ComponentTotal,
+    request_authentication_and_decoding: ComponentTotal,
+    replay_admission: ComponentTotal,
+    registered_plan_dispatch: ComponentTotal,
+}
+
+#[derive(Serialize)]
+struct ComponentProbeComponents {
+    request_encoding: ComponentTotal,
+    request_authentication_and_decoding: ComponentTotal,
+    replay_admission: ComponentTotal,
+    registered_plan_dispatch: ComponentTotal,
+    database_execution: ComponentTotal,
+    result_encoding: ComponentTotal,
+    server_result_hashing_and_receipt: ComponentTotal,
+    client_result_hashing_and_receipt_verification: ComponentTotal,
+    result_comparison_and_benchmark_bookkeeping: ComponentTotal,
+}
+
+#[derive(Clone, Copy, Default, Serialize)]
+struct ComponentTotal {
+    wall_ns: u64,
+    cpu_ns: u64,
+}
+
+impl ComponentTotal {
+    fn add(&mut self, value: ComponentTiming) -> Result<(), String> {
+        self.wall_ns = self
+            .wall_ns
+            .checked_add(value.wall_ns)
+            .ok_or_else(|| "the component wall total overflowed".to_string())?;
+        self.cpu_ns = self
+            .cpu_ns
+            .checked_add(value.cpu_ns)
+            .ok_or_else(|| "the component CPU total overflowed".to_string())?;
+        Ok(())
+    }
+}
+
 #[derive(Deserialize)]
 struct RestRow {
     id: i64,
@@ -178,6 +246,16 @@ struct NdabiState {
     replay: SingleSessionReplayStore,
 }
 
+struct GovernedNativeState {
+    authority: Authority,
+    operation: ndabi_protocol::BatchOperation,
+    items: Vec<BatchItem>,
+    client: GovernedBatchClientSession,
+    server: ServerSession,
+    backend: IndexedBatchSessionBackend,
+    replay: SingleSessionReplayStore,
+}
+
 struct RestState {
     client: HttpClient,
     endpoint: String,
@@ -188,6 +266,45 @@ struct NativeState {
     client: Client,
     statement: Statement,
     identifiers: Vec<i64>,
+}
+
+struct FixedProfileBackend {
+    identity: BackendIdentity,
+    operation: ndabi_protocol::BatchOperation,
+    result_bytes: usize,
+}
+
+impl ProfiledBatchBackend for FixedProfileBackend {
+    fn identity(&self) -> BackendIdentity {
+        self.identity
+    }
+
+    fn execute_profiled_batch(
+        &mut self,
+        operation: ndabi_protocol::BatchOperation,
+        items: BatchItems<'_>,
+        limits: ExecutionLimits,
+        output: &mut BoundedOutput,
+    ) -> Result<BackendComponentProfile, ProtocolError> {
+        let dispatch_started = component_start().map_err(|_| ProtocolError::ClockFailed)?;
+        if operation != self.operation || items.len() < 2 || limits.maximum_rows < 1 {
+            return Err(ProtocolError::BackendRefused);
+        }
+        let registered_plan_dispatch =
+            component_finish(dispatch_started).map_err(|_| ProtocolError::ClockFailed)?;
+        let encoding_started = component_start().map_err(|_| ProtocolError::ClockFailed)?;
+        output.write_exact(self.result_bytes, 1, |bytes| {
+            bytes.fill(0xa5);
+            Ok(())
+        })?;
+        let result_encoding =
+            component_finish(encoding_started).map_err(|_| ProtocolError::ClockFailed)?;
+        Ok(BackendComponentProfile {
+            registered_plan_dispatch,
+            database_execution: ComponentTiming::default(),
+            result_encoding,
+        })
+    }
 }
 
 fn main() {
@@ -207,6 +324,12 @@ fn run() -> Result<(), String> {
     }
     if arguments.first().map(String::as_str) == Some("--ndabi-incremental-probe") {
         return ndabi_probe(&arguments[1..], true);
+    }
+    if arguments.first().map(String::as_str) == Some("--governed-native-probe") {
+        return governed_native_probe(&arguments[1..]);
+    }
+    if arguments.first().map(String::as_str) == Some("--component-probe") {
+        return component_probe(&arguments[1..]);
     }
     if arguments.first().map(String::as_str) == Some("--load-worker") {
         return load_worker(&arguments[1..]);
@@ -279,8 +402,10 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
         );
     }
     let arm = match arguments[0].as_str() {
+        "governed_native" => LoadArm::GovernedNative,
         "ndabi" => LoadArm::Ndabi,
         "ndabi_fixed" => LoadArm::NdabiFixed,
+        "ndabi_v85" => LoadArm::NdabiV85,
         "ndabi_incremental" => LoadArm::NdabiIncremental,
         "ndabi_incremental_server" => LoadArm::NdabiIncrementalServer,
         "native" => LoadArm::Native,
@@ -311,7 +436,7 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
     let worker = arguments[11]
         .parse::<usize>()
         .map_err(|_| "the load worker is invalid")?;
-    if !(3..=10_000).contains(&sample_count) {
+    if !(3..=100_000).contains(&sample_count) {
         return Err("the load sample count is outside its bound".to_string());
     }
     let worker_schema = match arguments.get(14).map(String::as_str) {
@@ -319,6 +444,7 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
         Some("ndabi-supavisor-load-worker-v8.0") => "ndabi-supavisor-load-worker-v8.0",
         Some("ndabi-supavisor-load-worker-v8.2") => "ndabi-supavisor-load-worker-v8.2",
         Some("ndabi-supavisor-load-worker-v8.3") => "ndabi-supavisor-load-worker-v8.3",
+        Some("ndabi-supavisor-load-worker-v8.5") => "ndabi-supavisor-load-worker-v8.5",
         Some(_) => return Err("the load worker schema is unsupported".to_string()),
     };
     let starts = starts(start, operations)?;
@@ -335,6 +461,7 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
     let mut ndabi = match arm {
         LoadArm::Ndabi
         | LoadArm::NdabiFixed
+        | LoadArm::NdabiV85
         | LoadArm::NdabiIncremental
         | LoadArm::NdabiIncrementalServer => Some(NdabiState::new(
             &arguments[1],
@@ -345,14 +472,38 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
             result_budget,
             total_rows,
             session_index,
-            matches!(arm, LoadArm::NdabiFixed),
+            matches!(arm, LoadArm::NdabiFixed | LoadArm::NdabiV85),
         )?),
-        LoadArm::Postgrest | LoadArm::Native | LoadArm::PostgrestRpc => None,
+        LoadArm::GovernedNative | LoadArm::Postgrest | LoadArm::Native | LoadArm::PostgrestRpc => {
+            None
+        }
+    };
+    let mut governed_native = match arm {
+        LoadArm::GovernedNative => Some(GovernedNativeState::new(
+            &arguments[1],
+            &user,
+            profile,
+            identity,
+            &starts,
+            result_budget,
+            total_rows,
+            session_index,
+        )?),
+        LoadArm::Ndabi
+        | LoadArm::NdabiFixed
+        | LoadArm::NdabiV85
+        | LoadArm::NdabiIncremental
+        | LoadArm::NdabiIncrementalServer
+        | LoadArm::Native
+        | LoadArm::Postgrest
+        | LoadArm::PostgrestRpc => None,
     };
     let mut native = match arm {
         LoadArm::Native => Some(NativeState::new(&arguments[1], &user)?),
-        LoadArm::Ndabi
+        LoadArm::GovernedNative
+        | LoadArm::Ndabi
         | LoadArm::NdabiFixed
+        | LoadArm::NdabiV85
         | LoadArm::NdabiIncremental
         | LoadArm::NdabiIncrementalServer
         | LoadArm::Postgrest
@@ -360,15 +511,19 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
     };
     let rest = match arm {
         LoadArm::Postgrest | LoadArm::PostgrestRpc => Some(RestState::new(&arguments[2], &token)?),
-        LoadArm::Ndabi
+        LoadArm::GovernedNative
+        | LoadArm::Ndabi
         | LoadArm::NdabiFixed
+        | LoadArm::NdabiV85
         | LoadArm::NdabiIncremental
         | LoadArm::NdabiIncrementalServer
         | LoadArm::Native => None,
     };
     let (request_application_bytes, request_bytes_kind) = match arm {
+        LoadArm::GovernedNative => (None, "typed-in-process-control"),
         LoadArm::Ndabi
         | LoadArm::NdabiFixed
+        | LoadArm::NdabiV85
         | LoadArm::NdabiIncremental
         | LoadArm::NdabiIncrementalServer => (
             ndabi.as_ref().map(|state| state.frame.len()),
@@ -397,6 +552,7 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
         let bytes = execute_load_request(
             arm,
             ndabi.as_mut(),
+            governed_native.as_mut(),
             native.as_mut(),
             rest.as_ref(),
             &starts,
@@ -424,6 +580,7 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
         let bytes = execute_load_request(
             arm,
             ndabi.as_mut(),
+            governed_native.as_mut(),
             native.as_mut(),
             rest.as_ref(),
             &starts,
@@ -499,9 +656,12 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+// Keep each state separate so the measurement does not add an enum dispatch inside the arm.
+#[allow(clippy::too_many_arguments)]
 fn execute_load_request(
     arm: LoadArm,
     ndabi: Option<&mut NdabiState>,
+    governed_native: Option<&mut GovernedNativeState>,
     native: Option<&mut NativeState>,
     rest: Option<&RestState>,
     starts: &[i64],
@@ -509,12 +669,18 @@ fn execute_load_request(
     total_rows: u32,
 ) -> Result<Vec<u8>, String> {
     match arm {
+        LoadArm::GovernedNative => governed_native
+            .ok_or_else(|| "the governed native load state is absent".to_string())?
+            .execute(result_budget, total_rows),
         LoadArm::Ndabi => ndabi
             .ok_or_else(|| "the NDABI load state is absent".to_string())?
             .execute(result_budget, total_rows),
         LoadArm::NdabiFixed => ndabi
             .ok_or_else(|| "the fixed-buffer NDABI load state is absent".to_string())?
             .execute(result_budget, total_rows),
+        LoadArm::NdabiV85 => ndabi
+            .ok_or_else(|| "the equal-security NDABI load state is absent".to_string())?
+            .execute_incremental(result_budget, total_rows, true),
         LoadArm::NdabiIncremental => ndabi
             .ok_or_else(|| "the incremental NDABI load state is absent".to_string())?
             .execute_incremental(result_budget, total_rows, true),
@@ -627,6 +793,327 @@ fn ndabi_probe(arguments: &[String], incremental_receipt: bool) -> Result<(), St
         probe.valid_result_accepted,
     );
     Ok(())
+}
+
+fn governed_native_probe(arguments: &[String]) -> Result<(), String> {
+    if arguments.len() != 8 {
+        return Err(
+            "connection, token path, public-key path, key identifier, issuer, audience, start, and operations are required"
+                .to_string(),
+        );
+    }
+    let token = read_secret(&arguments[1])?;
+    let public_key = std::fs::read(&arguments[2]).map_err(|_| "the public key cannot be read")?;
+    let verifier = JwtVerifier::new_es256(
+        &public_key,
+        &arguments[3],
+        &arguments[4],
+        &arguments[5],
+        300,
+    )
+    .map_err(|error| error.to_string())?;
+    let user = verifier.admit(&token).map_err(|error| error.to_string())?;
+    let start = arguments[6]
+        .parse::<i64>()
+        .map_err(|_| "the probe start is invalid")?;
+    let operations = arguments[7]
+        .parse::<u32>()
+        .map_err(|_| "the probe operation count is invalid")?;
+    let starts = starts(start, operations)?;
+    let result_budget = batch_result_bytes(operations)?;
+    let total_rows = operations
+        .checked_mul(ROWS_PER_OPERATION)
+        .ok_or_else(|| "the probe row budget overflowed".to_string())?;
+    let profile = profile()?;
+    let identity = identity(profile)?;
+    let mut state = GovernedNativeState::new(
+        &arguments[0],
+        &user,
+        profile,
+        identity,
+        &starts,
+        result_budget,
+        total_rows,
+        101,
+    )?;
+    let probe = state.security_probe(result_budget, total_rows)?;
+    println!(
+        "{{\"accepted\":true,\"rows\":{total_rows},\"result_sha256\":\"{}\",\"replay_refused_before_query\":{},\"invalid_receipt_refused\":{},\"changed_result_refused\":{},\"changed_operand_receipt_refused\":{},\"valid_result_accepted\":{}}}",
+        hex(&Sha256::digest(probe.bytes)),
+        probe.replay_refused_before_query,
+        probe.invalid_receipt_refused,
+        probe.changed_result_refused,
+        probe.changed_operand_receipt_refused,
+        probe.valid_result_accepted,
+    );
+    Ok(())
+}
+
+fn component_probe(arguments: &[String]) -> Result<(), String> {
+    if arguments.len() != 9 {
+        return Err(
+            "connection, token path, public-key path, key identifier, issuer, audience, start, operations, and samples are required"
+                .to_string(),
+        );
+    }
+    let token = read_secret(&arguments[1])?;
+    let public_key = std::fs::read(&arguments[2]).map_err(|_| "the public key cannot be read")?;
+    let verifier = JwtVerifier::new_es256(
+        &public_key,
+        &arguments[3],
+        &arguments[4],
+        &arguments[5],
+        300,
+    )
+    .map_err(|error| error.to_string())?;
+    let user = verifier.admit(&token).map_err(|error| error.to_string())?;
+    let start = arguments[6]
+        .parse::<i64>()
+        .map_err(|_| "the component start is invalid")?;
+    let operations = arguments[7]
+        .parse::<u32>()
+        .map_err(|_| "the component operation count is invalid")?;
+    let samples = arguments[8]
+        .parse::<usize>()
+        .map_err(|_| "the component sample count is invalid")?;
+    if !(31..=100_000).contains(&samples) {
+        return Err("the component sample count is outside its bound".to_string());
+    }
+    let starts = starts(start, operations)?;
+    let expected = expected_batch(&starts);
+    let result_budget = u32::try_from(expected.len()).map_err(|error| error.to_string())?;
+    let total_rows = operations
+        .checked_mul(ROWS_PER_OPERATION)
+        .ok_or_else(|| "the component row budget overflowed".to_string())?;
+    let profile = profile()?;
+    let identity = identity(profile)?;
+    let mut state = NdabiState::new(
+        &arguments[0],
+        &user,
+        profile,
+        identity,
+        &starts,
+        result_budget,
+        total_rows,
+        102,
+        true,
+    )?;
+    for _ in 0..LOAD_WARMUPS {
+        let bytes = state.execute_incremental(result_budget, total_rows, true)?;
+        if bytes != expected {
+            return Err("the component warm-up result changed".to_string());
+        }
+    }
+    let mut components = ComponentProbeComponents {
+        request_encoding: ComponentTotal::default(),
+        request_authentication_and_decoding: ComponentTotal::default(),
+        replay_admission: ComponentTotal::default(),
+        registered_plan_dispatch: ComponentTotal::default(),
+        database_execution: ComponentTotal::default(),
+        result_encoding: ComponentTotal::default(),
+        server_result_hashing_and_receipt: ComponentTotal::default(),
+        client_result_hashing_and_receipt_verification: ComponentTotal::default(),
+        result_comparison_and_benchmark_bookkeeping: ComponentTotal::default(),
+    };
+    for _ in 0..samples {
+        let request_started = component_start()?;
+        state.encode(result_budget, total_rows)?;
+        components
+            .request_encoding
+            .add(component_finish(request_started)?)?;
+        let profiled = state
+            .wire_server
+            .execute_profiled_batch(
+                &state.frame,
+                &mut state.backend,
+                &mut state.replay,
+                &SystemClock,
+            )
+            .map_err(|error| error.to_string())?;
+        components
+            .request_authentication_and_decoding
+            .add(profiled.request_authentication_and_decoding)?;
+        components.replay_admission.add(profiled.replay_admission)?;
+        components
+            .registered_plan_dispatch
+            .add(profiled.backend.registered_plan_dispatch)?;
+        components
+            .database_execution
+            .add(profiled.backend.database_execution)?;
+        components
+            .result_encoding
+            .add(profiled.backend.result_encoding)?;
+        components
+            .server_result_hashing_and_receipt
+            .add(profiled.server_result_hashing_and_receipt)?;
+        let client_started = component_start()?;
+        state
+            .wire_client
+            .verify_digest_execution_receipt(
+                &state.frame,
+                profiled.execution.rows,
+                &profiled.execution.bytes,
+                &profiled.execution.receipt,
+            )
+            .map_err(|error| error.to_string())?;
+        components
+            .client_result_hashing_and_receipt_verification
+            .add(component_finish(client_started)?)?;
+        let bookkeeping_started = component_start()?;
+        if profiled.execution.bytes != expected {
+            return Err("the component result changed".to_string());
+        }
+        black_box(&profiled.execution.bytes);
+        components
+            .result_comparison_and_benchmark_bookkeeping
+            .add(component_finish(bookkeeping_started)?)?;
+    }
+    let fixed_profiles = fixed_component_profiles(
+        &user,
+        identity,
+        profile
+            .batch_operation()
+            .map_err(|error| error.to_string())?,
+        samples,
+    )?;
+    let passed = component_totals(&components)
+        .iter()
+        .all(|component| component.wall_ns > 0 && component.cpu_ns > 0)
+        && fixed_profiles.iter().all(|profile| profile.passed);
+    let report = ComponentProbeReport {
+        schema: "ndabi-component-probe-v8.5",
+        operations,
+        rows: total_rows,
+        result_bytes: expected.len(),
+        result_sha256: hex(&Sha256::digest(&expected)),
+        warmups: LOAD_WARMUPS,
+        samples,
+        components,
+        fixed_profiles,
+        passed,
+    };
+    serde_json::to_writer(std::io::stdout(), &report).map_err(|error| error.to_string())?;
+    println!();
+    if passed {
+        Ok(())
+    } else {
+        Err("a component interval was empty".to_string())
+    }
+}
+
+fn component_start() -> Result<(u64, u64), String> {
+    Ok((monotonic_ns()?, process_cpu_ns()?))
+}
+
+fn component_finish(started: (u64, u64)) -> Result<ComponentTiming, String> {
+    let wall_ns = monotonic_ns()?
+        .checked_sub(started.0)
+        .ok_or_else(|| "the component wall clock moved backwards".to_string())?;
+    let cpu_ns = process_cpu_ns()?
+        .checked_sub(started.1)
+        .ok_or_else(|| "the component CPU clock moved backwards".to_string())?;
+    Ok(ComponentTiming { wall_ns, cpu_ns })
+}
+
+fn component_totals(components: &ComponentProbeComponents) -> [ComponentTotal; 9] {
+    [
+        components.request_encoding,
+        components.request_authentication_and_decoding,
+        components.replay_admission,
+        components.registered_plan_dispatch,
+        components.database_execution,
+        components.result_encoding,
+        components.server_result_hashing_and_receipt,
+        components.client_result_hashing_and_receipt_verification,
+        components.result_comparison_and_benchmark_bookkeeping,
+    ]
+}
+
+fn fixed_component_profiles(
+    user: &AdmittedIdentity,
+    identity: BackendIdentity,
+    operation: ndabi_protocol::BatchOperation,
+    samples: usize,
+) -> Result<Vec<FixedComponentProfile>, String> {
+    let mut profiles = Vec::with_capacity(3);
+    for (index, result_bytes) in [84_usize, 672, 10_758].into_iter().enumerate() {
+        let authority = authority(user, identity, 9_000 + index as u64)?;
+        let mut client = WireClientSession::new(authority.clone());
+        let server = ServerSession::new(
+            authority,
+            u32::try_from(result_bytes).map_err(|error| error.to_string())?,
+            1,
+        )
+        .map_err(|error| error.to_string())?;
+        let items = [BatchItem::new(1, 0, 1), BatchItem::new(2, 0, 1)];
+        let mut frame = vec![0; batch_frame_bytes(items.len()).map_err(|error| error.to_string())?];
+        let mut backend = FixedProfileBackend {
+            identity,
+            operation,
+            result_bytes,
+        };
+        let mut replay = SingleSessionReplayStore::default();
+        let mut components = FixedComponentTotals {
+            request_encoding: ComponentTotal::default(),
+            request_authentication_and_decoding: ComponentTotal::default(),
+            replay_admission: ComponentTotal::default(),
+            registered_plan_dispatch: ComponentTotal::default(),
+        };
+        for _ in 0..samples {
+            let encoding_started = component_start()?;
+            client
+                .encode_batch_into(
+                    operation,
+                    &items,
+                    u32::try_from(result_bytes).map_err(|error| error.to_string())?,
+                    1,
+                    deadline()?,
+                    &mut frame,
+                )
+                .map_err(|error| error.to_string())?;
+            components
+                .request_encoding
+                .add(component_finish(encoding_started)?)?;
+            let profiled = server
+                .execute_profiled_batch(&frame, &mut backend, &mut replay, &SystemClock)
+                .map_err(|error| error.to_string())?;
+            components
+                .request_authentication_and_decoding
+                .add(profiled.request_authentication_and_decoding)?;
+            components.replay_admission.add(profiled.replay_admission)?;
+            components
+                .registered_plan_dispatch
+                .add(profiled.backend.registered_plan_dispatch)?;
+            client
+                .verify_digest_execution_receipt(
+                    &frame,
+                    profiled.execution.rows,
+                    &profiled.execution.bytes,
+                    &profiled.execution.receipt,
+                )
+                .map_err(|error| error.to_string())?;
+            if profiled.execution.bytes.len() != result_bytes
+                || profiled.execution.bytes.iter().any(|byte| *byte != 0xa5)
+            {
+                return Err("the fixed component result changed".to_string());
+            }
+        }
+        let totals = [
+            components.request_encoding,
+            components.request_authentication_and_decoding,
+            components.replay_admission,
+            components.registered_plan_dispatch,
+        ];
+        profiles.push(FixedComponentProfile {
+            result_bytes,
+            samples,
+            components,
+            passed: totals
+                .iter()
+                .all(|component| component.wall_ns > 0 && component.cpu_ns > 0),
+        });
+    }
+    Ok(profiles)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -746,6 +1233,182 @@ fn measure_case(
         allocation_gate_passed,
         passed,
     })
+}
+
+impl GovernedNativeState {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        connection: &str,
+        user: &AdmittedIdentity,
+        profile: RangeProfile,
+        identity: BackendIdentity,
+        starts: &[i64],
+        result_budget: u32,
+        total_rows: u32,
+        case_index: usize,
+    ) -> Result<Self, String> {
+        let authority = authority(user, identity, 8_500 + case_index as u64)?;
+        let items = starts
+            .iter()
+            .map(|start| BatchItem::new(*start, 0, ROWS_PER_OPERATION))
+            .collect::<Vec<_>>();
+        let backend = IndexedBatchSessionBackend::new_exact(
+            Client::connect(connection, NoTls).map_err(|error| error.to_string())?,
+            profile,
+            schema_digest(),
+            policy_digest(),
+            user,
+            5_000,
+        )
+        .map_err(|error| error.to_string())?;
+        Ok(Self {
+            authority: authority.clone(),
+            operation: profile
+                .batch_operation()
+                .map_err(|error| error.to_string())?,
+            items,
+            client: GovernedBatchClientSession::new(authority.clone()),
+            server: ServerSession::new(authority, result_budget, total_rows)
+                .map_err(|error| error.to_string())?,
+            backend,
+            replay: SingleSessionReplayStore::default(),
+        })
+    }
+
+    fn execute(&mut self, result_budget: u32, total_rows: u32) -> Result<Vec<u8>, String> {
+        let request = self
+            .client
+            .prepare(
+                self.operation,
+                &self.items,
+                result_budget,
+                total_rows,
+                deadline()?,
+            )
+            .map_err(|error| error.to_string())?;
+        let execution = self
+            .server
+            .execute_governed_batch(&request, &mut self.backend, &mut self.replay, &SystemClock)
+            .map_err(|error| error.to_string())?;
+        self.client
+            .verify_receipt(
+                &request,
+                execution.rows,
+                &execution.bytes,
+                &execution.receipt,
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(execution.bytes)
+    }
+
+    fn security_probe(
+        &mut self,
+        result_budget: u32,
+        total_rows: u32,
+    ) -> Result<GovernedProbeResult, String> {
+        let deadline_unix_us = deadline()?;
+        let request = self
+            .client
+            .prepare(
+                self.operation,
+                &self.items,
+                result_budget,
+                total_rows,
+                deadline_unix_us,
+            )
+            .map_err(|error| error.to_string())?;
+        let execution = self
+            .server
+            .execute_governed_batch(&request, &mut self.backend, &mut self.replay, &SystemClock)
+            .map_err(|error| error.to_string())?;
+        let queries_after = self.backend.data_queries();
+        let replay_refused_before_query = matches!(
+            self.server.execute_governed_batch(
+                &request,
+                &mut self.backend,
+                &mut self.replay,
+                &SystemClock,
+            ),
+            Err(ProtocolError::Replay)
+        ) && self.backend.data_queries() == queries_after;
+        let invalid_receipt_refused = matches!(
+            self.client
+                .verify_receipt(&request, execution.rows, &execution.bytes, &[9; 32],),
+            Err(ProtocolError::ReceiptMismatch)
+        );
+        let mut changed_result = execution.bytes.clone();
+        let first = changed_result
+            .first_mut()
+            .ok_or_else(|| "the governed probe result is empty".to_string())?;
+        *first ^= 1;
+        let changed_result_refused = matches!(
+            self.client.verify_receipt(
+                &request,
+                execution.rows,
+                &changed_result,
+                &execution.receipt,
+            ),
+            Err(ProtocolError::ReceiptMismatch)
+        );
+        let mut changed_items = self.items.clone();
+        changed_items[0].first = changed_items[0]
+            .first
+            .checked_add(i64::from(ROWS_PER_OPERATION))
+            .ok_or_else(|| "the governed probe operand overflowed".to_string())?;
+        let mut changed_client = GovernedBatchClientSession::new(self.authority.clone());
+        let changed_request = changed_client
+            .prepare(
+                self.operation,
+                &changed_items,
+                result_budget,
+                total_rows,
+                deadline_unix_us,
+            )
+            .map_err(|error| error.to_string())?;
+        let changed_operand_receipt_refused = matches!(
+            changed_client.verify_receipt(
+                &changed_request,
+                execution.rows,
+                &execution.bytes,
+                &execution.receipt,
+            ),
+            Err(ProtocolError::ReceiptMismatch)
+        );
+        let valid_result_accepted = self
+            .client
+            .verify_receipt(
+                &request,
+                execution.rows,
+                &execution.bytes,
+                &execution.receipt,
+            )
+            .is_ok();
+        if !(replay_refused_before_query
+            && invalid_receipt_refused
+            && changed_result_refused
+            && changed_operand_receipt_refused
+            && valid_result_accepted)
+        {
+            return Err("a governed native refusal failed".to_string());
+        }
+        Ok(GovernedProbeResult {
+            bytes: execution.bytes,
+            replay_refused_before_query,
+            invalid_receipt_refused,
+            changed_result_refused,
+            changed_operand_receipt_refused,
+            valid_result_accepted,
+        })
+    }
+}
+
+struct GovernedProbeResult {
+    bytes: Vec<u8>,
+    replay_refused_before_query: bool,
+    invalid_receipt_refused: bool,
+    changed_result_refused: bool,
+    changed_operand_receipt_refused: bool,
+    valid_result_accepted: bool,
 }
 
 impl NdabiState {
@@ -1499,7 +2162,10 @@ fn thread_cpu_ns() -> Result<u64, String> {
 }
 
 fn load_cpu_ns(worker_schema: &str) -> Result<u64, String> {
-    if worker_schema == "ndabi-supavisor-load-worker-v8.3" {
+    if matches!(
+        worker_schema,
+        "ndabi-supavisor-load-worker-v8.3" | "ndabi-supavisor-load-worker-v8.5"
+    ) {
         process_cpu_ns()
     } else {
         thread_cpu_ns()

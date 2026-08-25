@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[features]
+benchmark-governed-native = []
+
 [dependencies]
 blake3 = { version = "1.8", features = ["zeroize"] }
 libc = "0.2"

@@ -5,6 +5,10 @@
 //! Use direct PostgreSQL or Supavisor session mode because transaction mode can change connections.
 
 use ndabi_postgres_v1::RangeProfile;
+#[cfg(feature = "benchmark-governed-native")]
+use ndabi_protocol::{
+    BackendComponentProfile, ComponentTiming, GovernedBatchBackend, ProfiledBatchBackend,
+};
 use ndabi_protocol::{
     BackendIdentity, BatchBackend, BatchItem, BatchItems, BatchOperation, BoundedOutput,
     ExecutionLimits, ProtocolError,
@@ -144,20 +148,31 @@ impl IndexedBatchSessionBackend {
     pub fn database_result_rows(&self) -> u64 {
         self.database_result_rows
     }
-}
 
-impl BatchBackend for IndexedBatchSessionBackend {
-    fn identity(&self) -> BackendIdentity {
-        self.identity
-    }
-
-    fn execute_batch(
+    fn execute_items<I>(
         &mut self,
         operation: BatchOperation,
-        items: BatchItems<'_>,
+        items: I,
         limits: ExecutionLimits,
         output: &mut BoundedOutput,
-    ) -> Result<(), ProtocolError> {
+    ) -> Result<(), ProtocolError>
+    where
+        I: ExactSizeIterator<Item = BatchItem>,
+    {
+        let prepared = self.prepare_items(operation, items, limits)?;
+        let rows = self.query_rows(prepared.total_rows)?;
+        self.encode_result(operation, prepared, &rows, output)
+    }
+
+    fn prepare_items<I>(
+        &mut self,
+        operation: BatchOperation,
+        items: I,
+        limits: ExecutionLimits,
+    ) -> Result<PreparedBatch, ProtocolError>
+    where
+        I: ExactSizeIterator<Item = BatchItem>,
+    {
         if operation != self.operation {
             return Err(ProtocolError::BackendRefused);
         }
@@ -193,7 +208,14 @@ impl BatchBackend for IndexedBatchSessionBackend {
                 &mut self.identifiers,
             )?);
         }
+        Ok(PreparedBatch {
+            item_count,
+            total_rows,
+            required_bytes,
+        })
+    }
 
+    fn query_rows(&mut self, total_rows: u32) -> Result<Vec<Row>, ProtocolError> {
         let rows = self
             .client
             .query(&self.data_statement, &[&self.identifiers])
@@ -203,21 +225,158 @@ impl BatchBackend for IndexedBatchSessionBackend {
         if rows.len() != total_rows as usize {
             return Err(ProtocolError::BackendRefused);
         }
+        Ok(rows)
+    }
 
+    fn encode_result(
+        &self,
+        operation: BatchOperation,
+        prepared: PreparedBatch,
+        rows: &[Row],
+        output: &mut BoundedOutput,
+    ) -> Result<(), ProtocolError> {
         match self.output_encoding {
             OutputEncoding::IncrementalWrites => {
-                output.reserve_total(required_bytes)?;
-                encode_rows_incrementally(operation, item_count, &self.starts, &rows, output)?;
-                output.complete_rows(total_rows)?;
+                output.reserve_total(prepared.required_bytes)?;
+                encode_rows_incrementally(
+                    operation,
+                    prepared.item_count,
+                    &self.starts,
+                    rows,
+                    output,
+                )?;
+                output.complete_rows(prepared.total_rows)?;
             }
             OutputEncoding::ExactBuffer => {
-                output.write_exact(required_bytes, total_rows, |bytes| {
-                    encode_rows_exact(operation, item_count, &self.starts, &rows, bytes)
+                output.write_exact(prepared.required_bytes, prepared.total_rows, |bytes| {
+                    encode_rows_exact(operation, prepared.item_count, &self.starts, rows, bytes)
                 })?;
             }
         }
         Ok(())
     }
+}
+
+#[derive(Clone, Copy)]
+struct PreparedBatch {
+    item_count: u32,
+    total_rows: u32,
+    required_bytes: usize,
+}
+
+impl BatchBackend for IndexedBatchSessionBackend {
+    fn identity(&self) -> BackendIdentity {
+        self.identity
+    }
+
+    fn execute_batch(
+        &mut self,
+        operation: BatchOperation,
+        items: BatchItems<'_>,
+        limits: ExecutionLimits,
+        output: &mut BoundedOutput,
+    ) -> Result<(), ProtocolError> {
+        self.execute_items(operation, items, limits, output)
+    }
+}
+
+#[cfg(feature = "benchmark-governed-native")]
+impl GovernedBatchBackend for IndexedBatchSessionBackend {
+    fn identity(&self) -> BackendIdentity {
+        self.identity
+    }
+
+    fn execute_governed_batch(
+        &mut self,
+        operation: BatchOperation,
+        items: &[BatchItem],
+        limits: ExecutionLimits,
+        output: &mut BoundedOutput,
+    ) -> Result<(), ProtocolError> {
+        self.execute_items(operation, items.iter().copied(), limits, output)
+    }
+}
+
+#[cfg(feature = "benchmark-governed-native")]
+impl ProfiledBatchBackend for IndexedBatchSessionBackend {
+    fn identity(&self) -> BackendIdentity {
+        self.identity
+    }
+
+    fn execute_profiled_batch(
+        &mut self,
+        operation: BatchOperation,
+        items: BatchItems<'_>,
+        limits: ExecutionLimits,
+        output: &mut BoundedOutput,
+    ) -> Result<BackendComponentProfile, ProtocolError> {
+        let dispatch_started = ProfileStamp::now()?;
+        let prepared = self.prepare_items(operation, items, limits)?;
+        let registered_plan_dispatch = dispatch_started.finish()?;
+        let database_started = ProfileStamp::now()?;
+        let rows = self.query_rows(prepared.total_rows)?;
+        let database_execution = database_started.finish()?;
+        let encoding_started = ProfileStamp::now()?;
+        self.encode_result(operation, prepared, &rows, output)?;
+        let result_encoding = encoding_started.finish()?;
+        Ok(BackendComponentProfile {
+            registered_plan_dispatch,
+            database_execution,
+            result_encoding,
+        })
+    }
+}
+
+#[cfg(feature = "benchmark-governed-native")]
+#[derive(Clone, Copy)]
+struct ProfileStamp {
+    wall_ns: u64,
+    cpu_ns: u64,
+}
+
+#[cfg(feature = "benchmark-governed-native")]
+impl ProfileStamp {
+    fn now() -> Result<Self, ProtocolError> {
+        Ok(Self {
+            wall_ns: profile_clock_ns(libc::CLOCK_MONOTONIC)?,
+            cpu_ns: profile_clock_ns(libc::CLOCK_PROCESS_CPUTIME_ID)?,
+        })
+    }
+
+    fn finish(self) -> Result<ComponentTiming, ProtocolError> {
+        let end = Self::now()?;
+        Ok(ComponentTiming {
+            wall_ns: end
+                .wall_ns
+                .checked_sub(self.wall_ns)
+                .ok_or(ProtocolError::ClockFailed)?,
+            cpu_ns: end
+                .cpu_ns
+                .checked_sub(self.cpu_ns)
+                .ok_or(ProtocolError::ClockFailed)?,
+        })
+    }
+}
+
+#[cfg(feature = "benchmark-governed-native")]
+fn profile_clock_ns(clock: libc::clockid_t) -> Result<u64, ProtocolError> {
+    let mut value = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: The pointer is valid for one writable timespec.
+    if unsafe { libc::clock_gettime(clock, &mut value) } != 0
+        || value.tv_sec < 0
+        || value.tv_nsec < 0
+    {
+        return Err(ProtocolError::ClockFailed);
+    }
+    let seconds = u64::try_from(value.tv_sec).map_err(|_| ProtocolError::ClockFailed)?;
+    let nanoseconds = u64::try_from(value.tv_nsec).map_err(|_| ProtocolError::ClockFailed)?;
+    seconds
+        .checked_mul(1_000_000_000)
+        .and_then(|total| total.checked_add(nanoseconds))
+        .ok_or(ProtocolError::ClockFailed)
 }
 
 fn encode_rows_incrementally(

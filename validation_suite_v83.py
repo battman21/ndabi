@@ -271,7 +271,15 @@ def run_load_arm_attributed(
                 report = json.loads(stdout)
                 campaign.validate_worker(report, arm, worker)
             except (json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
-                errors.append({"worker": worker, "error": str(error)})
+                errors.append(
+                    {
+                        "worker": worker,
+                        "error": str(error),
+                        "actual_schema": report.get("schema")
+                        if isinstance(report, dict)
+                        else None,
+                    }
+                )
                 continue
             reports.append(report)
         cpu_after = container_cpu_snapshot(postgres)

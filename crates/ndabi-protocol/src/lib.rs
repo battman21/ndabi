@@ -20,6 +20,12 @@ pub use batch::{
     batch_frame_bytes, BatchBackend, BatchExecution, BatchItem, BatchItems, BatchOperation,
     BATCH_OPERAND_BYTES, MAX_BATCH_OPERATIONS,
 };
+#[cfg(feature = "benchmark-governed-native")]
+pub use batch::{
+    BackendComponentProfile, ComponentTiming, ProfiledBatchBackend, ProfiledBatchExecution,
+};
+#[cfg(feature = "benchmark-governed-native")]
+pub use batch::{GovernedBatchBackend, GovernedBatchClientSession, GovernedBatchRequest};
 pub use connection::{
     NegotiatedTransport, RegisteredRequest, TransportConfig, TransportConnection, TransportPhase,
     TransportRole, FEATURE_CANCELLATION, FEATURE_STREAMING, KNOWN_TRANSPORT_FEATURES,
