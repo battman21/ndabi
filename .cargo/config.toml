@@ -1,0 +1,3 @@
+[build]
+# Share dependencies across the protocol and benchmark workspaces.
+target-dir = "target"

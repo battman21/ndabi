@@ -8,10 +8,11 @@ use ndabi_postgres_v1::RangeProfile;
 #[cfg(feature = "benchmark-governed-native")]
 use ndabi_protocol::{
     BackendComponentProfile, ComponentTiming, GovernedBatchBackend, ProfiledBatchBackend,
+    ProfiledStridedBatchBackend,
 };
 use ndabi_protocol::{
     BackendIdentity, BatchBackend, BatchItem, BatchItems, BatchOperation, BoundedOutput,
-    ExecutionLimits, ProtocolError,
+    ExecutionLimits, ProtocolError, StridedBatchBackend, StridedBatchItems,
 };
 use ndabi_supabase_v1::AdmittedIdentity;
 use postgres::{Client, Row, Statement};
@@ -280,6 +281,22 @@ impl BatchBackend for IndexedBatchSessionBackend {
     }
 }
 
+impl StridedBatchBackend for IndexedBatchSessionBackend {
+    fn identity(&self) -> BackendIdentity {
+        self.identity
+    }
+
+    fn execute_strided_batch(
+        &mut self,
+        operation: BatchOperation,
+        items: StridedBatchItems,
+        limits: ExecutionLimits,
+        output: &mut BoundedOutput,
+    ) -> Result<(), ProtocolError> {
+        self.execute_items(operation, items, limits, output)
+    }
+}
+
 #[cfg(feature = "benchmark-governed-native")]
 impl GovernedBatchBackend for IndexedBatchSessionBackend {
     fn identity(&self) -> BackendIdentity {
@@ -307,6 +324,36 @@ impl ProfiledBatchBackend for IndexedBatchSessionBackend {
         &mut self,
         operation: BatchOperation,
         items: BatchItems<'_>,
+        limits: ExecutionLimits,
+        output: &mut BoundedOutput,
+    ) -> Result<BackendComponentProfile, ProtocolError> {
+        let dispatch_started = ProfileStamp::now()?;
+        let prepared = self.prepare_items(operation, items, limits)?;
+        let registered_plan_dispatch = dispatch_started.finish()?;
+        let database_started = ProfileStamp::now()?;
+        let rows = self.query_rows(prepared.total_rows)?;
+        let database_execution = database_started.finish()?;
+        let encoding_started = ProfileStamp::now()?;
+        self.encode_result(operation, prepared, &rows, output)?;
+        let result_encoding = encoding_started.finish()?;
+        Ok(BackendComponentProfile {
+            registered_plan_dispatch,
+            database_execution,
+            result_encoding,
+        })
+    }
+}
+
+#[cfg(feature = "benchmark-governed-native")]
+impl ProfiledStridedBatchBackend for IndexedBatchSessionBackend {
+    fn identity(&self) -> BackendIdentity {
+        self.identity
+    }
+
+    fn execute_profiled_strided_batch(
+        &mut self,
+        operation: BatchOperation,
+        items: StridedBatchItems,
         limits: ExecutionLimits,
         output: &mut BoundedOutput,
     ) -> Result<BackendComponentProfile, ProtocolError> {

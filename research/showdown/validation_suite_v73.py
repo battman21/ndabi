@@ -33,6 +33,8 @@ CAMPAIGN_LABEL = "v7.3"
 SESSION_PROOF_LABEL = "ndabi-v73-session-proof"
 SESSION_PROOF_EXPECTED = "73"
 PROCESS_COUNT = 5
+SMOKE_PROCESS_COUNT = 1
+SMOKE_REPEATABILITY = False
 TENANT_ID = "ndabi-v73"
 CONCURRENCY_LEVELS = (1, 8, 32)
 OPERATIONS = 16
@@ -61,8 +63,19 @@ SMOKE_RESULT_PATH: Path | None = None
 POOL_SIZE = 64
 MAX_CLIENTS = 200
 MINIMUM_HOST_IDLE_PERCENT = 80.0
-FORBIDDEN_BUILD_PROCESSES = {"cargo", "cargo-tauri", "clang", "rustc", "swiftc"}
+FORBIDDEN_BUILD_PROCESSES = {
+    "cargo",
+    "cargo-tauri",
+    "clang",
+    "colima",
+    "docker",
+    "incus",
+    "limactl",
+    "rustc",
+    "swiftc",
+}
 SOURCE_PATHS = v72.SOURCE_PATHS + (
+    "../../.cargo/config.toml",
     "validation_suite_v73.py",
     "requirements-v73.txt",
     "../../specs/ndabi_supavisor_concurrency_campaign_v7_3.md",
@@ -73,16 +86,51 @@ def command(*arguments: str, check: bool = True) -> subprocess.CompletedProcess:
     return subprocess.run(arguments, check=check, capture_output=True, text=True)
 
 
+def remove_container(name: str) -> None:
+    # Remove anonymous image volumes because each campaign creates fresh database state.
+    completed = command(
+        "docker", "rm", "--force", "--volumes", name, check=False
+    )
+    if completed.returncode == 0 or "No such container" in completed.stderr:
+        return
+    raise RuntimeError(f"Docker could not remove the campaign container: {name}")
+
+
+def cleanup_campaign(containers: tuple[str, ...], network: str) -> None:
+    failures = []
+    for container in containers:
+        try:
+            remove_container(container)
+        except RuntimeError as error:
+            failures.append(str(error))
+    completed = command("docker", "network", "rm", network, check=False)
+    if completed.returncode != 0 and "No such network" not in completed.stderr:
+        failures.append(f"Docker could not remove the campaign network: {network}")
+    if failures:
+        raise RuntimeError("; ".join(failures))
+
+
 def repository_root() -> Path:
     return Path(
         command("git", "-C", str(ROOT), "rev-parse", "--show-toplevel").stdout.strip()
     ).resolve()
 
 
+def source_path(relative: str) -> Path:
+    local = (ROOT / relative).resolve()
+    if local.is_file():
+        return local
+    repository = repository_root()
+    repository_relative = (repository / relative).resolve()
+    if repository_relative.is_relative_to(repository) and repository_relative.is_file():
+        return repository_relative
+    raise FileNotFoundError(f"registered source file does not exist: {relative}")
+
+
 def source_sha256() -> str:
     digest = hashlib.sha256()
     for relative in SOURCE_PATHS:
-        path = (ROOT / relative).resolve()
+        path = source_path(relative)
         digest.update(relative.encode("utf-8") + b"\0")
         digest.update(path.read_bytes() + b"\0")
     return digest.hexdigest()
@@ -90,7 +138,7 @@ def source_sha256() -> str:
 
 def source_matches_commit(repository: Path, commit: str) -> bool:
     for relative in SOURCE_PATHS:
-        source = (ROOT / relative).resolve()
+        source = source_path(relative)
         try:
             repository_path = source.relative_to(repository).as_posix()
         except ValueError:
@@ -183,15 +231,33 @@ def parse_host_idle(output: str) -> float:
 
 
 def active_build_processes() -> list[str]:
-    completed = command("ps", "-Ao", "comm=", check=False)
+    completed = command("ps", "-Ao", "command=", check=False)
     if completed.returncode != 0:
         raise RuntimeError("the host process probe failed")
     active = {
-        Path(line.strip()).name
+        name
         for line in completed.stdout.splitlines()
-        if line.strip()
+        if (name := forbidden_process_name(line)) is not None
     }
-    return sorted(active & FORBIDDEN_BUILD_PROCESSES)
+    return sorted(active)
+
+
+def forbidden_process_name(command_line: str) -> str | None:
+    arguments = command_line.strip().split()
+    if not arguments:
+        return None
+    name = Path(arguments[0]).name
+    if name not in FORBIDDEN_BUILD_PROCESSES:
+        return None
+    if name == "docker" and arguments[1:6] == [
+        "stats",
+        "--all",
+        "--no-trunc",
+        "--no-stream",
+        "--format",
+    ]:
+        return None
+    return name
 
 
 def await_quiet_host(timeout_seconds: int = 300) -> dict:
@@ -752,7 +818,7 @@ def main() -> int:
             "--bin",
             "ndabi_v71",
         )
-    process_count = 1 if smoke else PROCESS_COUNT
+    process_count = SMOKE_PROCESS_COUNT if smoke else PROCESS_COUNT
     campaign_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     campaign = None if smoke else RESULT_ROOT / campaign_id
     if campaign is not None:
@@ -860,8 +926,11 @@ def main() -> int:
                     marker.unlink()
                 for marker in custody.glob("*.release"):
                     marker.unlink()
+            repeatability_evaluated = not smoke or SMOKE_REPEATABILITY
             repeatability_evidence, repeatability_passed = (
-                repeatability(process_reports) if not smoke else ([], False)
+                repeatability(process_reports)
+                if repeatability_evaluated
+                else ([], False)
             )
             final_source_sha256 = source_sha256()
             source_custody_passed = final_source_sha256 == initial_source_sha256
@@ -918,7 +987,7 @@ def main() -> int:
                 "security": security,
                 "security_passed": security_passed,
                 "repeatability": repeatability_evidence,
-                "repeatability_evaluated": not smoke,
+                "repeatability_evaluated": repeatability_evaluated,
                 "repeatability_passed": repeatability_passed,
                 "summary": campaign_summary(process_reports),
                 "environment": {
@@ -949,10 +1018,7 @@ def main() -> int:
             print(json.dumps(aggregate, indent=2))
             return 0 if (functional_passed if smoke else accepted) else 1
         finally:
-            command("docker", "rm", "--force", supavisor, check=False)
-            command("docker", "rm", "--force", postgrest, check=False)
-            command("docker", "rm", "--force", postgres, check=False)
-            command("docker", "network", "rm", network, check=False)
+            cleanup_campaign((supavisor, postgrest, postgres), network)
 
 
 if __name__ == "__main__":

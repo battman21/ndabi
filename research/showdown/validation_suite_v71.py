@@ -25,7 +25,7 @@ import validation_suite_v58 as shared
 
 
 ROOT = Path(__file__).resolve().parent
-BINARY = ROOT / "target" / "release" / "ndabi_v71"
+BINARY = ROOT.parents[1] / "target" / "release" / "ndabi_v71"
 POSTGRES_IMAGE = shared.POSTGRES_IMAGE
 POSTGREST_IMAGE = shared.POSTGREST_IMAGE
 RESULT_ROOT = ROOT / "results" / "v71"

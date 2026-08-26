@@ -20,11 +20,13 @@ mod transport;
 
 pub use batch::{
     batch_frame_bytes, BatchBackend, BatchExecution, BatchItem, BatchItems, BatchOperation,
-    BATCH_OPERAND_BYTES, MAX_BATCH_OPERATIONS,
+    StridedBatch, StridedBatchBackend, StridedBatchItems, BATCH_OPERAND_BYTES,
+    MAX_BATCH_OPERATIONS, STRIDED_BATCH_FRAME_BYTES,
 };
 #[cfg(feature = "benchmark-governed-native")]
 pub use batch::{
     BackendComponentProfile, ComponentTiming, ProfiledBatchBackend, ProfiledBatchExecution,
+    ProfiledStridedBatchBackend,
 };
 #[cfg(feature = "benchmark-governed-native")]
 pub use batch::{GovernedBatchBackend, GovernedBatchClientSession, GovernedBatchRequest};

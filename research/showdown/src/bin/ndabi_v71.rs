@@ -13,7 +13,8 @@ use ndabi_postgres_v1::{
 use ndabi_protocol::{
     batch_frame_bytes, Authority, BackendComponentProfile, BackendIdentity, BatchItem, BatchItems,
     BoundedOutput, ComponentTiming, ExecutionLimits, GovernedBatchClientSession,
-    ProfiledBatchBackend, ProtocolError, ServerSession, SingleSessionReplayStore, SystemClock,
+    ProfiledBatchBackend, ProtocolError, ServerSession, SingleSessionReplayStore, StridedBatch,
+    SystemClock, STRIDED_BATCH_FRAME_BYTES,
 };
 use ndabi_showdown::alloc::{begin_measurement, end_measurement, AllocationDelta};
 use ndabi_supabase_indexed_batch_session_v1::IndexedBatchSessionBackend;
@@ -239,6 +240,7 @@ struct Sample {
 struct NdabiState {
     profile: RangeProfile,
     items: Vec<BatchItem>,
+    strided_batch: Option<StridedBatch>,
     frame: Vec<u8>,
     wire_client: WireClientSession,
     wire_server: ServerSession,
@@ -320,10 +322,13 @@ fn run() -> Result<(), String> {
         return admit_only(&arguments[1..]);
     }
     if arguments.first().map(String::as_str) == Some("--ndabi-probe") {
-        return ndabi_probe(&arguments[1..], false);
+        return ndabi_probe(&arguments[1..], false, false);
     }
     if arguments.first().map(String::as_str) == Some("--ndabi-incremental-probe") {
-        return ndabi_probe(&arguments[1..], true);
+        return ndabi_probe(&arguments[1..], true, false);
+    }
+    if arguments.first().map(String::as_str) == Some("--ndabi-v85-probe") {
+        return ndabi_probe(&arguments[1..], true, true);
     }
     if arguments.first().map(String::as_str) == Some("--governed-native-probe") {
         return governed_native_probe(&arguments[1..]);
@@ -473,6 +478,7 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
             total_rows,
             session_index,
             matches!(arm, LoadArm::NdabiFixed | LoadArm::NdabiV85),
+            matches!(arm, LoadArm::NdabiV85),
         )?),
         LoadArm::GovernedNative | LoadArm::Postgrest | LoadArm::Native | LoadArm::PostgrestRpc => {
             None
@@ -740,7 +746,11 @@ fn admit_only(arguments: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn ndabi_probe(arguments: &[String], incremental_receipt: bool) -> Result<(), String> {
+fn ndabi_probe(
+    arguments: &[String],
+    incremental_receipt: bool,
+    compact_strided: bool,
+) -> Result<(), String> {
     if arguments.len() != 8 {
         return Err(
             "connection, token path, public-key path, key identifier, issuer, audience, start, and operations are required"
@@ -780,7 +790,8 @@ fn ndabi_probe(arguments: &[String], incremental_receipt: bool) -> Result<(), St
         result_budget,
         total_rows,
         99,
-        false,
+        compact_strided,
+        compact_strided,
     )?;
     let probe = state.security_probe(result_budget, total_rows, incremental_receipt)?;
     println!(
@@ -897,6 +908,7 @@ fn component_probe(arguments: &[String]) -> Result<(), String> {
         total_rows,
         102,
         true,
+        true,
     )?;
     for _ in 0..LOAD_WARMUPS {
         let bytes = state.execute_incremental(result_budget, total_rows, true)?;
@@ -923,7 +935,7 @@ fn component_probe(arguments: &[String]) -> Result<(), String> {
             .add(component_finish(request_started)?)?;
         let profiled = state
             .wire_server
-            .execute_profiled_batch(
+            .execute_profiled_strided_batch(
                 &state.frame,
                 &mut state.backend,
                 &mut state.replay,
@@ -1143,6 +1155,7 @@ fn measure_case(
         result_budget,
         total_rows,
         case_index,
+        false,
         false,
     )?;
     let rest = RestState::new(endpoint, token)?;
@@ -1423,13 +1436,51 @@ impl NdabiState {
         total_rows: u32,
         case_index: usize,
         exact_output: bool,
+        compact_strided: bool,
     ) -> Result<Self, String> {
         let authority = authority(user, identity, 7_100 + case_index as u64)?;
         let items = starts
             .iter()
             .map(|start| BatchItem::new(*start, 0, ROWS_PER_OPERATION))
             .collect::<Vec<_>>();
-        let frame = vec![0; batch_frame_bytes(items.len()).map_err(|error| error.to_string())?];
+        let strided_batch = if compact_strided {
+            let first = *starts
+                .first()
+                .ok_or_else(|| "the strided batch is empty".to_string())?;
+            let second = *starts
+                .get(1)
+                .ok_or_else(|| "the strided batch is too small".to_string())?;
+            let stride = i32::try_from(
+                second
+                    .checked_sub(first)
+                    .ok_or_else(|| "the strided batch step overflowed".to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            if starts.iter().enumerate().any(|(index, start)| {
+                first
+                    .checked_add(index as i64 * i64::from(stride))
+                    .is_none_or(|expected| expected != *start)
+            }) {
+                return Err("the compact batch operands are not strided".to_string());
+            }
+            Some(
+                StridedBatch::new(
+                    first,
+                    stride,
+                    u16::try_from(starts.len()).map_err(|error| error.to_string())?,
+                    u16::try_from(ROWS_PER_OPERATION).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?,
+            )
+        } else {
+            None
+        };
+        let frame_bytes = if strided_batch.is_some() {
+            STRIDED_BATCH_FRAME_BYTES
+        } else {
+            batch_frame_bytes(items.len()).map_err(|error| error.to_string())?
+        };
+        let frame = vec![0; frame_bytes];
         let client = Client::connect(connection, NoTls).map_err(|error| error.to_string())?;
         let backend = if exact_output {
             IndexedBatchSessionBackend::new_exact(
@@ -1454,6 +1505,7 @@ impl NdabiState {
         Ok(Self {
             profile,
             items,
+            strided_batch,
             frame,
             wire_client: WireClientSession::new(authority.clone()),
             wire_server: ServerSession::new(authority, result_budget, total_rows)
@@ -1464,31 +1516,54 @@ impl NdabiState {
     }
 
     fn encode(&mut self, result_budget: u32, total_rows: u32) -> Result<(), String> {
-        self.wire_client
-            .encode_batch_into(
-                self.profile
-                    .batch_operation()
-                    .map_err(|error| error.to_string())?,
-                &self.items,
-                result_budget,
-                total_rows,
-                deadline()?,
-                &mut self.frame,
-            )
-            .map_err(|error| error.to_string())
+        let operation = self
+            .profile
+            .batch_operation()
+            .map_err(|error| error.to_string())?;
+        let deadline = deadline()?;
+        if let Some(batch) = self.strided_batch {
+            self.wire_client
+                .encode_strided_batch_into(
+                    operation,
+                    batch,
+                    result_budget,
+                    total_rows,
+                    deadline,
+                    &mut self.frame,
+                )
+                .map_err(|error| error.to_string())
+        } else {
+            self.wire_client
+                .encode_batch_into(
+                    operation,
+                    &self.items,
+                    result_budget,
+                    total_rows,
+                    deadline,
+                    &mut self.frame,
+                )
+                .map_err(|error| error.to_string())
+        }
     }
 
     fn execute(&mut self, result_budget: u32, total_rows: u32) -> Result<Vec<u8>, String> {
         self.encode(result_budget, total_rows)?;
-        let execution = self
-            .wire_server
-            .execute_batch(
+        let execution = if self.strided_batch.is_some() {
+            self.wire_server.execute_strided_batch(
                 &self.frame,
                 &mut self.backend,
                 &mut self.replay,
                 &SystemClock,
             )
-            .map_err(|error| error.to_string())?;
+        } else {
+            self.wire_server.execute_batch(
+                &self.frame,
+                &mut self.backend,
+                &mut self.replay,
+                &SystemClock,
+            )
+        }
+        .map_err(|error| error.to_string())?;
         self.wire_client
             .verify_execution_receipt(
                 &self.frame,
@@ -1507,15 +1582,22 @@ impl NdabiState {
         verify_client_receipt: bool,
     ) -> Result<Vec<u8>, String> {
         self.encode(result_budget, total_rows)?;
-        let execution = self
-            .wire_server
-            .execute_batch_incremental_receipt(
+        let execution = if self.strided_batch.is_some() {
+            self.wire_server.execute_strided_batch_incremental_receipt(
                 &self.frame,
                 &mut self.backend,
                 &mut self.replay,
                 &SystemClock,
             )
-            .map_err(|error| error.to_string())?;
+        } else {
+            self.wire_server.execute_batch_incremental_receipt(
+                &self.frame,
+                &mut self.backend,
+                &mut self.replay,
+                &SystemClock,
+            )
+        }
+        .map_err(|error| error.to_string())?;
         if verify_client_receipt {
             self.wire_client
                 .verify_digest_execution_receipt(
@@ -1539,7 +1621,23 @@ impl NdabiState {
         let queries_before = self.backend.data_queries();
         let mut changed = self.frame.clone();
         changed[60] ^= 1;
-        let changed_result = if incremental_receipt {
+        let changed_result = if self.strided_batch.is_some() {
+            if incremental_receipt {
+                self.wire_server.execute_strided_batch_incremental_receipt(
+                    &changed,
+                    &mut self.backend,
+                    &mut self.replay,
+                    &SystemClock,
+                )
+            } else {
+                self.wire_server.execute_strided_batch(
+                    &changed,
+                    &mut self.backend,
+                    &mut self.replay,
+                    &SystemClock,
+                )
+            }
+        } else if incremental_receipt {
             self.wire_server.execute_batch_incremental_receipt(
                 &changed,
                 &mut self.backend,
@@ -1557,7 +1655,23 @@ impl NdabiState {
         let changed_frame_refused =
             matches!(changed_result, Err(ProtocolError::AuthenticationFailed))
                 && self.backend.data_queries() == queries_before;
-        let execution = if incremental_receipt {
+        let execution = if self.strided_batch.is_some() {
+            if incremental_receipt {
+                self.wire_server.execute_strided_batch_incremental_receipt(
+                    &self.frame,
+                    &mut self.backend,
+                    &mut self.replay,
+                    &SystemClock,
+                )
+            } else {
+                self.wire_server.execute_strided_batch(
+                    &self.frame,
+                    &mut self.backend,
+                    &mut self.replay,
+                    &SystemClock,
+                )
+            }
+        } else if incremental_receipt {
             self.wire_server.execute_batch_incremental_receipt(
                 &self.frame,
                 &mut self.backend,
@@ -1574,7 +1688,23 @@ impl NdabiState {
         }
         .map_err(|error| error.to_string())?;
         let queries_after = self.backend.data_queries();
-        let replay_result = if incremental_receipt {
+        let replay_result = if self.strided_batch.is_some() {
+            if incremental_receipt {
+                self.wire_server.execute_strided_batch_incremental_receipt(
+                    &self.frame,
+                    &mut self.backend,
+                    &mut self.replay,
+                    &SystemClock,
+                )
+            } else {
+                self.wire_server.execute_strided_batch(
+                    &self.frame,
+                    &mut self.backend,
+                    &mut self.replay,
+                    &SystemClock,
+                )
+            }
+        } else if incremental_receipt {
             self.wire_server.execute_batch_incremental_receipt(
                 &self.frame,
                 &mut self.backend,

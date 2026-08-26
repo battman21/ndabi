@@ -15,12 +15,16 @@ use super::{
 };
 
 const EXECUTE_BATCH_HANDLE: u8 = 2;
+const EXECUTE_STRIDED_BATCH_HANDLE: u8 = 3;
 #[cfg(feature = "benchmark-governed-native")]
 const GOVERNED_NATIVE_DOMAIN: &[u8] = b"ndabi/benchmark/governed-native/v1";
+const STRIDED_BATCH_FRAME_DOMAIN: &[u8] = b"ndabi/wire/v1/strided-batch-frame";
 const BATCH_HEADER_BYTES: usize = AUTHENTICATED_BYTES;
 const BATCH_BASE_BYTES: usize = BATCH_HEADER_BYTES + TAG_BYTES;
 pub const BATCH_OPERAND_BYTES: usize = 20;
 pub const MAX_BATCH_OPERATIONS: usize = 4_096;
+const STRIDED_AUTHENTICATED_BYTES: usize = 80;
+pub const STRIDED_BATCH_FRAME_BYTES: usize = STRIDED_AUTHENTICATED_BYTES + TAG_BYTES;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BatchOperation {
@@ -56,6 +60,108 @@ impl BatchItem {
             second,
             third,
         }
+    }
+}
+
+/// Describe one finite arithmetic sequence of identical registered operations.
+///
+/// The admitted plan defines each operand meaning. The frame carries no SQL or field names.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct StridedBatch {
+    first: i64,
+    stride: i32,
+    item_count: u16,
+    rows_per_item: u16,
+}
+
+impl StridedBatch {
+    pub fn new(
+        first: i64,
+        stride: i32,
+        item_count: u16,
+        rows_per_item: u16,
+    ) -> Result<Self, ProtocolError> {
+        if stride <= 0 || item_count < 2 || rows_per_item == 0 {
+            return Err(ProtocolError::NonCanonicalFrame);
+        }
+        if usize::from(item_count) > MAX_BATCH_OPERATIONS {
+            return Err(ProtocolError::BatchLimitExceeded);
+        }
+        let final_offset = i64::from(stride)
+            .checked_mul(i64::from(item_count - 1))
+            .ok_or(ProtocolError::NonCanonicalFrame)?;
+        first
+            .checked_add(final_offset)
+            .ok_or(ProtocolError::NonCanonicalFrame)?;
+        Ok(Self {
+            first,
+            stride,
+            item_count,
+            rows_per_item,
+        })
+    }
+
+    pub fn first(self) -> i64 {
+        self.first
+    }
+
+    pub fn stride(self) -> i32 {
+        self.stride
+    }
+
+    pub fn item_count(self) -> u16 {
+        self.item_count
+    }
+
+    pub fn rows_per_item(self) -> u16 {
+        self.rows_per_item
+    }
+
+    fn total_rows(self) -> Result<u32, ProtocolError> {
+        u32::from(self.item_count)
+            .checked_mul(u32::from(self.rows_per_item))
+            .ok_or(ProtocolError::RowBudgetExceeded)
+    }
+
+    fn items(self) -> StridedBatchItems {
+        StridedBatchItems {
+            batch: self,
+            index: 0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct StridedBatchItems {
+    batch: StridedBatch,
+    index: u16,
+}
+
+impl Iterator for StridedBatchItems {
+    type Item = BatchItem;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.batch.item_count {
+            return None;
+        }
+        let first = self.batch.first + i64::from(self.index) * i64::from(self.batch.stride);
+        self.index += 1;
+        Some(BatchItem::new(
+            first,
+            0,
+            u32::from(self.batch.rows_per_item),
+        ))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.len();
+        (remaining, Some(remaining))
+    }
+}
+
+impl ExactSizeIterator for StridedBatchItems {
+    fn len(&self) -> usize {
+        usize::from(self.batch.item_count - self.index)
     }
 }
 
@@ -176,6 +282,61 @@ impl ClientSession {
         self.next_nonce = next_nonce;
         Ok(())
     }
+
+    /// Encode one session-bound arithmetic batch without repeating every operand tuple.
+    #[allow(clippy::too_many_arguments)]
+    pub fn encode_strided_batch_into(
+        &mut self,
+        operation: BatchOperation,
+        batch: StridedBatch,
+        result_budget: u32,
+        row_budget: u32,
+        deadline_unix_us: u64,
+        output: &mut [u8],
+    ) -> Result<(), ProtocolError> {
+        if output.len() != STRIDED_BATCH_FRAME_BYTES {
+            return Err(ProtocolError::LengthMismatch);
+        }
+        if result_budget == 0 || row_budget == 0 {
+            return Err(ProtocolError::ZeroBudget);
+        }
+        if batch.total_rows()? != row_budget {
+            return Err(ProtocolError::NonCanonicalFrame);
+        }
+        if deadline_unix_us == 0 || deadline_unix_us > self.authority.expires_unix_us {
+            return Err(ProtocolError::DeadlineBeyondAuthority);
+        }
+        let nonce = self.next_nonce;
+        let next_nonce = nonce.checked_add(1).ok_or(ProtocolError::NonceEnded)?;
+        output.fill(0);
+        output[0..4].copy_from_slice(&MAGIC);
+        output[4] = VERSION_MAJOR;
+        output[5] = VERSION_MINOR;
+        output[6] = EXECUTE_STRIDED_BATCH_HANDLE;
+        output[7] = READ_ACCESS;
+        put_u16(output, 8, 0);
+        put_u16(output, 10, operation.opcode);
+        put_u32(output, 12, STRIDED_BATCH_FRAME_BYTES as u32);
+        put_u64(output, 16, self.authority.session);
+        put_u64(output, 24, self.authority.generation);
+        put_u64(output, 32, nonce);
+        put_u64(output, 40, deadline_unix_us);
+        put_u32(output, 48, result_budget);
+        put_u32(output, 52, row_budget);
+        put_u32(output, 56, operation.plan_handle);
+        put_u32(output, 60, operation.result_shape);
+        put_i64(output, 64, batch.first);
+        output[72..76].copy_from_slice(&batch.stride.to_le_bytes());
+        put_u16(output, 76, batch.item_count);
+        put_u16(output, 78, batch.rows_per_item);
+        let tag = self.authority.tag_for(
+            STRIDED_BATCH_FRAME_DOMAIN,
+            &output[..STRIDED_AUTHENTICATED_BYTES],
+        );
+        output[STRIDED_AUTHENTICATED_BYTES..].copy_from_slice(&tag);
+        self.next_nonce = next_nonce;
+        Ok(())
+    }
 }
 
 pub trait BatchBackend {
@@ -186,6 +347,18 @@ pub trait BatchBackend {
         &mut self,
         operation: BatchOperation,
         items: BatchItems<'_>,
+        limits: ExecutionLimits,
+        output: &mut BoundedOutput,
+    ) -> Result<(), ProtocolError>;
+}
+
+pub trait StridedBatchBackend {
+    fn identity(&self) -> BackendIdentity;
+
+    fn execute_strided_batch(
+        &mut self,
+        operation: BatchOperation,
+        items: StridedBatchItems,
         limits: ExecutionLimits,
         output: &mut BoundedOutput,
     ) -> Result<(), ProtocolError>;
@@ -249,6 +422,19 @@ pub trait ProfiledBatchBackend {
         &mut self,
         operation: BatchOperation,
         items: BatchItems<'_>,
+        limits: ExecutionLimits,
+        output: &mut BoundedOutput,
+    ) -> Result<BackendComponentProfile, ProtocolError>;
+}
+
+#[cfg(feature = "benchmark-governed-native")]
+pub trait ProfiledStridedBatchBackend {
+    fn identity(&self) -> BackendIdentity;
+
+    fn execute_profiled_strided_batch(
+        &mut self,
+        operation: BatchOperation,
+        items: StridedBatchItems,
         limits: ExecutionLimits,
         output: &mut BoundedOutput,
     ) -> Result<BackendComponentProfile, ProtocolError>;
@@ -489,6 +675,16 @@ impl ServerSession {
         self.execute_batch_inner(frame, backend, replay, clock, false)
     }
 
+    pub fn execute_strided_batch<B: StridedBatchBackend, R: ReplayStore, C: Clock>(
+        &self,
+        frame: &[u8],
+        backend: &mut B,
+        replay: &mut R,
+        clock: &C,
+    ) -> Result<BatchExecution, ProtocolError> {
+        self.execute_strided_batch_inner(frame, backend, replay, clock, false)
+    }
+
     /// Profile the real authenticated path without adding timers to the performance arm.
     #[cfg(feature = "benchmark-governed-native")]
     pub fn execute_profiled_batch<B: ProfiledBatchBackend, R: ReplayStore, C: Clock>(
@@ -561,6 +757,81 @@ impl ServerSession {
         })
     }
 
+    #[cfg(feature = "benchmark-governed-native")]
+    pub fn execute_profiled_strided_batch<
+        B: ProfiledStridedBatchBackend,
+        R: ReplayStore,
+        C: Clock,
+    >(
+        &self,
+        frame: &[u8],
+        backend: &mut B,
+        replay: &mut R,
+        clock: &C,
+    ) -> Result<ProfiledBatchExecution, ProtocolError> {
+        let admitted_unix_us = clock.now_unix_us()?;
+        let decode_started = ComponentStamp::now()?;
+        let decoded = self.decode_strided_batch(frame, admitted_unix_us)?;
+        let request_authentication_and_decoding = decode_started.finish()?;
+        let replay_started = ComponentStamp::now()?;
+        let pending = self.admit_strided_batch_replay(decoded, replay)?;
+        let mut replay_admission = replay_started.finish()?;
+        let dispatch_started = ComponentStamp::now()?;
+        if backend.identity() != self.authority.context.backend() {
+            return Err(ProtocolError::BackendIdentityMismatch);
+        }
+        let identity_dispatch = dispatch_started.finish()?;
+        let limits = ExecutionLimits {
+            admitted_unix_us,
+            deadline_unix_us: pending.deadline_unix_us,
+            maximum_result_bytes: pending.result_budget,
+            maximum_rows: pending.row_budget,
+        };
+        let mut output =
+            BoundedOutput::new_deferred_digesting(pending.result_budget, pending.row_budget);
+        let mut backend_profile = backend.execute_profiled_strided_batch(
+            pending.operation,
+            pending.batch.items(),
+            limits,
+            &mut output,
+        )?;
+        backend_profile.registered_plan_dispatch = backend_profile
+            .registered_plan_dispatch
+            .checked_add(identity_dispatch)?;
+        if clock.now_unix_us()? >= pending.deadline_unix_us {
+            return Err(ProtocolError::ExpiredDuringExecution);
+        }
+        let replay_commit_started = ComponentStamp::now()?;
+        replay.commit(
+            self.authority.replay_key(),
+            pending.previous_nonce,
+            pending.nonce,
+        )?;
+        replay_admission = replay_admission.checked_add(replay_commit_started.finish()?)?;
+        let receipt_started = ComponentStamp::now()?;
+        let receipt = digest_receipt(
+            &self.authority,
+            *blake3::hash(frame).as_bytes(),
+            pending.nonce,
+            output.rows,
+            output.exact_result_digest()?,
+        );
+        let server_result_hashing_and_receipt = receipt_started.finish()?;
+        Ok(ProfiledBatchExecution {
+            execution: BatchExecution {
+                operation: pending.operation,
+                item_count: u32::from(pending.batch.item_count),
+                bytes: output.bytes,
+                rows: output.rows,
+                receipt,
+            },
+            request_authentication_and_decoding,
+            replay_admission,
+            backend: backend_profile,
+            server_result_hashing_and_receipt,
+        })
+    }
+
     /// Hash the result while the backend writes it.
     ///
     /// This method uses the v0.2 digest receipt and leaves the v0.1 receipt unchanged.
@@ -572,6 +843,20 @@ impl ServerSession {
         clock: &C,
     ) -> Result<BatchExecution, ProtocolError> {
         self.execute_batch_inner(frame, backend, replay, clock, true)
+    }
+
+    pub fn execute_strided_batch_incremental_receipt<
+        B: StridedBatchBackend,
+        R: ReplayStore,
+        C: Clock,
+    >(
+        &self,
+        frame: &[u8],
+        backend: &mut B,
+        replay: &mut R,
+        clock: &C,
+    ) -> Result<BatchExecution, ProtocolError> {
+        self.execute_strided_batch_inner(frame, backend, replay, clock, true)
     }
 
     fn execute_batch_inner<B: BatchBackend, R: ReplayStore, C: Clock>(
@@ -629,6 +914,72 @@ impl ServerSession {
         Ok(BatchExecution {
             operation: pending.operation,
             item_count: pending.item_count,
+            bytes: output.bytes,
+            rows: output.rows,
+            receipt: execution_receipt,
+        })
+    }
+
+    fn execute_strided_batch_inner<B: StridedBatchBackend, R: ReplayStore, C: Clock>(
+        &self,
+        frame: &[u8],
+        backend: &mut B,
+        replay: &mut R,
+        clock: &C,
+        incremental_receipt: bool,
+    ) -> Result<BatchExecution, ProtocolError> {
+        let admitted_unix_us = clock.now_unix_us()?;
+        let decoded = self.decode_strided_batch(frame, admitted_unix_us)?;
+        let pending = self.admit_strided_batch_replay(decoded, replay)?;
+        if backend.identity() != self.authority.context.backend() {
+            return Err(ProtocolError::BackendIdentityMismatch);
+        }
+        let limits = ExecutionLimits {
+            admitted_unix_us,
+            deadline_unix_us: pending.deadline_unix_us,
+            maximum_result_bytes: pending.result_budget,
+            maximum_rows: pending.row_budget,
+        };
+        let mut output = if incremental_receipt {
+            BoundedOutput::new_deferred_digesting(pending.result_budget, pending.row_budget)
+        } else {
+            BoundedOutput::new_deferred(pending.result_budget, pending.row_budget)
+        };
+        backend.execute_strided_batch(
+            pending.operation,
+            pending.batch.items(),
+            limits,
+            &mut output,
+        )?;
+        if clock.now_unix_us()? >= pending.deadline_unix_us {
+            return Err(ProtocolError::ExpiredDuringExecution);
+        }
+        replay.commit(
+            self.authority.replay_key(),
+            pending.previous_nonce,
+            pending.nonce,
+        )?;
+        let frame_digest = *blake3::hash(frame).as_bytes();
+        let execution_receipt = if incremental_receipt {
+            digest_receipt(
+                &self.authority,
+                frame_digest,
+                pending.nonce,
+                output.rows,
+                output.exact_result_digest()?,
+            )
+        } else {
+            receipt(
+                &self.authority,
+                frame_digest,
+                pending.nonce,
+                output.rows,
+                &output.bytes,
+            )
+        };
+        Ok(BatchExecution {
+            operation: pending.operation,
+            item_count: u32::from(pending.batch.item_count),
             bytes: output.bytes,
             rows: output.rows,
             receipt: execution_receipt,
@@ -710,6 +1061,81 @@ impl ServerSession {
         })
     }
 
+    fn decode_strided_batch(
+        &self,
+        frame: &[u8],
+        now_unix_us: u64,
+    ) -> Result<DecodedStridedBatch, ProtocolError> {
+        if frame.len() != STRIDED_BATCH_FRAME_BYTES {
+            return Err(ProtocolError::LengthMismatch);
+        }
+        let expected_tag = self.authority.tag_for(
+            STRIDED_BATCH_FRAME_DOMAIN,
+            &frame[..STRIDED_AUTHENTICATED_BYTES],
+        );
+        if expected_tag
+            .ct_eq(&frame[STRIDED_AUTHENTICATED_BYTES..])
+            .unwrap_u8()
+            != 1
+        {
+            return Err(ProtocolError::AuthenticationFailed);
+        }
+        if frame[0..4] != MAGIC
+            || frame[4] != VERSION_MAJOR
+            || frame[5] != VERSION_MINOR
+            || frame[6] != EXECUTE_STRIDED_BATCH_HANDLE
+            || frame[7] != READ_ACCESS
+        {
+            return Err(ProtocolError::UnsupportedFrame);
+        }
+        if get_u16(frame, 8) != 0 || get_u32(frame, 12) != STRIDED_BATCH_FRAME_BYTES as u32 {
+            return Err(ProtocolError::NonCanonicalFrame);
+        }
+        if get_u64(frame, 16) != self.authority.session
+            || get_u64(frame, 24) != self.authority.generation
+        {
+            return Err(ProtocolError::AuthorityMismatch);
+        }
+        let nonce = get_u64(frame, 32);
+        let deadline_unix_us = get_u64(frame, 40);
+        let result_budget = get_u32(frame, 48);
+        let row_budget = get_u32(frame, 52);
+        if deadline_unix_us <= now_unix_us || deadline_unix_us > self.authority.expires_unix_us {
+            return Err(ProtocolError::Expired);
+        }
+        if result_budget == 0
+            || result_budget > self.maximum_result_bytes
+            || row_budget == 0
+            || row_budget > self.maximum_rows
+        {
+            return Err(ProtocolError::BudgetExceeded);
+        }
+        let operation =
+            BatchOperation::new(get_u16(frame, 10), get_u32(frame, 56), get_u32(frame, 60))?;
+        let stride = i32::from_le_bytes(
+            frame[72..76]
+                .try_into()
+                .map_err(|_| ProtocolError::LengthMismatch)?,
+        );
+        let batch = StridedBatch::new(
+            get_i64(frame, 64),
+            stride,
+            get_u16(frame, 76),
+            get_u16(frame, 78),
+        )?;
+        if batch.total_rows()? != row_budget {
+            return Err(ProtocolError::NonCanonicalFrame);
+        }
+        Ok(DecodedStridedBatch {
+            nonce,
+            deadline_unix_us,
+            result_budget,
+            row_budget,
+            operation,
+            batch,
+        })
+    }
+
     fn admit_batch_replay<'a, R: ReplayStore>(
         &self,
         decoded: DecodedBatch<'a>,
@@ -732,6 +1158,30 @@ impl ServerSession {
             operation: decoded.operation,
             item_count: decoded.item_count,
             items: decoded.items,
+        })
+    }
+
+    fn admit_strided_batch_replay<R: ReplayStore>(
+        &self,
+        decoded: DecodedStridedBatch,
+        replay: &R,
+    ) -> Result<PendingStridedBatch, ProtocolError> {
+        let previous_nonce = replay.last_nonce(self.authority.replay_key())?;
+        if decoded.nonce
+            != previous_nonce
+                .checked_add(1)
+                .ok_or(ProtocolError::NonceEnded)?
+        {
+            return Err(ProtocolError::Replay);
+        }
+        Ok(PendingStridedBatch {
+            nonce: decoded.nonce,
+            previous_nonce,
+            deadline_unix_us: decoded.deadline_unix_us,
+            result_budget: decoded.result_budget,
+            row_budget: decoded.row_budget,
+            operation: decoded.operation,
+            batch: decoded.batch,
         })
     }
 }
@@ -778,6 +1228,25 @@ struct PendingBatch<'a> {
     operation: BatchOperation,
     item_count: u32,
     items: BatchItems<'a>,
+}
+
+struct DecodedStridedBatch {
+    nonce: u64,
+    deadline_unix_us: u64,
+    result_budget: u32,
+    row_budget: u32,
+    operation: BatchOperation,
+    batch: StridedBatch,
+}
+
+struct PendingStridedBatch {
+    nonce: u64,
+    previous_nonce: u64,
+    deadline_unix_us: u64,
+    result_budget: u32,
+    row_budget: u32,
+    operation: BatchOperation,
+    batch: StridedBatch,
 }
 
 #[cfg(test)]
@@ -864,6 +1333,25 @@ mod tests {
         }
     }
 
+    impl StridedBatchBackend for TestBackend {
+        fn identity(&self) -> BackendIdentity {
+            self.identity
+        }
+
+        fn execute_strided_batch(
+            &mut self,
+            _operation: BatchOperation,
+            items: StridedBatchItems,
+            _limits: ExecutionLimits,
+            output: &mut BoundedOutput,
+        ) -> Result<(), ProtocolError> {
+            self.calls += 1;
+            self.received.extend(items);
+            output.write(&[1, 2, 3])?;
+            output.complete_row()
+        }
+    }
+
     #[cfg(feature = "benchmark-governed-native")]
     impl GovernedBatchBackend for TestBackend {
         fn identity(&self) -> BackendIdentity {
@@ -894,6 +1382,40 @@ mod tests {
             &mut self,
             _operation: BatchOperation,
             items: BatchItems<'_>,
+            _limits: ExecutionLimits,
+            output: &mut BoundedOutput,
+        ) -> Result<BackendComponentProfile, ProtocolError> {
+            self.calls += 1;
+            self.received.extend(items);
+            output.write(&[1, 2, 3])?;
+            output.complete_row()?;
+            Ok(BackendComponentProfile {
+                registered_plan_dispatch: ComponentTiming {
+                    wall_ns: 1,
+                    cpu_ns: 1,
+                },
+                database_execution: ComponentTiming {
+                    wall_ns: 2,
+                    cpu_ns: 2,
+                },
+                result_encoding: ComponentTiming {
+                    wall_ns: 3,
+                    cpu_ns: 3,
+                },
+            })
+        }
+    }
+
+    #[cfg(feature = "benchmark-governed-native")]
+    impl ProfiledStridedBatchBackend for TestBackend {
+        fn identity(&self) -> BackendIdentity {
+            self.identity
+        }
+
+        fn execute_profiled_strided_batch(
+            &mut self,
+            _operation: BatchOperation,
+            items: StridedBatchItems,
             _limits: ExecutionLimits,
             output: &mut BoundedOutput,
         ) -> Result<BackendComponentProfile, ProtocolError> {
@@ -962,6 +1484,121 @@ mod tests {
                 .unwrap_err(),
             ProtocolError::ReceiptMismatch
         );
+    }
+
+    fn strided_frame() -> Vec<u8> {
+        let mut frame = vec![0; STRIDED_BATCH_FRAME_BYTES];
+        ClientSession::new(authority(20))
+            .encode_strided_batch_into(
+                operation(),
+                StridedBatch::new(14, 3, 3, 4).expect("strided batch"),
+                64,
+                12,
+                DEADLINE,
+                &mut frame,
+            )
+            .expect("strided frame");
+        frame
+    }
+
+    #[test]
+    fn one_strided_frame_reconstructs_exact_operands_and_dispatches_once() {
+        let server = ServerSession::new(authority(20), 128, 12).expect("server");
+        let client = ClientSession::new(authority(20));
+        let frame = strided_frame();
+        let mut backend = backend();
+        let execution = server
+            .execute_strided_batch_incremental_receipt(
+                &frame,
+                &mut backend,
+                &mut MemoryReplayStore::default(),
+                &clock(),
+            )
+            .expect("strided execution");
+
+        assert_eq!(STRIDED_BATCH_FRAME_BYTES, 112);
+        assert!(STRIDED_BATCH_FRAME_BYTES < batch_frame_bytes(3).expect("batch bytes"));
+        assert_eq!(backend.calls, 1);
+        assert_eq!(
+            backend.received,
+            [
+                BatchItem::new(14, 0, 4),
+                BatchItem::new(17, 0, 4),
+                BatchItem::new(20, 0, 4),
+            ]
+        );
+        client
+            .verify_digest_execution_receipt(
+                &frame,
+                execution.rows,
+                &execution.bytes,
+                &execution.receipt,
+            )
+            .expect("strided receipt");
+    }
+
+    #[test]
+    fn every_strided_frame_bit_is_authenticated() {
+        let original = strided_frame();
+        for bit in 0..original.len() * 8 {
+            let mut changed = original.clone();
+            changed[bit / 8] ^= 1 << (bit % 8);
+            let result = ServerSession::new(authority(20), 128, 12)
+                .expect("server")
+                .execute_strided_batch(
+                    &changed,
+                    &mut backend(),
+                    &mut MemoryReplayStore::default(),
+                    &clock(),
+                );
+            assert!(result.is_err(), "accepted strided bit {bit}");
+        }
+    }
+
+    #[test]
+    fn a_strided_replay_refuses_before_dispatch() {
+        let server = ServerSession::new(authority(20), 128, 12).expect("server");
+        let frame = strided_frame();
+        let mut replay = MemoryReplayStore::default();
+        server
+            .execute_strided_batch(&frame, &mut backend(), &mut replay, &clock())
+            .expect("first execution");
+        let mut second = backend();
+        assert_eq!(
+            server
+                .execute_strided_batch(&frame, &mut second, &mut replay, &clock())
+                .unwrap_err(),
+            ProtocolError::Replay
+        );
+        assert_eq!(second.calls, 0);
+    }
+
+    #[test]
+    fn strided_encoding_refuses_shape_drift_without_consuming_a_nonce() {
+        assert_eq!(
+            StridedBatch::new(1, 0, 2, 1).unwrap_err(),
+            ProtocolError::NonCanonicalFrame
+        );
+        let mut client = ClientSession::new(authority(20));
+        let batch = StridedBatch::new(1, 2, 2, 4).expect("batch");
+        let mut valid = [0_u8; STRIDED_BATCH_FRAME_BYTES];
+        assert_eq!(
+            client
+                .encode_strided_batch_into(operation(), batch, 64, 7, DEADLINE, &mut valid)
+                .unwrap_err(),
+            ProtocolError::NonCanonicalFrame
+        );
+        let mut wrong = [0_u8; 16];
+        assert_eq!(
+            client
+                .encode_strided_batch_into(operation(), batch, 64, 8, DEADLINE, &mut wrong)
+                .unwrap_err(),
+            ProtocolError::LengthMismatch
+        );
+        client
+            .encode_strided_batch_into(operation(), batch, 64, 8, DEADLINE, &mut valid)
+            .expect("valid frame");
+        assert_eq!(get_u64(&valid, 32), 1);
     }
 
     #[test]

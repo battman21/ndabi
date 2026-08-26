@@ -1,5 +1,7 @@
 import copy
+import subprocess
 import unittest
+from unittest.mock import patch
 
 import validation_suite_v73 as campaign
 
@@ -100,6 +102,45 @@ def validated_measurement(arm: str) -> dict:
 
 
 class SupavisorConcurrencyCampaignTests(unittest.TestCase):
+    def test_container_cleanup_removes_anonymous_volumes(self):
+        completed = subprocess.CompletedProcess([], 0, "", "")
+        with patch.object(campaign, "command", return_value=completed) as command:
+            campaign.remove_container("campaign-postgres")
+        command.assert_called_once_with(
+            "docker",
+            "rm",
+            "--force",
+            "--volumes",
+            "campaign-postgres",
+            check=False,
+        )
+
+    def test_container_cleanup_refuses_a_docker_failure(self):
+        completed = subprocess.CompletedProcess([], 1, "", "daemon unavailable")
+        with patch.object(campaign, "command", return_value=completed):
+            with self.assertRaisesRegex(RuntimeError, "could not remove"):
+                campaign.remove_container("campaign-postgres")
+
+    def test_campaign_cleanup_attempts_every_target_before_refusal(self):
+        network_result = subprocess.CompletedProcess([], 0, "", "")
+        with (
+            patch.object(
+                campaign,
+                "remove_container",
+                side_effect=[RuntimeError("first failed"), None, None],
+            ) as remove,
+            patch.object(campaign, "command", return_value=network_result) as command,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "first failed"):
+                campaign.cleanup_campaign(("first", "second", "third"), "network")
+        self.assertEqual(
+            [call.args[0] for call in remove.call_args_list],
+            ["first", "second", "third"],
+        )
+        command.assert_called_once_with(
+            "docker", "network", "rm", "network", check=False
+        )
+
     def test_campaign_shape_is_frozen(self):
         self.assertEqual(campaign.PROCESS_COUNT, 5)
         self.assertEqual(campaign.CONCURRENCY_LEVELS, (1, 8, 32))
@@ -109,11 +150,26 @@ class SupavisorConcurrencyCampaignTests(unittest.TestCase):
 
     def test_source_custody_covers_the_worker_and_contract(self):
         paths = set(campaign.SOURCE_PATHS)
+        self.assertIn("../../.cargo/config.toml", paths)
         self.assertIn("src/bin/ndabi_v71.rs", paths)
         self.assertIn("validation_suite_v73.py", paths)
         self.assertIn(
             "../../specs/ndabi_supavisor_concurrency_campaign_v7_3.md", paths
         )
+
+    def test_binary_uses_the_shared_repository_target(self):
+        self.assertEqual(
+            campaign.BINARY,
+            campaign.repository_root() / "target" / "release" / "ndabi_v71",
+        )
+
+    def test_source_path_resolves_standalone_repository_crates(self):
+        path = campaign.source_path("crates/ndabi-protocol/Cargo.toml")
+        self.assertEqual(path, campaign.repository_root() / "crates/ndabi-protocol/Cargo.toml")
+
+    def test_source_path_refuses_a_missing_registered_file(self):
+        with self.assertRaisesRegex(FileNotFoundError, "registered source file"):
+            campaign.source_path("crates/does-not-exist/Cargo.toml")
 
     def test_host_idle_parser_uses_the_last_sample(self):
         output = "CPU usage: 50.0% user, 10.0% sys, 40.0% idle\nCPU usage: 5.0% user, 5.0% sys, 90.0% idle\n"

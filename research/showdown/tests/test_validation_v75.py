@@ -12,7 +12,17 @@ class SupavisorBuildExclusiveCampaignTests(unittest.TestCase):
         self.assertEqual(repair.MINIMUM_HOST_IDLE_PERCENT, 0.0)
         self.assertEqual(
             repair.campaign.FORBIDDEN_BUILD_PROCESSES,
-            {"cargo", "cargo-tauri", "clang", "rustc", "swiftc"},
+            {
+                "cargo",
+                "cargo-tauri",
+                "clang",
+                "colima",
+                "docker",
+                "incus",
+                "limactl",
+                "rustc",
+                "swiftc",
+            },
         )
 
     def test_source_custody_covers_the_v75_contract(self):

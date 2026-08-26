@@ -7,6 +7,8 @@ Baseline smoke `20260825T042305Z` selected immutable frame preparation as the fi
 The repair preserves identical wire bytes and rewrites only the nonce, deadline, and authentication tag.
 Functional smoke `20260825T050138Z` passed all 24 security checks after the repair.
 Performance smoke `20260825T050406Z` did not prove an end-to-end improvement.
+The second repair adds the 112-byte compact strided-batch profile.
+It replaces sixteen repeated operand tuples with one authenticated arithmetic instruction.
 
 ## 1. Purpose
 
@@ -28,7 +30,7 @@ Measure direct PostgreSQL and Supavisor session mode separately.
 |---|---|---|
 | Raw native | Prepared query and exact result encoding | Measure the engine and driver floor |
 | Governed native | Native typed call with identical authority, replay, deadline, budgets, result digest, and receipt | Measure mandatory governance cost |
-| NDABI | Complete authenticated frame, registered dispatch, identical query, result, and receipt | Measure protocol overhead |
+| NDABI | Compact authenticated strided batch, registered dispatch, identical query, result, and receipt | Measure protocol overhead |
 | Repeated PostgREST | Sixteen JWT HTTP requests | Measure the conventional layered path |
 
 The governed-native arm MUST use the same security checks as NDABI.
@@ -82,7 +84,10 @@ Use five qualified repetitions for every boundary, arm, and result size.
 Run each measured arm for at least five seconds.
 Allow each worker at most ten minutes for the frozen high-concurrency REST workload.
 Interleave arms with a fixed Latin square.
-Reject any repetition that observes a compiler or another benchmark campaign.
+Reject any repetition that observes a compiler, container client, virtual-machine manager, or another benchmark campaign.
+Discard a contaminated arm without retaining its measurements.
+Retry that arm at most four times after a new quiet-host preflight.
+Fail the campaign when the fifth attempt remains contaminated.
 Record source, binary, lockfile, container image, and campaign digests.
 
 ## 8. Acceptance gates
@@ -98,7 +103,7 @@ Apply each gate within every qualified repetition.
 | NDABI throughput over raw native | At least 0.95 |
 | NDABI throughput over repeated PostgREST | At least 5.00 |
 | NDABI allocations over governed native | At most one additional allocation |
-| NDABI request bytes against complete JSON | At least 80% smaller |
+| NDABI request bytes against the concise JSON operand body | At least 80% smaller |
 | P95-ratio variation | At most 10% |
 
 Do not accept a median when one repetition fails.
@@ -109,3 +114,11 @@ Do not convert a component improvement into an end-to-end claim.
 This campaign tests local Docker and one fixed Supabase-compatible workload.
 It does not test hosted Supabase, geographic WAN, energy, production custody, arbitrary SQL, or general writes.
 It does not permit removal of exactness, governance, replay, or receipt verification.
+
+## 10. Storage hygiene
+
+Use one repository Cargo target directory for the protocol and benchmark workspaces.
+Remove each campaign container with its attached anonymous volumes.
+Fail the campaign when Docker cannot remove a campaign container.
+Keep only the latest smoke report outside formal evidence directories.
+Do not remove named project volumes during campaign cleanup.

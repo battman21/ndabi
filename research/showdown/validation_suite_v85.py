@@ -6,6 +6,7 @@ from __future__ import annotations
 import math
 import json
 import statistics
+import sys
 from pathlib import Path
 
 import validation_suite_v80 as production
@@ -15,6 +16,7 @@ import validation_suite_v83 as cumulative
 
 ROOT = Path(__file__).resolve().parent
 RESULT_ROOT = ROOT / "results" / "v85"
+ORDER_DIAGNOSTIC_RESULT_ROOT = RESULT_ROOT / "order-diagnostic"
 CAMPAIGN_NAME = "NDABI Supabase equal-security CPU v8.5"
 CAMPAIGN_LABEL = "v8.5 equal-security CPU"
 FORMAL_CAMPAIGN_NAME = "NDABI Supabase equal-security CPU campaign v8.5"
@@ -45,6 +47,13 @@ SAMPLES_BY_ARM = {
     "postgrest": 1_023,
 }
 FUNCTIONAL_SAMPLES_BY_ARM = {arm: 3 for arm in ARMS}
+ORDER_DIAGNOSTIC_SAMPLES_BY_ARM = {
+    "native": 2_047,
+    "governed_native": 2_047,
+    "ndabi_v85": 2_047,
+    "postgrest_rpc": 3,
+    "postgrest": 3,
+}
 REQUEST_BYTES_KINDS = {
     "native": "unavailable-postgresql-driver-wire",
     "governed_native": "typed-in-process-control",
@@ -59,6 +68,7 @@ SOURCE_PATHS = attribution.SOURCE_PATHS + (
     "validation_suite_v85.py",
     "tests/test_validation_v85.py",
     "../../specs/ndabi_supabase_hot_path_campaign_v8_5.md",
+    "../../specs/ndabi_compact_strided_batch_profile_v0_1.md",
 )
 BASE_CONFIGURE = attribution.configure
 BASE_SECURITY_CHECKS = production.LEGACY_SECURITY_CHECKS
@@ -69,6 +79,7 @@ BOUNDARIES = ("direct", "supavisor")
 MINIMUM_ARM_DURATION_NS = 5_000_000_000
 # The repeated REST arm performs 16,368 requests per worker and exceeded 180 seconds at concurrency 32.
 WORKER_TIMEOUT_SECONDS = 600
+MAXIMUM_ARM_ATTEMPTS = 5
 COMPONENT_SAMPLES = 255
 COMPONENT_KEYS = {
     "request_encoding",
@@ -196,6 +207,14 @@ def compare_measurements(measurements: dict[str, dict], concurrency: int) -> dic
     throughput_native = ratio(
         ndabi["logical_operations_per_second"], native["logical_operations_per_second"]
     )
+    governed_throughput_native = ratio(
+        governed["logical_operations_per_second"],
+        native["logical_operations_per_second"],
+    )
+    ndabi_throughput_governed = ratio(
+        ndabi["logical_operations_per_second"],
+        governed["logical_operations_per_second"],
+    )
     throughput_postgrest = ratio(
         ndabi["logical_operations_per_second"], repeated["logical_operations_per_second"]
     )
@@ -218,6 +237,10 @@ def compare_measurements(measurements: dict[str, dict], concurrency: int) -> dic
     return {
         "canonical_results_equal": exact,
         "concurrency": concurrency,
+        "governed_p95_to_native": ratio(
+            governed["p95_request_ns"], native["p95_request_ns"]
+        ),
+        "governed_throughput_over_native": governed_throughput_native,
         "ndabi_allocation_delta_to_governed": allocation_delta,
         "ndabi_allocation_delta_to_governed_limit": 1.0,
         "ndabi_client_cpu_to_governed": client_cpu_governed,
@@ -228,6 +251,7 @@ def compare_measurements(measurements: dict[str, dict], concurrency: int) -> dic
         "ndabi_request_reduction_to_json_minimum": 0.80,
         "ndabi_stack_cpu_to_governed": stack_cpu_governed,
         "ndabi_stack_cpu_to_governed_limit": 1.05,
+        "ndabi_throughput_over_governed": ndabi_throughput_governed,
         "ndabi_throughput_over_native": throughput_native,
         "ndabi_throughput_over_native_minimum": 0.95,
         "ndabi_throughput_over_postgrest": throughput_postgrest,
@@ -275,6 +299,30 @@ def governed_probe(
     completed = production.campaign.command(
         str(production.campaign.BINARY),
         "--governed-native-probe",
+        connection,
+        str(token_path),
+        str(public_key),
+        v71.KEY_ID,
+        v71.ISSUER,
+        v71.AUDIENCE,
+        str(start),
+        "2",
+        check=False,
+    )
+    try:
+        report = json.loads(completed.stdout) if completed.returncode == 0 else {}
+    except json.JSONDecodeError:
+        report = {}
+    return completed.returncode, report
+
+
+def ndabi_v85_probe(
+    connection: str, token_path: Path, public_key: Path, start: int
+) -> tuple[int, dict]:
+    v71 = production.campaign.v72.v71
+    completed = production.campaign.command(
+        str(production.campaign.BINARY),
+        "--ndabi-v85-probe",
         connection,
         str(token_path),
         str(public_key),
@@ -392,6 +440,15 @@ def security_checks(
     security = BASE_SECURITY_CHECKS(
         pooled_connection, endpoint, token_paths, public_key, valid_one
     )
+    ndabi_valid_code, ndabi_report = ndabi_v85_probe(
+        pooled_connection, token_paths["valid"], public_key, 1_000
+    )
+    ndabi_cross_code, _ = ndabi_v85_probe(
+        pooled_connection, token_paths["valid"], public_key, 900_000
+    )
+    ndabi_second_code, _ = ndabi_v85_probe(
+        pooled_connection, token_paths["user_two"], public_key, 900_000
+    )
     valid_code, report = governed_probe(
         pooled_connection, token_paths["valid"], public_key, 1_000
     )
@@ -403,6 +460,19 @@ def security_checks(
     )
     security.update(
         {
+            "authorised_ndabi_rows_accepted": ndabi_valid_code == 0,
+            "cross_subject_ndabi_rows_refused": ndabi_cross_code != 0,
+            "second_subject_ndabi_rows_accepted": ndabi_second_code == 0,
+            "changed_ndabi_frame_refused": ndabi_report.get("changed_frame_refused") is True,
+            "ndabi_replay_refused_before_query": ndabi_report.get(
+                "replay_refused_before_query"
+            )
+            is True,
+            "invalid_ndabi_receipt_refused": ndabi_report.get(
+                "invalid_receipt_refused"
+            )
+            is True,
+            "valid_ndabi_result_accepted": ndabi_report.get("valid_result_accepted") is True,
             "authorised_governed_rows_accepted": valid_code == 0,
             "cross_subject_governed_rows_refused": cross_code != 0,
             "second_subject_governed_rows_accepted": second_code == 0,
@@ -439,55 +509,80 @@ def run_boundary(
     boundary_index = BOUNDARIES.index(boundary)
     boundary_custody = custody / boundary
     boundary_custody.mkdir(mode=0o700, exist_ok=True)
+    process_custody = boundary_custody / f"process-{process}"
+    process_custody.mkdir(mode=0o700)
     for concurrency_index, concurrency in enumerate(production.campaign.CONCURRENCY_LEVELS):
         order = arm_order(process, concurrency_index, boundary_index)
         measurements = {}
         for arm in order:
-            resources_before = production.container_resource_snapshot(postgres)
-            host_idle = production.campaign.await_quiet_host()
-            production.campaign.v72.psql(postgres, "SELECT pg_stat_statements_reset()")
-            measurement = cumulative.run_load_arm_attributed(
-                arm,
-                concurrency,
-                connection,
-                endpoint,
-                token_path,
-                public_key,
-                boundary_custody,
-                postgres,
-            )
-            add_relevant_stack_cpu(measurement, postgres, boundary, arm)
-            resources_after = production.container_resource_snapshot(postgres)
-            observed_queries = production.campaign.v72.data_queries(postgres)
-            expected_queries = production.campaign.expected_data_queries(arm, concurrency)
-            measurement["observed_data_queries"] = observed_queries
-            measurement["expected_data_queries"] = expected_queries
-            measurement["query_gate_passed"] = observed_queries == expected_queries
-            measurement["host_idle_preflight"] = host_idle
-            measurement["container_resources_before"] = resources_before
-            measurement["container_resources_after"] = resources_after
-            try:
-                production.campaign.validate_arm_measurement(measurement, arm, concurrency)
-            except ValueError as error:
-                worker_errors = json.dumps(
-                    measurement.get("errors", []), sort_keys=True, separators=(",", ":")
+            discarded_attempts = []
+            for attempt in range(1, MAXIMUM_ARM_ATTEMPTS + 1):
+                resources_before = production.container_resource_snapshot(postgres)
+                host_idle = production.campaign.await_quiet_host()
+                production.campaign.v72.psql(postgres, "SELECT pg_stat_statements_reset()")
+                attempt_custody = process_custody / (
+                    f"{arm}-{concurrency}-attempt-{attempt}"
                 )
-                raise ValueError(
-                    f"{boundary} {arm} concurrency {concurrency} failed: {error}; "
-                    f"worker_errors={worker_errors}"
-                ) from error
-            production.validate_container_resource_snapshot(resources_before)
-            production.validate_container_resource_snapshot(resources_after)
-            validate_request_byte_evidence(measurement, arm)
-            cumulative.validate_container_cpu_snapshot(measurement["container_cpu_before"])
-            cumulative.validate_container_cpu_snapshot(measurement["container_cpu_after"])
-            production.require(
-                measurement["total_relevant_stack_cpu_ns"]
-                == measurement["total_client_cpu_ns"]
-                + measurement["relevant_container_cpu_ns"],
-                "the relevant stack CPU total changed",
-            )
-            measurements[arm] = measurement
+                attempt_custody.mkdir(mode=0o700)
+                measurement = cumulative.run_load_arm_attributed(
+                    arm,
+                    concurrency,
+                    connection,
+                    endpoint,
+                    token_path,
+                    public_key,
+                    attempt_custody,
+                    postgres,
+                )
+                active_builds = measurement.get("active_build_processes_during_arm")
+                discarded = contaminated_attempt(
+                    active_builds, attempt, boundary, arm, concurrency
+                )
+                if discarded is not None:
+                    discarded_attempts.append(discarded)
+                    continue
+                add_relevant_stack_cpu(measurement, postgres, boundary, arm)
+                resources_after = production.container_resource_snapshot(postgres)
+                observed_queries = production.campaign.v72.data_queries(postgres)
+                expected_queries = production.campaign.expected_data_queries(arm, concurrency)
+                measurement["observed_data_queries"] = observed_queries
+                measurement["expected_data_queries"] = expected_queries
+                measurement["query_gate_passed"] = observed_queries == expected_queries
+                measurement["host_idle_preflight"] = host_idle
+                measurement["container_resources_before"] = resources_before
+                measurement["container_resources_after"] = resources_after
+                measurement["discarded_contaminated_attempts"] = discarded_attempts
+                try:
+                    production.campaign.validate_arm_measurement(
+                        measurement, arm, concurrency
+                    )
+                except ValueError as error:
+                    worker_errors = json.dumps(
+                        measurement.get("errors", []),
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                    raise ValueError(
+                        f"{boundary} {arm} concurrency {concurrency} failed: {error}; "
+                        f"worker_errors={worker_errors}"
+                    ) from error
+                production.validate_container_resource_snapshot(resources_before)
+                production.validate_container_resource_snapshot(resources_after)
+                validate_request_byte_evidence(measurement, arm)
+                cumulative.validate_container_cpu_snapshot(
+                    measurement["container_cpu_before"]
+                )
+                cumulative.validate_container_cpu_snapshot(
+                    measurement["container_cpu_after"]
+                )
+                production.require(
+                    measurement["total_relevant_stack_cpu_ns"]
+                    == measurement["total_client_cpu_ns"]
+                    + measurement["relevant_container_cpu_ns"],
+                    "the relevant stack CPU total changed",
+                )
+                measurements[arm] = measurement
+                break
         comparison = compare_measurements(measurements, concurrency)
         cases.append(
             {
@@ -500,6 +595,26 @@ def run_boundary(
             }
         )
     return cases
+
+
+def contaminated_attempt(
+    active_builds: object,
+    attempt: int,
+    boundary: str,
+    arm: str,
+    concurrency: int,
+) -> dict | None:
+    if not active_builds:
+        return None
+    if attempt >= MAXIMUM_ARM_ATTEMPTS:
+        raise ValueError(
+            f"{boundary} {arm} concurrency {concurrency} remained contaminated "
+            f"after {MAXIMUM_ARM_ATTEMPTS} attempts"
+        )
+    return {
+        "attempt": attempt,
+        "active_build_processes": active_builds,
+    }
 
 
 def run_process(
@@ -666,13 +781,76 @@ def campaign_summary(processes: list[dict]) -> list[dict]:
                 for process in processes
             ]
             comparisons = [case["comparison"] for case in cases]
+            arm_position_evidence = [
+                {
+                    "arm_positions": {
+                        arm: case["arm_order"].index(arm) + 1 for arm in ARMS
+                    },
+                    "ndabi_client_cpu_to_governed": case["comparison"][
+                        "ndabi_client_cpu_to_governed"
+                    ],
+                    "ndabi_p95_to_governed": case["comparison"][
+                        "ndabi_p95_to_governed"
+                    ],
+                    "ndabi_stack_cpu_to_governed": case["comparison"][
+                        "ndabi_stack_cpu_to_governed"
+                    ],
+                    "ndabi_throughput_over_governed": case["comparison"][
+                        "ndabi_throughput_over_governed"
+                    ],
+                    "ndabi_throughput_over_native": case["comparison"][
+                        "ndabi_throughput_over_native"
+                    ],
+                    "passed": case["passed"],
+                    "process": process["process"],
+                }
+                for process, case in zip(processes, cases, strict=True)
+            ]
             p95_ratios = [item["ndabi_p95_to_governed"] for item in comparisons]
             variation = (
                 ratio(max(p95_ratios), min(p95_ratios)) - 1.0 if p95_ratios else math.inf
             )
+            arm_measurements = {
+                arm: [case["measurements"][arm] for case in cases] for arm in ARMS
+            }
+            absolute_arm_medians = {
+                arm: {
+                    "allocations": statistics.median(
+                        item["mean_allocations"] for item in measurements
+                    ),
+                    "client_cpu_ns_per_operation": statistics.median(
+                        cpu_per_operation(item, "total_client_cpu_ns")
+                        for item in measurements
+                    ),
+                    "discarded_contaminated_attempts": sum(
+                        len(item.get("discarded_contaminated_attempts", []))
+                        for item in measurements
+                    ),
+                    "p95_request_ns": statistics.median(
+                        item["p95_request_ns"] for item in measurements
+                    ),
+                    "peak_additional_live_bytes": statistics.median(
+                        item["peak_additional_live_bytes"] for item in measurements
+                    ),
+                    "request_application_bytes": request_bytes(
+                        measurements[0], maximum=False
+                    ),
+                    "stack_cpu_ns_per_operation": statistics.median(
+                        cpu_per_operation(item, "total_relevant_stack_cpu_ns")
+                        for item in measurements
+                    ),
+                    "throughput_operations_per_second": statistics.median(
+                        item["logical_operations_per_second"]
+                        for item in measurements
+                    ),
+                }
+                for arm, measurements in arm_measurements.items()
+            }
             summary.append(
                 {
+                    "absolute_arm_medians": absolute_arm_medians,
                     "all_repetitions_passed": all(case["passed"] for case in cases),
+                    "arm_position_evidence": arm_position_evidence,
                     "boundary": boundary,
                     "component_cpu_ns_per_sample": component_cpu_ns_per_sample,
                     "component_result_bytes": component_reports[0]["result_bytes"],
@@ -700,6 +878,17 @@ def campaign_summary(processes: list[dict]) -> list[dict]:
                     ),
                     "median_ndabi_stack_cpu_to_governed": statistics.median(
                         item["ndabi_stack_cpu_to_governed"] for item in comparisons
+                    ),
+                    "median_governed_p95_to_native": statistics.median(
+                        item["governed_p95_to_native"] for item in comparisons
+                    ),
+                    "median_governed_throughput_over_native": statistics.median(
+                        item["governed_throughput_over_native"]
+                        for item in comparisons
+                    ),
+                    "median_ndabi_throughput_over_governed": statistics.median(
+                        item["ndabi_throughput_over_governed"]
+                        for item in comparisons
                     ),
                     "median_ndabi_throughput_over_native": statistics.median(
                         item["ndabi_throughput_over_native"]
@@ -755,9 +944,14 @@ def configure(
     *,
     build_binary: bool = True,
     functional: bool = False,
+    order_diagnostic: bool = False,
     result_root: Path | None = None,
 ) -> None:
-    target_root = result_root or RESULT_ROOT
+    if functional and order_diagnostic:
+        raise ValueError("the functional and order diagnostic modes cannot be combined")
+    target_root = result_root or (
+        ORDER_DIAGNOSTIC_RESULT_ROOT if order_diagnostic else RESULT_ROOT
+    )
     BASE_CONFIGURE(
         build_binary=build_binary, functional=functional, result_root=target_root
     )
@@ -792,12 +986,20 @@ def configure(
     campaign.ARMS = ARMS
     campaign.ARM_IDENTIFIERS = ARM_IDENTIFIERS
     campaign.QUERY_MULTIPLIERS = QUERY_MULTIPLIERS
-    campaign.SAMPLES_BY_ARM = FUNCTIONAL_SAMPLES_BY_ARM if functional else SAMPLES_BY_ARM
+    campaign.SAMPLES_BY_ARM = (
+        FUNCTIONAL_SAMPLES_BY_ARM
+        if functional
+        else ORDER_DIAGNOSTIC_SAMPLES_BY_ARM
+        if order_diagnostic
+        else SAMPLES_BY_ARM
+    )
     campaign.samples_for = samples_for
     campaign.WORKER_SCHEMA = WORKER_SCHEMA
     campaign.SOURCE_PATHS = SOURCE_PATHS
     campaign.SECURITY_CHECK_COUNT = SECURITY_CHECK_COUNT
-    campaign.MINIMUM_ARM_DURATION_NS = 0 if functional else MINIMUM_ARM_DURATION_NS
+    campaign.MINIMUM_ARM_DURATION_NS = (
+        0 if functional or order_diagnostic else MINIMUM_ARM_DURATION_NS
+    )
     campaign.WORKER_TIMEOUT_SECONDS = WORKER_TIMEOUT_SECONDS
     campaign.v72.security_checks = security_checks
     campaign.run_process = run_process
@@ -807,8 +1009,17 @@ def configure(
     campaign.SMOKE_RESULT_PATH = (
         RESULT_ROOT / "functional-latest.json"
         if functional
+        else ORDER_DIAGNOSTIC_RESULT_ROOT / "latest.json"
+        if order_diagnostic
         else RESULT_ROOT / "performance-smoke-latest.json"
     )
+    if order_diagnostic:
+        # Rotate every hot arm through every position without running five full REST campaigns.
+        production.PROCESS_COUNT = len(ARMS)
+        campaign.PROCESS_COUNT = len(ARMS)
+        campaign.SMOKE_PROCESS_COUNT = len(ARMS)
+        campaign.SMOKE_REPEATABILITY = True
+        campaign.CONCURRENCY_LEVELS = (32,)
 
 
 def restore_configuration_mutations() -> None:
@@ -823,6 +1034,14 @@ production.CAMPAIGN_VERSION = CAMPAIGN_VERSION
 production.ENTRYPOINT = Path(__file__).resolve()
 
 
-if __name__ == "__main__":
+def main() -> int:
     production.configure = configure
-    raise SystemExit(production.main())
+    if sys.argv[1:] == ["--order-diagnostic"]:
+        configure(order_diagnostic=True)
+        sys.argv = [sys.argv[0], "--smoke"]
+        return production.campaign.main()
+    return production.main()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

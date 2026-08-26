@@ -24,6 +24,7 @@ def measurement(
         "logical_operations": operations,
         "logical_operations_per_second": throughput,
         "mean_allocations": allocations,
+        "peak_additional_live_bytes": 1_024,
         "p95_request_ns": p95,
         "query_gate_passed": True,
         "total_client_cpu_ns": client_cpu * operations,
@@ -100,6 +101,10 @@ class SupabaseEqualSecurityCpuTests(unittest.TestCase):
         self.assertTrue(result["passed"])
         self.assertLessEqual(result["ndabi_p95_to_governed"], 1.03)
         self.assertGreaterEqual(result["ndabi_request_reduction_to_json"], 0.80)
+        self.assertEqual(result["governed_throughput_over_native"], 0.98)
+        self.assertEqual(
+            result["ndabi_throughput_over_governed"], 96_000 / 98_000
+        )
 
     def test_comparison_refuses_each_equal_security_regression(self):
         fields = (
@@ -179,10 +184,84 @@ class SupabaseEqualSecurityCpuTests(unittest.TestCase):
             production.campaign.WORKER_TIMEOUT_SECONDS,
             equal_security.WORKER_TIMEOUT_SECONDS,
         )
+
+    def test_order_diagnostic_rotates_five_positions_at_concurrency_32(self):
+        equal_security.configure(
+            build_binary=False,
+            functional=False,
+            order_diagnostic=True,
+        )
+        self.assertEqual(production.campaign.SMOKE_PROCESS_COUNT, 5)
+        self.assertTrue(production.campaign.SMOKE_REPEATABILITY)
+        self.assertEqual(production.campaign.CONCURRENCY_LEVELS, (32,))
+        self.assertEqual(
+            production.campaign.SAMPLES_BY_ARM,
+            equal_security.ORDER_DIAGNOSTIC_SAMPLES_BY_ARM,
+        )
+        self.assertEqual(production.campaign.MINIMUM_ARM_DURATION_NS, 0)
+        self.assertEqual(
+            production.campaign.SMOKE_RESULT_PATH,
+            equal_security.ORDER_DIAGNOSTIC_RESULT_ROOT / "latest.json",
+        )
+        equal_security.configure(build_binary=False, functional=False)
+
+    def test_arm_orders_rotate_every_arm_through_every_position(self):
+        equal_security.configure(
+            build_binary=False,
+            functional=False,
+            order_diagnostic=True,
+        )
+        orders = [
+            equal_security.arm_order(process, 0, 0)
+            for process in range(1, len(equal_security.ARMS) + 1)
+        ]
+        for position in range(len(equal_security.ARMS)):
+            self.assertEqual(
+                {order[position] for order in orders},
+                set(equal_security.ARMS),
+            )
+        equal_security.configure(build_binary=False, functional=False)
         self.assertEqual(
             equal_security.cumulative.worker_timeout_seconds(),
             equal_security.WORKER_TIMEOUT_SECONDS,
         )
+
+    def test_contaminated_arm_is_discarded_and_the_fifth_attempt_refuses(self):
+        for process_name in ("colima", "docker", "incus", "limactl"):
+            self.assertIn(
+                process_name,
+                production.campaign.FORBIDDEN_BUILD_PROCESSES,
+            )
+        self.assertIsNone(
+            production.campaign.forbidden_process_name(
+                "/usr/local/bin/docker stats --all --no-trunc --no-stream --format {{ json . }}"
+            )
+        )
+        self.assertEqual(
+            production.campaign.forbidden_process_name(
+                "/usr/local/bin/docker run --rm unrelated-test"
+            ),
+            "docker",
+        )
+        self.assertEqual(
+            production.campaign.forbidden_process_name(
+                "/opt/homebrew/bin/limactl hostagent colima-basalyt-incus"
+            ),
+            "limactl",
+        )
+        self.assertIsNone(
+            equal_security.contaminated_attempt([], 1, "direct", "ndabi_v85", 1)
+        )
+        self.assertEqual(
+            equal_security.contaminated_attempt(
+                ["cargo"], 1, "direct", "ndabi_v85", 1
+            ),
+            {"attempt": 1, "active_build_processes": ["cargo"]},
+        )
+        with self.assertRaisesRegex(ValueError, "remained contaminated after 5 attempts"):
+            equal_security.contaminated_attempt(
+                ["rustc"], 5, "supavisor", "postgrest_rpc", 32
+            )
 
     def test_component_report_refuses_missing_and_empty_intervals(self):
         report = component_report()
@@ -198,13 +277,18 @@ class SupabaseEqualSecurityCpuTests(unittest.TestCase):
 
     def test_summary_retains_component_evidence(self):
         cases = []
-        for boundary in equal_security.BOUNDARIES:
-            for concurrency in production.campaign.CONCURRENCY_LEVELS:
+        for boundary_index, boundary in enumerate(equal_security.BOUNDARIES):
+            for concurrency_index, concurrency in enumerate(
+                production.campaign.CONCURRENCY_LEVELS
+            ):
                 measurements = passing_measurements()
                 for measurement_value in measurements.values():
                     measurement_value["concurrency"] = concurrency
                 cases.append(
                     {
+                        "arm_order": equal_security.arm_order(
+                            1, concurrency_index, boundary_index
+                        ),
                         "boundary": boundary,
                         "concurrency": concurrency,
                         "comparison": equal_security.compare_measurements(
@@ -233,6 +317,24 @@ class SupabaseEqualSecurityCpuTests(unittest.TestCase):
         self.assertEqual(
             set(summary[0]["fixed_component_cpu_ns_per_sample"]),
             {str(value) for value in equal_security.FIXED_RESULT_BYTES},
+        )
+        self.assertEqual(
+            set(summary[0]["absolute_arm_medians"]), set(equal_security.ARMS)
+        )
+        self.assertEqual(
+            summary[0]["absolute_arm_medians"]["ndabi_v85"][
+                "throughput_operations_per_second"
+            ],
+            96_000,
+        )
+        self.assertEqual(len(summary[0]["arm_position_evidence"]), 1)
+        self.assertEqual(
+            set(summary[0]["arm_position_evidence"][0]["arm_positions"]),
+            set(equal_security.ARMS),
+        )
+        self.assertEqual(
+            summary[0]["arm_position_evidence"][0]["process"],
+            1,
         )
 
     def test_repeatability_refuses_one_boundary_variation(self):
