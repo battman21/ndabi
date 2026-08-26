@@ -12,7 +12,7 @@ jobs:
   rust:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo check --workspace --all-targets --locked
@@ -22,11 +22,12 @@ jobs:
   conformance:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: conformance/go/go.mod
-      - uses: actions/setup-node@v4
+          cache-dependency-path: conformance/go/go.sum
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
