@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import hashlib
+import gzip
 import json
 import math
 import os
 import platform
 import re
+import shutil
 import statistics
 import subprocess
 import sys
@@ -47,6 +49,9 @@ MONITOR_BUILD_PROCESSES_DURING_ARM = False
 BUILD_MONITOR_INTERVAL_SECONDS = 0.25
 # Keep a finite deadline so a failed worker cannot hold the campaign indefinitely.
 WORKER_TIMEOUT_SECONDS = 180
+MAX_WORKER_START_ATTEMPTS = 3
+MAX_WORKER_DIAGNOSTIC_BYTES = 4_096
+WORKER_CONNECTION_ENV = "NDABI_LOAD_WORKER_CONNECTION"
 BUILD_BINARY = True
 REQUIRE_QUIET_HOST = True
 ARMS = ("ndabi", "postgrest")
@@ -62,6 +67,9 @@ SECURITY_CHECK_COUNT = 17
 SMOKE_RESULT_PATH: Path | None = None
 POOL_SIZE = 64
 MAX_CLIENTS = 200
+MINIMUM_FREE_DISK_BYTES = 10 * 1024 * 1024 * 1024
+MAX_PROCESS_EVIDENCE_BYTES = 64 * 1024 * 1024
+MAX_DECOMPRESSED_PROCESS_BYTES = 512 * 1024 * 1024
 MINIMUM_HOST_IDLE_PERCENT = 80.0
 FORBIDDEN_BUILD_PROCESSES = {
     "cargo",
@@ -108,6 +116,110 @@ def cleanup_campaign(containers: tuple[str, ...], network: str) -> None:
         failures.append(f"Docker could not remove the campaign network: {network}")
     if failures:
         raise RuntimeError("; ".join(failures))
+
+
+class WorkerStartupFailure(RuntimeError):
+    def __init__(self, reason: str, diagnostics: list[dict]):
+        self.reason = reason
+        self.diagnostics = diagnostics
+        super().__init__(
+            json.dumps(
+                {"diagnostics": diagnostics, "reason": reason},
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+
+
+def redacted_worker_stream(value: str, secrets: tuple[str, ...]) -> dict:
+    redacted = value
+    for secret in sorted({item for item in secrets if item}, key=len, reverse=True):
+        redacted = redacted.replace(secret, "[redacted]")
+    redacted = re.sub(r"(?i)(password=)[^\s]+", r"\1[redacted]", redacted)
+    encoded = value.encode("utf-8")
+    excerpt = redacted.encode("utf-8")[-MAX_WORKER_DIAGNOSTIC_BYTES:].decode(
+        "utf-8", errors="replace"
+    )
+    return {
+        "bytes": len(encoded),
+        "excerpt": excerpt,
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+        "truncated": len(redacted.encode("utf-8")) > MAX_WORKER_DIAGNOSTIC_BYTES,
+    }
+
+
+def completed_worker_diagnostics(
+    processes: list[subprocess.Popen], secrets: tuple[str, ...]
+) -> list[dict]:
+    diagnostics = []
+    for worker, process in enumerate(processes):
+        if process.poll() is None:
+            continue
+        stdout, stderr = process.communicate(timeout=5)
+        diagnostics.append(
+            {
+                "exit_code": process.returncode,
+                "stderr": redacted_worker_stream(stderr, secrets),
+                "stdout": redacted_worker_stream(stdout, secrets),
+                "worker": worker,
+            }
+        )
+    return diagnostics
+
+
+def terminate_worker_diagnostics(
+    processes: list[subprocess.Popen], secrets: tuple[str, ...]
+) -> list[dict]:
+    for process in processes:
+        if process.poll() is None:
+            process.terminate()
+    diagnostics = []
+    for worker, process in enumerate(processes):
+        try:
+            stdout, stderr = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate(timeout=5)
+        diagnostics.append(
+            {
+                "exit_code": process.returncode,
+                "stderr": redacted_worker_stream(stderr, secrets),
+                "stdout": redacted_worker_stream(stdout, secrets),
+                "worker": worker,
+            }
+        )
+    return diagnostics
+
+
+def worker_connection_transport(connection: str) -> tuple[str, dict[str, str]]:
+    environment = os.environ.copy()
+    environment[WORKER_CONNECTION_ENV] = connection
+    return f"env:{WORKER_CONNECTION_ENV}", environment
+
+
+def run_with_worker_startup_retries(run_attempt) -> tuple[dict, list[dict]]:
+    discarded = []
+    for attempt in range(1, MAX_WORKER_START_ATTEMPTS + 1):
+        try:
+            return run_attempt(attempt), discarded
+        except WorkerStartupFailure as error:
+            discarded.append(
+                {
+                    "attempt": attempt,
+                    "diagnostics": error.diagnostics,
+                    "reason": error.reason,
+                }
+            )
+            if attempt == MAX_WORKER_START_ATTEMPTS:
+                raise RuntimeError(
+                    json.dumps(
+                        {"worker_startup_failures": discarded},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                ) from error
+            time.sleep(0.25)
+    raise RuntimeError("the worker startup retry bound was not enforced")
 
 
 def repository_root() -> Path:
@@ -341,7 +453,7 @@ def stop_workers(processes: list[subprocess.Popen]) -> None:
                 process.wait(timeout=5)
 
 
-def run_load_arm(
+def _run_load_arm_once(
     arm: str,
     concurrency: int,
     connection: str,
@@ -349,10 +461,16 @@ def run_load_arm(
     token_path: Path,
     public_key: Path,
     custody: Path,
+    startup_attempt: int,
 ) -> dict:
     samples = samples_for(arm)
-    ready_paths = [custody / f"{arm}-{concurrency}-{worker}.ready" for worker in range(concurrency)]
-    release_path = custody / f"{arm}-{concurrency}.release"
+    attempt_custody = custody / f"startup-attempt-{startup_attempt}"
+    attempt_custody.mkdir(mode=0o700)
+    ready_paths = [
+        attempt_custody / f"{arm}-{concurrency}-{worker}.ready"
+        for worker in range(concurrency)
+    ]
+    release_path = attempt_custody / f"{arm}-{concurrency}.release"
     processes: list[subprocess.Popen] = []
     monitor_stop = threading.Event()
     monitored_build_processes: set[str] = set()
@@ -373,11 +491,14 @@ def run_load_arm(
     try:
         for worker, ready_path in enumerate(ready_paths):
             start = 1_000 + worker * 3_000
+            connection_argument, worker_environment = worker_connection_transport(
+                connection
+            )
             arguments = [
                 str(BINARY),
                 "--load-worker",
                 arm,
-                connection,
+                connection_argument,
                 endpoint,
                 str(token_path),
                 str(public_key),
@@ -393,15 +514,30 @@ def run_load_arm(
                 WORKER_SCHEMA,
             ]
             processes.append(
-                subprocess.Popen(arguments, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                subprocess.Popen(
+                    arguments,
+                    env=worker_environment,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
             )
         ready_started = time.monotonic()
         while not all(path.is_file() for path in ready_paths):
-            failed = [process.returncode for process in processes if process.poll() is not None]
+            failed = completed_worker_diagnostics(
+                processes,
+                (connection, endpoint, str(token_path), str(public_key)),
+            )
             if failed:
-                raise RuntimeError(f"a load worker exited before release: {failed}")
+                raise WorkerStartupFailure("worker-exited-before-release", failed)
             if time.monotonic() - ready_started > 90:
-                raise RuntimeError("the load workers did not become ready")
+                raise WorkerStartupFailure(
+                    "worker-readiness-timeout",
+                    terminate_worker_diagnostics(
+                        processes,
+                        (connection, endpoint, str(token_path), str(public_key)),
+                    ),
+                )
             time.sleep(0.002)
         with release_path.open("x", encoding="utf-8"):
             pass
@@ -420,8 +556,14 @@ def run_load_arm(
                     {
                         "worker": worker,
                         "exit_code": process.returncode,
-                        "stdout_sha256": hashlib.sha256(stdout.encode()).hexdigest(),
-                        "stderr_sha256": hashlib.sha256(stderr.encode()).hexdigest(),
+                        "stdout": redacted_worker_stream(
+                            stdout,
+                            (connection, endpoint, str(token_path), str(public_key)),
+                        ),
+                        "stderr": redacted_worker_stream(
+                            stderr,
+                            (connection, endpoint, str(token_path), str(public_key)),
+                        ),
                     }
                 )
                 continue
@@ -481,6 +623,32 @@ def run_load_arm(
         "build_monitor_errors": build_monitor_errors,
         "complete": complete,
     }
+
+
+def run_load_arm(
+    arm: str,
+    concurrency: int,
+    connection: str,
+    endpoint: str,
+    token_path: Path,
+    public_key: Path,
+    custody: Path,
+) -> dict:
+    measurement, discarded = run_with_worker_startup_retries(
+        lambda attempt: _run_load_arm_once(
+            arm,
+            concurrency,
+            connection,
+            endpoint,
+            token_path,
+            public_key,
+            custody,
+            attempt,
+        )
+    )
+    measurement["worker_startup_attempt"] = len(discarded) + 1
+    measurement["discarded_worker_startup_failures"] = discarded
+    return measurement
 
 
 def validate_arm_measurement(measurement: dict, arm: str, concurrency: int) -> None:
@@ -796,6 +964,55 @@ def write_json(path: Path, value: dict) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
+def write_process_evidence(path: Path, value: dict) -> None:
+    encoded = (json.dumps(value, separators=(",", ":")) + "\n").encode("utf-8")
+    compressed = gzip.compress(encoded, compresslevel=6, mtime=0)
+    if len(compressed) > MAX_PROCESS_EVIDENCE_BYTES:
+        raise RuntimeError("the compressed process evidence exceeds its size limit")
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    if path.exists() or path.is_symlink() or temporary.exists() or temporary.is_symlink():
+        raise RuntimeError("the process evidence path already exists")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    try:
+        with os.fdopen(descriptor, "wb") as target:
+            target.write(compressed)
+            target.flush()
+            os.fsync(target.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def read_process_evidence(path: Path) -> dict:
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("the compressed process evidence is not a regular file")
+    try:
+        with gzip.open(path, "rb") as source:
+            encoded = source.read(MAX_DECOMPRESSED_PROCESS_BYTES + 1)
+    except (OSError, EOFError) as error:
+        raise ValueError("the compressed process evidence cannot be decoded") from error
+    if len(encoded) > MAX_DECOMPRESSED_PROCESS_BYTES:
+        raise ValueError("the decompressed process evidence exceeds its size limit")
+    try:
+        value = json.loads(encoded)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("the process evidence is not valid JSON") from error
+    if not isinstance(value, dict):
+        raise ValueError("the process evidence has an invalid shape")
+    return value
+
+
+def require_free_disk(path: Path, minimum_bytes: int = MINIMUM_FREE_DISK_BYTES) -> int:
+    anchor = path
+    while not anchor.exists() and anchor != anchor.parent:
+        anchor = anchor.parent
+    free = shutil.disk_usage(anchor).free
+    if free < minimum_bytes:
+        raise RuntimeError("the campaign host lacks the required free disk capacity")
+    return free
+
+
 def main() -> int:
     smoke = sys.argv[1:] == ["--smoke"]
     if sys.argv[1:] not in ([], ["--smoke"]):
@@ -804,6 +1021,7 @@ def main() -> int:
         raise SystemExit(f"install the pinned {CAMPAIGN_LABEL} cryptography dependency")
     source_commit = None if smoke else committed_source()
     initial_source_sha256 = source_sha256()
+    require_free_disk(RESULT_ROOT)
     latest = RESULT_ROOT / "latest.json"
     if not smoke and latest.exists():
         raise SystemExit(f"the first {CAMPAIGN_LABEL} formal campaign already exists")
@@ -921,7 +1139,10 @@ def main() -> int:
                 validate_process_report(report)
                 process_reports.append(report)
                 if campaign is not None:
-                    write_json(campaign / f"process-{process}.json", report)
+                    write_process_evidence(
+                        campaign / f"process-{process}.json.gz",
+                        report,
+                    )
                 for marker in custody.glob("*.ready"):
                     marker.unlink()
                 for marker in custody.glob("*.release"):

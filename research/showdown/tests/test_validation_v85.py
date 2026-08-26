@@ -359,6 +359,45 @@ class SupabaseEqualSecurityCpuTests(unittest.TestCase):
         self.assertFalse(passed)
         self.assertEqual(sum(not item["passed"] for item in evidence), 3)
 
+    def test_cross_stack_repeatability_covers_each_v85_metric(self):
+        def process(identifier: int) -> dict:
+            cases = []
+            for boundary in equal_security.BOUNDARIES:
+                for concurrency in production.campaign.CONCURRENCY_LEVELS:
+                    cases.append(
+                        {
+                            "boundary": boundary,
+                            "concurrency": concurrency,
+                            "comparison": {
+                                "ndabi_p95_to_governed": 1.01,
+                                "ndabi_stack_cpu_to_governed": 1.02,
+                                "ndabi_throughput_over_governed": 0.99,
+                                "ndabi_throughput_over_native": 0.96,
+                            },
+                            "passed": True,
+                        }
+                    )
+            return {"process": identifier, "cases": cases}
+
+        stacks = [
+            [process(identifier) for identifier in range(1, 6)] for _ in range(3)
+        ]
+        evidence, passed = equal_security.cross_stack_repeatability(stacks)
+        self.assertTrue(passed)
+        self.assertEqual(len(evidence), 6)
+        self.assertEqual(
+            set(evidence[0]["metrics"]),
+            {
+                "ndabi_p95_to_governed",
+                "ndabi_stack_cpu_to_governed",
+                "ndabi_throughput_over_governed",
+                "ndabi_throughput_over_native",
+            },
+        )
+        stacks[2][4]["cases"][0]["comparison"]["ndabi_stack_cpu_to_governed"] = 2.0
+        _, passed = equal_security.cross_stack_repeatability(stacks)
+        self.assertFalse(passed)
+
 
 if __name__ == "__main__":
     unittest.main()

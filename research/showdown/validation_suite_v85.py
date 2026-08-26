@@ -75,6 +75,7 @@ BASE_SECURITY_CHECKS = production.LEGACY_SECURITY_CHECKS
 BASE_SAMPLES_FOR = production.campaign.samples_for
 BASE_WORKER_TIMEOUT_SECONDS = production.campaign.WORKER_TIMEOUT_SECONDS
 BASE_CUMULATIVE_WORKER_SCHEMA = cumulative.WORKER_SCHEMA
+BASE_CROSS_STACK_REPEATABILITY = production.cross_stack_repeatability
 BOUNDARIES = ("direct", "supavisor")
 MINIMUM_ARM_DURATION_NS = 5_000_000_000
 # The repeated REST arm performs 16,368 requests per worker and exceeded 180 seconds at concurrency 32.
@@ -99,6 +100,8 @@ FIXED_COMPONENT_KEYS = {
     "registered_plan_dispatch",
 }
 FIXED_RESULT_BYTES = (84, 672, 10_758)
+CROSS_STACK_RATIO_CV_LIMIT = 0.15
+CROSS_STACK_MEDIAN_CV_LIMIT = 0.10
 
 
 def ratio(numerator: float, denominator: float) -> float:
@@ -940,6 +943,79 @@ def repeatability(processes: list[dict]) -> tuple[list[dict], bool]:
     return evidence, passed
 
 
+def cross_stack_repeatability(stacks: list[list[dict]]) -> tuple[list[dict], bool]:
+    production.require(
+        len(stacks) == production.QUALIFICATION_STACKS,
+        "the v8.5 cold-stack count changed",
+    )
+    production.require(
+        all(len(processes) == production.PROCESS_COUNT for processes in stacks),
+        "a v8.5 stack is incomplete",
+    )
+    metrics = (
+        "ndabi_p95_to_governed",
+        "ndabi_stack_cpu_to_governed",
+        "ndabi_throughput_over_governed",
+        "ndabi_throughput_over_native",
+    )
+    evidence = []
+    passed = True
+    for boundary in BOUNDARIES:
+        for concurrency in production.campaign.CONCURRENCY_LEVELS:
+            cases_by_stack = [
+                [
+                    next(
+                        case
+                        for case in process["cases"]
+                        if case["boundary"] == boundary
+                        and case["concurrency"] == concurrency
+                    )
+                    for process in processes
+                ]
+                for processes in stacks
+            ]
+            metric_evidence = {}
+            item_passed = all(
+                case["passed"] for cases in cases_by_stack for case in cases
+            )
+            for metric in metrics:
+                values = [
+                    case["comparison"][metric]
+                    for cases in cases_by_stack
+                    for case in cases
+                ]
+                stack_medians = [
+                    statistics.median(case["comparison"][metric] for case in cases)
+                    for cases in cases_by_stack
+                ]
+                ratio_cv = production.campaign.coefficient_of_variation(values)
+                stack_median_cv = production.campaign.coefficient_of_variation(
+                    stack_medians
+                )
+                metric_passed = (
+                    ratio_cv < CROSS_STACK_RATIO_CV_LIMIT
+                    and stack_median_cv < CROSS_STACK_MEDIAN_CV_LIMIT
+                )
+                metric_evidence[metric] = {
+                    "ratio_cv": ratio_cv,
+                    "ratio_cv_limit": CROSS_STACK_RATIO_CV_LIMIT,
+                    "stack_median_cv": stack_median_cv,
+                    "stack_median_cv_limit": CROSS_STACK_MEDIAN_CV_LIMIT,
+                    "passed": metric_passed,
+                }
+                item_passed &= metric_passed
+            evidence.append(
+                {
+                    "boundary": boundary,
+                    "concurrency": concurrency,
+                    "metrics": metric_evidence,
+                    "passed": item_passed,
+                }
+            )
+            passed &= item_passed
+    return evidence, passed
+
+
 def configure(
     *,
     build_binary: bool = True,
@@ -972,6 +1048,7 @@ def configure(
     production.REQUEST_BYTES_KINDS = REQUEST_BYTES_KINDS
     production.WORKER_SCHEMA = WORKER_SCHEMA
     production.SOURCE_PATHS = SOURCE_PATHS
+    production.cross_stack_repeatability = cross_stack_repeatability
     production.compare_measurements = compare_measurements
     production.campaign_summary = campaign_summary
     cumulative.WORKER_SCHEMA = WORKER_SCHEMA
@@ -1026,6 +1103,7 @@ def restore_configuration_mutations() -> None:
     production.campaign.samples_for = BASE_SAMPLES_FOR
     production.campaign.WORKER_TIMEOUT_SECONDS = BASE_WORKER_TIMEOUT_SECONDS
     cumulative.WORKER_SCHEMA = BASE_CUMULATIVE_WORKER_SCHEMA
+    production.cross_stack_repeatability = BASE_CROSS_STACK_REPEATABILITY
 
 
 production.RESULT_ROOT = RESULT_ROOT

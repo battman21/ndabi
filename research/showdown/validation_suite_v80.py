@@ -27,7 +27,10 @@ ENTRYPOINT = Path(__file__).resolve()
 TENANT_ID = "ndabi-v80"
 SESSION_PROOF_LABEL = "ndabi-v80-session-proof"
 SESSION_PROOF_EXPECTED = "80"
-PROCESS_COUNT = 5
+ACCEPTANCE_REPETITIONS = 5
+QUALIFICATION_STACKS = 3
+PROCESS_COUNT = ACCEPTANCE_REPETITIONS
+MAX_QUALIFICATION_EVIDENCE_BYTES = 1024 * 1024 * 1024
 ARMS = ("native", "ndabi", "postgrest_rpc", "postgrest")
 ARM_IDENTIFIERS = {
     "native": "native-indexed-batch-session",
@@ -566,7 +569,7 @@ def configure(
 
 
 def cross_stack_repeatability(stacks: list[list[dict]]) -> tuple[list[dict], bool]:
-    require(len(stacks) == 3, "the cold-stack count changed")
+    require(len(stacks) == QUALIFICATION_STACKS, "the cold-stack count changed")
     require(all(len(processes) == PROCESS_COUNT for processes in stacks), "a stack is incomplete")
     evidence = []
     passed = True
@@ -629,10 +632,10 @@ def _load_stack_processes(stack_root: Path, aggregate: dict) -> list[dict]:
     evidence = stack_root / aggregate["campaign_id"]
     processes = []
     for process in range(1, PROCESS_COUNT + 1):
-        path = evidence / f"process-{process}.json"
+        path = evidence / f"process-{process}.json.gz"
         try:
-            report = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            report = campaign.read_process_evidence(path)
+        except (OSError, ValueError) as error:
             raise ValueError("a stack process report cannot be decoded") from error
         validate_process_report(report)
         processes.append(report)
@@ -668,13 +671,14 @@ def run_stack_shard(root: Path) -> int:
         return 1
 
 
-def run_formal_campaign() -> int:
+def run_formal_campaign(*, acceptance: bool = False) -> int:
     configure()
-    latest = RESULT_ROOT / "latest.json"
-    if latest.exists():
-        raise SystemExit(f"the first {CAMPAIGN_VERSION} formal campaign already exists")
+    stack_target = 1 if acceptance else QUALIFICATION_STACKS
+    campaign_mode = "acceptance" if acceptance else "qualification"
+    latest = RESULT_ROOT / f"{campaign_mode}-latest.json"
     source_commit = campaign.committed_source()
     initial_source_sha256 = campaign.source_sha256()
+    initial_free_disk_bytes = campaign.require_free_disk(RESULT_ROOT)
     campaign.command(
         "cargo",
         "build",
@@ -685,12 +689,12 @@ def run_formal_campaign() -> int:
         "--bin",
         "ndabi_v71",
     )
-    campaign_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    campaign_id = f"{campaign_mode}-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}"
     evidence_root = RESULT_ROOT / campaign_id
     evidence_root.mkdir(parents=True, exist_ok=False)
     stack_records = []
     stack_processes = []
-    for stack in range(1, 4):
+    for stack in range(1, stack_target + 1):
         stack_root = evidence_root / f"stack-{stack}"
         completed = subprocess.run(
             [sys.executable, str(ENTRYPOINT), "--stack-shard", str(stack_root)],
@@ -720,6 +724,13 @@ def run_formal_campaign() -> int:
         try:
             aggregate = json.loads(stack_latest.read_text(encoding="utf-8"))
             processes = _load_stack_processes(stack_root, aggregate)
+            evidence_bytes = sum(
+                path.stat().st_size
+                for path in evidence_root.rglob("*")
+                if path.is_file() and not path.is_symlink()
+            )
+            if evidence_bytes > MAX_QUALIFICATION_EVIDENCE_BYTES:
+                raise ValueError("the formal campaign evidence exceeds its size limit")
             manifest_path = evidence_manifest_v80.write_manifest(stack_root)
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
             failure = {
@@ -747,13 +758,17 @@ def run_formal_campaign() -> int:
         stack_processes.append(processes)
         if not stack_accepted:
             break
-    if len(stack_processes) == 3:
+    if not acceptance and len(stack_processes) == QUALIFICATION_STACKS:
         cross_stack, cross_stack_passed = cross_stack_repeatability(stack_processes)
-        combined_summary = campaign_summary(
+    else:
+        cross_stack, cross_stack_passed = [], False
+    combined_summary = (
+        campaign_summary(
             [process for processes in stack_processes for process in processes]
         )
-    else:
-        cross_stack, cross_stack_passed, combined_summary = [], False, []
+        if len(stack_processes) == stack_target
+        else []
+    )
     final_source_sha256 = campaign.source_sha256()
     source_custody_passed = (
         final_source_sha256 == initial_source_sha256
@@ -761,17 +776,24 @@ def run_formal_campaign() -> int:
         and campaign.tracked_worktree_clean(campaign.repository_root())
     )
     accepted = (
-        len(stack_records) == 3
+        len(stack_records) == stack_target
         and all(record["accepted"] for record in stack_records)
-        and cross_stack_passed
+        and (acceptance or cross_stack_passed)
         and source_custody_passed
     )
     aggregate = {
         "accepted": accepted,
-        "campaign": FORMAL_CAMPAIGN_NAME,
+        "campaign": f"{FORMAL_CAMPAIGN_NAME} {campaign_mode}",
         "campaign_id": campaign_id,
+        "campaign_mode": campaign_mode,
         "cold_stack_count": len(stack_processes),
+        "acceptance_repetitions_per_stack": ACCEPTANCE_REPETITIONS,
+        "qualification_stack_target": QUALIFICATION_STACKS,
+        "requested_stack_count": stack_target,
+        "initial_free_disk_bytes": initial_free_disk_bytes,
+        "maximum_qualification_evidence_bytes": MAX_QUALIFICATION_EVIDENCE_BYTES,
         "cross_stack_repeatability": cross_stack,
+        "cross_stack_repeatability_evaluated": not acceptance,
         "cross_stack_repeatability_passed": cross_stack_passed,
         "process_count_per_stack": PROCESS_COUNT,
         "source_commit": source_commit,
@@ -787,6 +809,8 @@ def run_formal_campaign() -> int:
         "evidence_manifest_sha256": campaign.file_sha256(manifest_path),
     }
     campaign.write_json(latest, public_aggregate)
+    if not acceptance:
+        campaign.write_json(RESULT_ROOT / "latest.json", public_aggregate)
     print(json.dumps(public_aggregate, indent=2))
     return 0 if accepted else 1
 
@@ -800,13 +824,15 @@ def main() -> int:
     if arguments == ["--smoke"]:
         configure()
         return campaign.main()
+    if arguments == ["--acceptance"]:
+        return run_formal_campaign(acceptance=True)
     if len(arguments) == 2 and arguments[0] == "--stack-shard":
         return run_stack_shard(_validate_shard_root(arguments[1]))
     if arguments:
         raise SystemExit(
-            "use no argument for the formal campaign, --smoke, or --functional-smoke"
+            "use no argument for qualification, --acceptance, --smoke, or --functional-smoke"
         )
-    return run_formal_campaign()
+    return run_formal_campaign(acceptance=False)
 
 
 if __name__ == "__main__":

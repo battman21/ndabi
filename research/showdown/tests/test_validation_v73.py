@@ -1,6 +1,11 @@
 import copy
+import gzip
+import json
 import subprocess
+import tempfile
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import validation_suite_v73 as campaign
@@ -102,6 +107,117 @@ def validated_measurement(arm: str) -> dict:
 
 
 class SupavisorConcurrencyCampaignTests(unittest.TestCase):
+    def test_process_evidence_is_deterministic_compressed_and_exact(self):
+        value = {"raw_ns": [1_000] * 20_000, "passed": True}
+        with tempfile.TemporaryDirectory() as temporary:
+            first = Path(temporary) / "first.json.gz"
+            second = Path(temporary) / "second.json.gz"
+            campaign.write_process_evidence(first, value)
+            campaign.write_process_evidence(second, value)
+            self.assertEqual(first.read_bytes(), second.read_bytes())
+            self.assertEqual(campaign.read_process_evidence(first), value)
+            uncompressed = len((json.dumps(value) + "\n").encode("utf-8"))
+            self.assertLess(first.stat().st_size, uncompressed * 0.25)
+
+    def test_process_evidence_refuses_a_decompression_limit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "process.json.gz"
+            path.write_bytes(gzip.compress(b"{}"))
+            with patch.object(campaign, "MAX_DECOMPRESSED_PROCESS_BYTES", 1):
+                with self.assertRaisesRegex(ValueError, "decompressed"):
+                    campaign.read_process_evidence(path)
+
+    def test_disk_gate_refuses_insufficient_capacity(self):
+        with patch.object(
+            campaign.shutil,
+            "disk_usage",
+            return_value=SimpleNamespace(free=99),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "free disk"):
+                campaign.require_free_disk(Path.cwd(), minimum_bytes=100)
+
+    def test_worker_diagnostics_are_bounded_and_redact_connection_material(self):
+        connection = "host=127.0.0.1 password=private dbname=ndabi"
+        report = campaign.redacted_worker_stream(
+            "x" * 5_000 + connection,
+            (connection,),
+        )
+        self.assertNotIn("private", report["excerpt"])
+        self.assertIn("[redacted]", report["excerpt"])
+        self.assertTrue(report["truncated"])
+        self.assertEqual(len(report["sha256"]), 64)
+
+    def test_timeout_diagnostics_terminate_and_capture_every_worker(self):
+        class Process:
+            returncode = None
+
+            def __init__(self):
+                self.terminated = False
+
+            def poll(self):
+                return self.returncode
+
+            def terminate(self):
+                self.terminated = True
+                self.returncode = -15
+
+            def communicate(self, timeout):
+                self.assert_timeout = timeout
+                return "ready", "password=private"
+
+        processes = [Process(), Process()]
+        diagnostics = campaign.terminate_worker_diagnostics(processes, ("private",))
+        self.assertTrue(all(process.terminated for process in processes))
+        self.assertEqual(len(diagnostics), 2)
+        self.assertTrue(
+            all("private" not in item["stderr"]["excerpt"] for item in diagnostics)
+        )
+
+    def test_worker_connection_is_absent_from_process_arguments(self):
+        connection = "host=127.0.0.1 password=private dbname=ndabi"
+        argument, environment = campaign.worker_connection_transport(connection)
+        self.assertNotIn(connection, argument)
+        self.assertEqual(argument, f"env:{campaign.WORKER_CONNECTION_ENV}")
+        self.assertEqual(environment[campaign.WORKER_CONNECTION_ENV], connection)
+
+    def test_worker_startup_retry_accepts_only_a_later_clean_attempt(self):
+        attempts = []
+
+        def run(attempt):
+            attempts.append(attempt)
+            if attempt < 3:
+                raise campaign.WorkerStartupFailure(
+                    "worker-exited-before-release",
+                    [{"worker": 0, "exit_code": 1}],
+                )
+            return {"complete": True}
+
+        result, discarded = campaign.run_with_worker_startup_retries(run)
+        self.assertEqual(result, {"complete": True})
+        self.assertEqual(attempts, [1, 2, 3])
+        self.assertEqual(len(discarded), 2)
+
+    def test_worker_startup_retry_refuses_the_third_failure(self):
+        def run(_attempt):
+            raise campaign.WorkerStartupFailure(
+                "worker-readiness-timeout",
+                [],
+            )
+
+        with self.assertRaisesRegex(RuntimeError, "worker_startup_failures"):
+            campaign.run_with_worker_startup_retries(run)
+
+    def test_worker_startup_retry_does_not_hide_another_failure(self):
+        attempts = []
+
+        def run(attempt):
+            attempts.append(attempt)
+            raise ValueError("result changed")
+
+        with self.assertRaisesRegex(ValueError, "result changed"):
+            campaign.run_with_worker_startup_retries(run)
+        self.assertEqual(attempts, [1])
+
     def test_container_cleanup_removes_anonymous_volumes(self):
         completed = subprocess.CompletedProcess([], 0, "", "")
         with patch.object(campaign, "command", return_value=completed) as command:

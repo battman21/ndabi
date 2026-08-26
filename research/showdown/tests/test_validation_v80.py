@@ -47,9 +47,21 @@ class SupabaseProductionCampaignTests(unittest.TestCase):
             ("native", "ndabi", "postgrest_rpc", "postgrest"),
         )
         self.assertEqual(production.PROCESS_COUNT, 5)
+        self.assertEqual(production.ACCEPTANCE_REPETITIONS, 5)
+        self.assertEqual(production.QUALIFICATION_STACKS, 3)
         self.assertEqual(production.MINIMUM_ARM_DURATION_NS, 2_000_000_000)
         self.assertEqual(production.QUERY_MULTIPLIERS["postgrest"], 16)
         self.assertEqual(production.QUERY_MULTIPLIERS["postgrest_rpc"], 1)
+
+    def test_main_routes_acceptance_to_one_formal_stack(self):
+        with (
+            mock.patch.object(production.sys, "argv", ["campaign", "--acceptance"]),
+            mock.patch.object(
+                production, "run_formal_campaign", return_value=0
+            ) as run,
+        ):
+            self.assertEqual(production.main(), 0)
+        run.assert_called_once_with(acceptance=True)
 
     def test_latin_rotation_changes_the_first_arm(self):
         orders = [production.arm_order(process, 0) for process in range(1, 5)]

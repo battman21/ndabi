@@ -81,6 +81,8 @@ Run a red-green mutation for each new security test.
 ## 7. Sampling
 
 Use five qualified repetitions for every boundary, arm, and result size.
+Treat one cold stack with five repetitions as the acceptance campaign.
+Treat three independent cold stacks with fifteen total repetitions as production qualification.
 Run each measured arm for at least five seconds.
 Allow each worker at most ten minutes for the frozen high-concurrency REST workload.
 Interleave arms with a fixed Latin square.
@@ -89,6 +91,9 @@ Discard a contaminated arm without retaining its measurements.
 Retry that arm at most four times after a new quiet-host preflight.
 Fail the campaign when the fifth attempt remains contaminated.
 Record source, binary, lockfile, container image, and campaign digests.
+Retry a worker start at most twice after the first failed start.
+Retain bounded, redacted diagnostics for each discarded worker start.
+Do not place a database connection string in a worker process argument.
 
 ## 8. Acceptance gates
 
@@ -122,3 +127,7 @@ Remove each campaign container with its attached anonymous volumes.
 Fail the campaign when Docker cannot remove a campaign container.
 Keep only the latest smoke report outside formal evidence directories.
 Do not remove named project volumes during campaign cleanup.
+Store each process report as deterministic gzip data with exact lossless recovery.
+Limit one compressed process report to 64 MiB.
+Require at least 10 GiB free before a campaign starts.
+Limit one production qualification evidence directory to 1 GiB.

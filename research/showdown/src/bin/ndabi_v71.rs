@@ -429,6 +429,7 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
     )
     .map_err(|error| error.to_string())?;
     let user = verifier.admit(&token).map_err(|error| error.to_string())?;
+    let connection = worker_connection(&arguments[1])?;
     let start = arguments[8]
         .parse::<i64>()
         .map_err(|_| "the load start is invalid")?;
@@ -469,7 +470,7 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
         | LoadArm::NdabiV85
         | LoadArm::NdabiIncremental
         | LoadArm::NdabiIncrementalServer => Some(NdabiState::new(
-            &arguments[1],
+            &connection,
             &user,
             profile,
             identity,
@@ -486,7 +487,7 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
     };
     let mut governed_native = match arm {
         LoadArm::GovernedNative => Some(GovernedNativeState::new(
-            &arguments[1],
+            &connection,
             &user,
             profile,
             identity,
@@ -505,7 +506,7 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
         | LoadArm::PostgrestRpc => None,
     };
     let mut native = match arm {
-        LoadArm::Native => Some(NativeState::new(&arguments[1], &user)?),
+        LoadArm::Native => Some(NativeState::new(&connection, &user)?),
         LoadArm::GovernedNative
         | LoadArm::Ndabi
         | LoadArm::NdabiFixed
@@ -660,6 +661,17 @@ fn load_worker(arguments: &[String]) -> Result<(), String> {
     serde_json::to_writer(std::io::stdout(), &report).map_err(|error| error.to_string())?;
     println!();
     Ok(())
+}
+
+fn worker_connection(argument: &str) -> Result<String, String> {
+    if let Some(name) = argument.strip_prefix("env:") {
+        if name != "NDABI_LOAD_WORKER_CONNECTION" {
+            return Err("the load worker connection reference is invalid".to_string());
+        }
+        return std::env::var(name)
+            .map_err(|_| "the load worker connection environment is absent".to_string());
+    }
+    Ok(argument.to_string())
 }
 
 // Keep each state separate so the measurement does not add an enum dispatch inside the arm.
@@ -2331,6 +2343,23 @@ fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_load_worker_accepts_a_legacy_direct_connection() {
+        assert_eq!(
+            worker_connection("host=127.0.0.1 dbname=ndabi").expect("direct connection"),
+            "host=127.0.0.1 dbname=ndabi"
+        );
+    }
+
+    #[test]
+    fn the_load_worker_refuses_an_unknown_environment_reference() {
+        assert_eq!(
+            worker_connection("env:UNREGISTERED_CONNECTION")
+                .expect_err("unknown reference must refuse"),
+            "the load worker connection reference is invalid"
+        );
+    }
 
     fn rest_row(identifier: i64) -> RestRow {
         RestRow {
