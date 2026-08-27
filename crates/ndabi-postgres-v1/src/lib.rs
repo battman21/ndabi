@@ -5,9 +5,12 @@
 //! PostgreSQL must enforce a read-only, least-privilege database role.
 
 use ndabi_protocol::{
-    Authority, Backend, BackendIdentity, BatchBackend, BatchItems, BatchOperation, BoundedOutput,
-    CapabilityManifest, Clock, Execution, ExecutionLimits, MemoryReplayStore, Operation,
-    PlanRegistry, ProtocolError, RegisteredPlan, ReplayStore, CAPABILITY_BATCH, CAPABILITY_QUERY,
+    Authority, Backend, BackendIdentity, BatchBackend, BatchItems, BatchOperation,
+    BorrowedGraphExecution, BoundedOutput, CapabilityManifest, Clock, Execution, ExecutionLimits,
+    GraphBackend, GraphExecution, GraphNode, GraphOperation, GraphRegistry, MemoryReplayStore,
+    Operation, PlanRegistry, ProtocolError, RegisteredGraph, RegisteredPlan, ReplayStore,
+    SingleSessionReplayStore, CAPABILITY_AGGREGATE, CAPABILITY_BATCH, CAPABILITY_GRAPH,
+    CAPABILITY_QUERY,
 };
 use postgres::{Client, Row, Statement};
 
@@ -18,11 +21,45 @@ pub use ndabi_protocol::{
 pub const POSTGRESQL_ENGINE_ID: u32 = 0x5047_0001;
 pub const POSTGRESQL_RANGE_PROFILE_ID: u32 = 0x5047_1001;
 pub const POSTGRESQL_RANGE_REGISTRY_PROFILE_ID: u32 = 0x5047_1002;
+pub const POSTGRESQL_REVIEW_GRAPH_PROFILE_ID: u32 = 0x5047_1003;
+pub const POSTGRESQL_REVIEW_BATCH_GRAPH_PROFILE_ID: u32 = 0x5047_1004;
 pub const RANGE_OPCODE: u16 = 1;
+pub const REVIEW_GRAPH_OPCODE: u16 = 2;
+pub const REVIEW_BATCH_GRAPH_OPCODE: u16 = 3;
 const PLAN_DOMAIN: &[u8] = b"ndabi/postgresql/range-profile/v1";
+const REVIEW_GRAPH_DOMAIN: &[u8] = b"ndabi/postgresql/review-graph/v1";
+const REVIEW_BATCH_GRAPH_DOMAIN: &[u8] = b"ndabi/postgresql/review-batch-graph/v1";
 const PARAMETER_SCHEMA_DOMAIN: &[u8] = b"ndabi/postgresql/range-parameters/v1";
+const REVIEW_PARAMETER_SCHEMA_DOMAIN: &[u8] = b"ndabi/postgresql/review-parameters/v1";
+const REVIEW_BATCH_PARAMETER_SCHEMA_DOMAIN: &[u8] = b"ndabi/postgresql/review-batch-parameters/v1";
 const MAXIMUM_RANGE_ROWS: u32 = 4_096;
 const MAXIMUM_RANGE_RESULT_BYTES: u32 = 6 + MAXIMUM_RANGE_ROWS * 84;
+const REVIEW_PARAMETER_BYTES: u32 = 16;
+const MAXIMUM_REVIEW_RESULT_BYTES: u32 = 14 + MAXIMUM_RANGE_ROWS * 84;
+const REVIEW_BATCH_HEADER_BYTES: u32 = 4;
+const REVIEW_BATCH_ITEM_BYTES: u32 = 16;
+const REVIEW_BATCH_RESULT_HEADER_BYTES: u32 = 6;
+const REVIEW_BATCH_RESULT_ITEM_BYTES: u32 = 16;
+const MAXIMUM_REVIEW_BATCH_ITEMS: u32 = 1_024;
+const MAXIMUM_REVIEW_BATCH_SOURCE_ROWS: u32 = 65_536;
+const MAXIMUM_REVIEW_BATCH_PARAMETER_BYTES: u32 =
+    REVIEW_BATCH_HEADER_BYTES + MAXIMUM_REVIEW_BATCH_ITEMS * REVIEW_BATCH_ITEM_BYTES;
+const MAXIMUM_REVIEW_BATCH_RESULT_BYTES: u32 =
+    REVIEW_BATCH_RESULT_HEADER_BYTES + MAXIMUM_REVIEW_BATCH_ITEMS * REVIEW_BATCH_RESULT_ITEM_BYTES;
+const REVIEW_SELECT_PLAN: u32 = 0x5047_2001;
+const REVIEW_FILTER_PLAN: u32 = 0x5047_2002;
+const REVIEW_AGGREGATE_PLAN: u32 = 0x5047_2003;
+const REVIEW_SELECT_SHAPE: u32 = 0x5047_3001;
+const REVIEW_FILTER_SHAPE: u32 = 0x5047_3002;
+const REVIEW_AGGREGATE_SHAPE: u32 = 0x5047_3003;
+const REVIEW_BATCH_INPUT_PLAN: u32 = 0x5047_2101;
+const REVIEW_BATCH_SELECT_PLAN: u32 = 0x5047_2102;
+const REVIEW_BATCH_FILTER_PLAN: u32 = 0x5047_2103;
+const REVIEW_BATCH_AGGREGATE_PLAN: u32 = 0x5047_2104;
+const REVIEW_BATCH_INPUT_SHAPE: u32 = 0x5047_3101;
+const REVIEW_BATCH_SELECT_SHAPE: u32 = 0x5047_3102;
+const REVIEW_BATCH_FILTER_SHAPE: u32 = 0x5047_3103;
+const REVIEW_BATCH_AGGREGATE_SHAPE: u32 = 0x5047_3104;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OperationBinding {
@@ -133,6 +170,223 @@ impl RangeProfile {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct ReviewGraphProfile {
+    sql: &'static str,
+    binding: OperationBinding,
+}
+
+impl ReviewGraphProfile {
+    pub fn new(sql: &'static str, binding: OperationBinding) -> Result<Self, ProtocolError> {
+        if sql.trim().is_empty() {
+            return Err(ProtocolError::BackendRefused);
+        }
+        Ok(Self { sql, binding })
+    }
+
+    pub fn registered_graph(self) -> Result<RegisteredGraph, ProtocolError> {
+        RegisteredGraph::new_read(
+            REVIEW_GRAPH_OPCODE,
+            self.binding.plan_handle,
+            self.binding.result_shape,
+            REVIEW_PARAMETER_BYTES,
+            MAXIMUM_REVIEW_RESULT_BYTES,
+            MAXIMUM_RANGE_ROWS,
+            CAPABILITY_QUERY | CAPABILITY_GRAPH | CAPABILITY_AGGREGATE,
+            digest_label(
+                REVIEW_PARAMETER_SCHEMA_DOMAIN,
+                b"start:i64,count:u32,minimum_score:i32",
+            ),
+            self.implementation_digest(),
+            [
+                GraphNode::new(REVIEW_SELECT_PLAN, REVIEW_SELECT_SHAPE, [])?,
+                GraphNode::new(REVIEW_FILTER_PLAN, REVIEW_FILTER_SHAPE, [0])?,
+                GraphNode::new(REVIEW_AGGREGATE_PLAN, REVIEW_AGGREGATE_SHAPE, [0, 1])?,
+            ],
+        )
+    }
+
+    pub fn graph_registry(
+        self,
+        schema_digest: [u8; 32],
+        policy_digest: [u8; 32],
+    ) -> Result<GraphRegistry, ProtocolError> {
+        GraphRegistry::new(
+            POSTGRESQL_ENGINE_ID,
+            POSTGRESQL_REVIEW_GRAPH_PROFILE_ID,
+            schema_digest,
+            policy_digest,
+            CapabilityManifest::new(CAPABILITY_QUERY | CAPABILITY_GRAPH | CAPABILITY_AGGREGATE)?,
+            [self.registered_graph()?],
+        )
+    }
+
+    pub fn operation(self) -> Result<GraphOperation, ProtocolError> {
+        GraphOperation::new(
+            REVIEW_GRAPH_OPCODE,
+            self.binding.plan_handle,
+            self.binding.result_shape,
+        )
+    }
+
+    pub fn parameters(
+        self,
+        start: i64,
+        count: u32,
+        minimum_score: i32,
+    ) -> Result<[u8; REVIEW_PARAMETER_BYTES as usize], ProtocolError> {
+        validate_review(start, count, minimum_score)?;
+        let mut parameters = [0_u8; REVIEW_PARAMETER_BYTES as usize];
+        parameters[0..8].copy_from_slice(&start.to_le_bytes());
+        parameters[8..12].copy_from_slice(&count.to_le_bytes());
+        parameters[12..16].copy_from_slice(&minimum_score.to_le_bytes());
+        Ok(parameters)
+    }
+
+    pub fn sql(self) -> &'static str {
+        self.sql
+    }
+
+    fn implementation_digest(self) -> [u8; 32] {
+        let mut graph = blake3::Hasher::new();
+        graph.update(REVIEW_GRAPH_DOMAIN);
+        graph.update(self.sql.as_bytes());
+        graph.update(&self.binding.plan_handle.to_le_bytes());
+        graph.update(&self.binding.result_shape.to_le_bytes());
+        *graph.finalize().as_bytes()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ReviewBatchItem {
+    start: i64,
+    count: u32,
+    minimum_score: i32,
+}
+
+impl ReviewBatchItem {
+    pub fn new(start: i64, count: u32, minimum_score: i32) -> Result<Self, ProtocolError> {
+        validate_review(start, count, minimum_score)?;
+        Ok(Self {
+            start,
+            count,
+            minimum_score,
+        })
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct ReviewBatchGraphProfile {
+    sql: &'static str,
+    binding: OperationBinding,
+}
+
+impl ReviewBatchGraphProfile {
+    pub fn new(sql: &'static str, binding: OperationBinding) -> Result<Self, ProtocolError> {
+        if sql.trim().is_empty() {
+            return Err(ProtocolError::BackendRefused);
+        }
+        Ok(Self { sql, binding })
+    }
+
+    pub fn registered_graph(self) -> Result<RegisteredGraph, ProtocolError> {
+        RegisteredGraph::new_read(
+            REVIEW_BATCH_GRAPH_OPCODE,
+            self.binding.plan_handle,
+            self.binding.result_shape,
+            MAXIMUM_REVIEW_BATCH_PARAMETER_BYTES,
+            MAXIMUM_REVIEW_BATCH_RESULT_BYTES,
+            MAXIMUM_REVIEW_BATCH_ITEMS,
+            CAPABILITY_QUERY | CAPABILITY_GRAPH | CAPABILITY_AGGREGATE | CAPABILITY_BATCH,
+            digest_label(
+                REVIEW_BATCH_PARAMETER_SCHEMA_DOMAIN,
+                b"item_count:u32,items:[start:i64,count:u32,minimum_score:i32]",
+            ),
+            self.implementation_digest(),
+            [
+                GraphNode::new(REVIEW_BATCH_INPUT_PLAN, REVIEW_BATCH_INPUT_SHAPE, [])?,
+                GraphNode::new(REVIEW_BATCH_SELECT_PLAN, REVIEW_BATCH_SELECT_SHAPE, [0])?,
+                GraphNode::new(REVIEW_BATCH_FILTER_PLAN, REVIEW_BATCH_FILTER_SHAPE, [0, 1])?,
+                GraphNode::new(
+                    REVIEW_BATCH_AGGREGATE_PLAN,
+                    REVIEW_BATCH_AGGREGATE_SHAPE,
+                    [0, 1, 2],
+                )?,
+            ],
+        )
+    }
+
+    pub fn graph_registry(
+        self,
+        schema_digest: [u8; 32],
+        policy_digest: [u8; 32],
+    ) -> Result<GraphRegistry, ProtocolError> {
+        GraphRegistry::new(
+            POSTGRESQL_ENGINE_ID,
+            POSTGRESQL_REVIEW_BATCH_GRAPH_PROFILE_ID,
+            schema_digest,
+            policy_digest,
+            CapabilityManifest::new(
+                CAPABILITY_QUERY | CAPABILITY_GRAPH | CAPABILITY_AGGREGATE | CAPABILITY_BATCH,
+            )?,
+            [self.registered_graph()?],
+        )
+    }
+
+    pub fn operation(self) -> Result<GraphOperation, ProtocolError> {
+        GraphOperation::new(
+            REVIEW_BATCH_GRAPH_OPCODE,
+            self.binding.plan_handle,
+            self.binding.result_shape,
+        )
+    }
+
+    pub fn parameters(self, items: &[ReviewBatchItem]) -> Result<Vec<u8>, ProtocolError> {
+        let item_count = validate_review_batch(items)?;
+        let parameter_bytes = REVIEW_BATCH_HEADER_BYTES
+            .checked_add(
+                item_count
+                    .checked_mul(REVIEW_BATCH_ITEM_BYTES)
+                    .ok_or(ProtocolError::ParameterLimitExceeded)?,
+            )
+            .ok_or(ProtocolError::ParameterLimitExceeded)?;
+        let mut parameters = Vec::with_capacity(parameter_bytes as usize);
+        parameters.extend_from_slice(&item_count.to_le_bytes());
+        for item in items {
+            parameters.extend_from_slice(&item.start.to_le_bytes());
+            parameters.extend_from_slice(&item.count.to_le_bytes());
+            parameters.extend_from_slice(&item.minimum_score.to_le_bytes());
+        }
+        Ok(parameters)
+    }
+
+    pub fn maximum_result_bytes(item_count: u32) -> Result<u32, ProtocolError> {
+        if item_count == 0 || item_count > MAXIMUM_REVIEW_BATCH_ITEMS {
+            return Err(ProtocolError::BatchLimitExceeded);
+        }
+        REVIEW_BATCH_RESULT_HEADER_BYTES
+            .checked_add(
+                item_count
+                    .checked_mul(REVIEW_BATCH_RESULT_ITEM_BYTES)
+                    .ok_or(ProtocolError::ResultBudgetExceeded)?,
+            )
+            .ok_or(ProtocolError::ResultBudgetExceeded)
+    }
+
+    pub fn sql(self) -> &'static str {
+        self.sql
+    }
+
+    fn implementation_digest(self) -> [u8; 32] {
+        let mut graph = blake3::Hasher::new();
+        graph.update(REVIEW_BATCH_GRAPH_DOMAIN);
+        graph.update(self.sql.as_bytes());
+        graph.update(&self.binding.plan_handle.to_le_bytes());
+        graph.update(&self.binding.result_shape.to_le_bytes());
+        *graph.finalize().as_bytes()
+    }
+}
+
 pub struct RangeBackend {
     client: Client,
     deadline_statement: Statement,
@@ -141,6 +395,351 @@ pub struct RangeBackend {
     identity: BackendIdentity,
     batch_ids: Vec<i64>,
     data_queries: u64,
+}
+
+pub struct ReviewGraphBackend {
+    client: Client,
+    statement: Statement,
+    profile: ReviewGraphProfile,
+    identity: BackendIdentity,
+    data_queries: u64,
+}
+
+pub struct ReviewBatchGraphBackend {
+    client: Client,
+    statement: Statement,
+    profile: ReviewBatchGraphProfile,
+    identity: BackendIdentity,
+    starts: Vec<i64>,
+    counts: Vec<i64>,
+    minimum_scores: Vec<i32>,
+    data_queries: u64,
+}
+
+pub trait GraphSessionAdmission {
+    fn configure_and_verify(
+        &self,
+        client: &mut Client,
+        maximum_statement_timeout_ms: u32,
+    ) -> Result<(), ProtocolError>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ServiceReadOnlyAdmission;
+
+impl GraphSessionAdmission for ServiceReadOnlyAdmission {
+    fn configure_and_verify(
+        &self,
+        client: &mut Client,
+        maximum_statement_timeout_ms: u32,
+    ) -> Result<(), ProtocolError> {
+        configure_read_only_graph_session(client, maximum_statement_timeout_ms)
+    }
+}
+
+impl ReviewBatchGraphBackend {
+    pub fn new_registered(
+        client: Client,
+        profile: ReviewBatchGraphProfile,
+        registry: &GraphRegistry,
+        maximum_statement_timeout_ms: u32,
+    ) -> Result<Self, ProtocolError> {
+        Self::new_registered_with_admission(
+            client,
+            profile,
+            registry,
+            maximum_statement_timeout_ms,
+            &ServiceReadOnlyAdmission,
+        )
+    }
+
+    pub fn new_registered_with_admission<A: GraphSessionAdmission>(
+        mut client: Client,
+        profile: ReviewBatchGraphProfile,
+        registry: &GraphRegistry,
+        maximum_statement_timeout_ms: u32,
+        admission: &A,
+    ) -> Result<Self, ProtocolError> {
+        if registry.identity().engine() != POSTGRESQL_ENGINE_ID
+            || registry.identity().profile() != POSTGRESQL_REVIEW_BATCH_GRAPH_PROFILE_ID
+            || registry.graphs() != [profile.registered_graph()?]
+        {
+            return Err(ProtocolError::PlanRegistryMismatch);
+        }
+        if maximum_statement_timeout_ms == 0 || maximum_statement_timeout_ms > 3_600_000 {
+            return Err(ProtocolError::BudgetExceeded);
+        }
+        admission.configure_and_verify(&mut client, maximum_statement_timeout_ms)?;
+        let statement = client
+            .prepare(profile.sql())
+            .map_err(|_| ProtocolError::BackendRefused)?;
+        Ok(Self {
+            client,
+            statement,
+            profile,
+            identity: registry.identity(),
+            starts: Vec::with_capacity(MAXIMUM_REVIEW_BATCH_ITEMS as usize),
+            counts: Vec::with_capacity(MAXIMUM_REVIEW_BATCH_ITEMS as usize),
+            minimum_scores: Vec::with_capacity(MAXIMUM_REVIEW_BATCH_ITEMS as usize),
+            data_queries: 0,
+        })
+    }
+
+    pub fn data_queries(&self) -> u64 {
+        self.data_queries
+    }
+}
+
+impl GraphBackend for ReviewBatchGraphBackend {
+    fn identity(&self) -> BackendIdentity {
+        self.identity
+    }
+
+    fn execute_graph(
+        &mut self,
+        operation: GraphOperation,
+        parameters: &[u8],
+        limits: ExecutionLimits,
+        output: &mut BoundedOutput,
+    ) -> Result<(), ProtocolError> {
+        if operation != self.profile.operation()? || parameters.len() < 4 {
+            return Err(ProtocolError::BackendRefused);
+        }
+        let item_count = u32::from_le_bytes(
+            parameters[0..4]
+                .try_into()
+                .map_err(|_| ProtocolError::BackendRefused)?,
+        );
+        let expected_parameter_bytes = REVIEW_BATCH_HEADER_BYTES
+            .checked_add(
+                item_count
+                    .checked_mul(REVIEW_BATCH_ITEM_BYTES)
+                    .ok_or(ProtocolError::ParameterLimitExceeded)?,
+            )
+            .ok_or(ProtocolError::ParameterLimitExceeded)?;
+        if parameters.len() != expected_parameter_bytes as usize
+            || item_count == 0
+            || item_count > MAXIMUM_REVIEW_BATCH_ITEMS
+        {
+            return Err(ProtocolError::BatchLimitExceeded);
+        }
+        if item_count > limits.maximum_rows {
+            return Err(ProtocolError::RowBudgetExceeded);
+        }
+        let required_bytes = ReviewBatchGraphProfile::maximum_result_bytes(item_count)?;
+        if required_bytes > limits.maximum_result_bytes {
+            return Err(ProtocolError::ResultBudgetExceeded);
+        }
+        output.reserve_total(required_bytes as usize)?;
+
+        self.starts.clear();
+        self.counts.clear();
+        self.minimum_scores.clear();
+        let mut source_rows = 0_u32;
+        for item_index in 0..item_count as usize {
+            let offset =
+                REVIEW_BATCH_HEADER_BYTES as usize + item_index * REVIEW_BATCH_ITEM_BYTES as usize;
+            let start = i64::from_le_bytes(
+                parameters[offset..offset + 8]
+                    .try_into()
+                    .map_err(|_| ProtocolError::BackendRefused)?,
+            );
+            let count = u32::from_le_bytes(
+                parameters[offset + 8..offset + 12]
+                    .try_into()
+                    .map_err(|_| ProtocolError::BackendRefused)?,
+            );
+            let minimum_score = i32::from_le_bytes(
+                parameters[offset + 12..offset + 16]
+                    .try_into()
+                    .map_err(|_| ProtocolError::BackendRefused)?,
+            );
+            validate_review(start, count, minimum_score)?;
+            source_rows = source_rows
+                .checked_add(count)
+                .ok_or(ProtocolError::RowBudgetExceeded)?;
+            if source_rows > MAXIMUM_REVIEW_BATCH_SOURCE_ROWS {
+                return Err(ProtocolError::RowBudgetExceeded);
+            }
+            self.starts.push(start);
+            self.counts.push(i64::from(count));
+            self.minimum_scores.push(minimum_score);
+        }
+
+        let rows = self
+            .client
+            .query(
+                &self.statement,
+                &[&self.starts, &self.counts, &self.minimum_scores],
+            )
+            .map_err(|_| ProtocolError::BackendRefused)?;
+        self.data_queries = self.data_queries.saturating_add(1);
+        if rows.len() != item_count as usize {
+            return Err(ProtocolError::BackendRefused);
+        }
+
+        output.write_exact_reusing(required_bytes as usize, item_count, |bytes| {
+            bytes[0..2].copy_from_slice(&REVIEW_BATCH_GRAPH_OPCODE.to_le_bytes());
+            bytes[2..6].copy_from_slice(&item_count.to_le_bytes());
+            for (index, row) in rows.iter().enumerate() {
+                let ordinal: i64 = row.try_get(0).map_err(|_| ProtocolError::BackendRefused)?;
+                let row_count: i64 = row.try_get(1).map_err(|_| ProtocolError::BackendRefused)?;
+                let score_sum: i64 = row.try_get(2).map_err(|_| ProtocolError::BackendRefused)?;
+                let expected_ordinal =
+                    i64::try_from(index + 1).map_err(|_| ProtocolError::BackendRefused)?;
+                let row_count =
+                    u32::try_from(row_count).map_err(|_| ProtocolError::BackendRefused)?;
+                if ordinal != expected_ordinal || row_count > self.counts[index] as u32 {
+                    return Err(ProtocolError::BackendRefused);
+                }
+                let offset = REVIEW_BATCH_RESULT_HEADER_BYTES as usize
+                    + index * REVIEW_BATCH_RESULT_ITEM_BYTES as usize;
+                bytes[offset..offset + 4].copy_from_slice(
+                    &u32::try_from(ordinal)
+                        .map_err(|_| ProtocolError::BackendRefused)?
+                        .to_le_bytes(),
+                );
+                bytes[offset + 4..offset + 8].copy_from_slice(&row_count.to_le_bytes());
+                bytes[offset + 8..offset + 16].copy_from_slice(&score_sum.to_le_bytes());
+            }
+            Ok(())
+        })
+    }
+}
+
+impl ReviewGraphBackend {
+    pub fn new_registered(
+        mut client: Client,
+        profile: ReviewGraphProfile,
+        registry: &GraphRegistry,
+        maximum_statement_timeout_ms: u32,
+    ) -> Result<Self, ProtocolError> {
+        if registry.identity().engine() != POSTGRESQL_ENGINE_ID
+            || registry.identity().profile() != POSTGRESQL_REVIEW_GRAPH_PROFILE_ID
+            || registry.graphs() != [profile.registered_graph()?]
+        {
+            return Err(ProtocolError::PlanRegistryMismatch);
+        }
+        configure_read_only_graph_session(&mut client, maximum_statement_timeout_ms)?;
+        let statement = client
+            .prepare(profile.sql())
+            .map_err(|_| ProtocolError::BackendRefused)?;
+        Ok(Self {
+            client,
+            statement,
+            profile,
+            identity: registry.identity(),
+            data_queries: 0,
+        })
+    }
+
+    pub fn data_queries(&self) -> u64 {
+        self.data_queries
+    }
+}
+
+fn configure_read_only_graph_session(
+    client: &mut Client,
+    maximum_statement_timeout_ms: u32,
+) -> Result<(), ProtocolError> {
+    if maximum_statement_timeout_ms == 0 || maximum_statement_timeout_ms > 3_600_000 {
+        return Err(ProtocolError::BudgetExceeded);
+    }
+    client
+        .batch_execute("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY")
+        .map_err(|_| ProtocolError::BackendRefused)?;
+    // Apply the database safety ceiling during session admission.
+    // A per-request SET adds a second hot-path database exchange.
+    // The protocol still checks each shorter frame deadline before and after execution.
+    let timeout = format!("{maximum_statement_timeout_ms}ms");
+    client
+        .query_one(
+            "SELECT set_config('statement_timeout', $1, false)",
+            &[&timeout],
+        )
+        .map_err(|_| ProtocolError::BackendRefused)?;
+    Ok(())
+}
+
+impl GraphBackend for ReviewGraphBackend {
+    fn identity(&self) -> BackendIdentity {
+        self.identity
+    }
+
+    fn execute_graph(
+        &mut self,
+        operation: GraphOperation,
+        parameters: &[u8],
+        limits: ExecutionLimits,
+        output: &mut BoundedOutput,
+    ) -> Result<(), ProtocolError> {
+        if operation != self.profile.operation()?
+            || parameters.len() != REVIEW_PARAMETER_BYTES as usize
+        {
+            return Err(ProtocolError::BackendRefused);
+        }
+        let start = i64::from_le_bytes(
+            parameters[0..8]
+                .try_into()
+                .map_err(|_| ProtocolError::BackendRefused)?,
+        );
+        let count = u32::from_le_bytes(
+            parameters[8..12]
+                .try_into()
+                .map_err(|_| ProtocolError::BackendRefused)?,
+        );
+        let minimum_score = i32::from_le_bytes(
+            parameters[12..16]
+                .try_into()
+                .map_err(|_| ProtocolError::BackendRefused)?,
+        );
+        validate_review(start, count, minimum_score)?;
+        if count > limits.maximum_rows {
+            return Err(ProtocolError::RowBudgetExceeded);
+        }
+        let maximum_bytes = 14_u64
+            .checked_add(u64::from(count) * 84)
+            .ok_or(ProtocolError::ResultBudgetExceeded)?;
+        if maximum_bytes > u64::from(limits.maximum_result_bytes) {
+            return Err(ProtocolError::ResultBudgetExceeded);
+        }
+        let count_i64 = i64::from(count);
+        let rows = self
+            .client
+            .query(&self.statement, &[&start, &count_i64, &minimum_score])
+            .map_err(|_| ProtocolError::BackendRefused)?;
+        self.data_queries = self.data_queries.saturating_add(1);
+        if rows.len() > count as usize {
+            return Err(ProtocolError::BackendRefused);
+        }
+        let row_count = u32::try_from(rows.len()).map_err(|_| ProtocolError::RowBudgetExceeded)?;
+        let score_sum = rows.first().map_or(Ok(0_i64), |row| {
+            row.try_get(5).map_err(|_| ProtocolError::BackendRefused)
+        })?;
+        output.write(&REVIEW_GRAPH_OPCODE.to_le_bytes())?;
+        output.write(&row_count.to_le_bytes())?;
+        output.write(&score_sum.to_le_bytes())?;
+        let end = start
+            .checked_add(count_i64)
+            .ok_or(ProtocolError::BackendRefused)?;
+        let mut previous_id = None;
+        for row in &rows {
+            let id: i64 = row.try_get(0).map_err(|_| ProtocolError::BackendRefused)?;
+            let score: i32 = row.try_get(3).map_err(|_| ProtocolError::BackendRefused)?;
+            let row_sum: i64 = row.try_get(5).map_err(|_| ProtocolError::BackendRefused)?;
+            if id < start
+                || id >= end
+                || score < minimum_score
+                || row_sum != score_sum
+                || previous_id.is_some_and(|previous| previous >= id)
+            {
+                return Err(ProtocolError::BackendRefused);
+            }
+            encode_expected_row(row, id, output)?;
+            previous_id = Some(id);
+        }
+        Ok(())
+    }
 }
 
 impl RangeBackend {
@@ -333,9 +932,35 @@ fn validate_range(start: i64, count: u32) -> Result<(), ProtocolError> {
         return Err(ProtocolError::BackendRefused);
     }
     start
-        .checked_add(i64::from(count - 1))
+        .checked_add(i64::from(count))
         .ok_or(ProtocolError::BackendRefused)?;
     Ok(())
+}
+
+fn validate_review(start: i64, count: u32, minimum_score: i32) -> Result<(), ProtocolError> {
+    validate_range(start, count)?;
+    if !(0..10_000).contains(&minimum_score) {
+        return Err(ProtocolError::BackendRefused);
+    }
+    Ok(())
+}
+
+fn validate_review_batch(items: &[ReviewBatchItem]) -> Result<u32, ProtocolError> {
+    let item_count = u32::try_from(items.len()).map_err(|_| ProtocolError::BatchLimitExceeded)?;
+    if item_count == 0 || item_count > MAXIMUM_REVIEW_BATCH_ITEMS {
+        return Err(ProtocolError::BatchLimitExceeded);
+    }
+    let mut source_rows = 0_u32;
+    for item in items {
+        validate_review(item.start, item.count, item.minimum_score)?;
+        source_rows = source_rows
+            .checked_add(item.count)
+            .ok_or(ProtocolError::RowBudgetExceeded)?;
+    }
+    if source_rows > MAXIMUM_REVIEW_BATCH_SOURCE_ROWS {
+        return Err(ProtocolError::RowBudgetExceeded);
+    }
+    Ok(item_count)
 }
 
 fn encode_row(
@@ -400,10 +1025,36 @@ impl ServerSession {
     ) -> Result<Execution, ProtocolError> {
         self.inner.execute(frame, backend, replay, clock)
     }
+
+    pub fn execute_graph<R: ReplayStore, C: Clock, B: GraphBackend>(
+        &self,
+        frame: &[u8],
+        backend: &mut B,
+        replay: &mut R,
+        clock: &C,
+    ) -> Result<GraphExecution, ProtocolError> {
+        self.inner.execute_graph(frame, backend, replay, clock)
+    }
+
+    pub fn execute_graph_reusing<'a, R: ReplayStore, C: Clock, B: GraphBackend>(
+        &self,
+        frame: &[u8],
+        backend: &mut B,
+        replay: &mut R,
+        clock: &C,
+        result_buffer: &'a mut Vec<u8>,
+    ) -> Result<BorrowedGraphExecution<'a>, ProtocolError> {
+        self.inner
+            .execute_graph_reusing(frame, backend, replay, clock, result_buffer)
+    }
 }
 
 pub fn memory_replay_store() -> MemoryReplayStore {
     MemoryReplayStore::default()
+}
+
+pub fn single_session_replay_store() -> SingleSessionReplayStore {
+    SingleSessionReplayStore::default()
 }
 
 #[cfg(test)]
@@ -448,5 +1099,82 @@ mod tests {
         assert!(profile().operation(1, 0).is_err());
         assert!(profile().operation(1, 4_097).is_err());
         assert!(profile().operation(i64::MAX, 2).is_err());
+    }
+
+    #[test]
+    fn the_review_graph_binds_three_nodes_and_typed_parameters() {
+        const REVIEW_SQL: &str = "WITH selected AS (SELECT id,bucket,owner,score,payload FROM items WHERE id >= $1 AND id < $1 + $2 AND score >= $3 ORDER BY id LIMIT $2) SELECT id,bucket,owner,score,payload,SUM(score) OVER ()::bigint FROM selected ORDER BY id";
+        let profile =
+            ReviewGraphProfile::new(REVIEW_SQL, OperationBinding::new(50, 51).expect("binding"))
+                .expect("profile");
+        let registry = profile.graph_registry([1; 32], [2; 32]).expect("registry");
+        let graph = registry.graph(50).expect("graph");
+        assert_eq!(graph.nodes().len(), 3);
+        assert_eq!(graph.nodes()[1].dependencies(), [0]);
+        assert_eq!(graph.nodes()[2].dependencies(), [0, 1]);
+        assert_eq!(
+            profile.parameters(10, 20, 30).expect("parameters"),
+            [10, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 30, 0, 0, 0]
+        );
+    }
+
+    #[test]
+    fn the_review_graph_refuses_invalid_operands() {
+        let profile =
+            ReviewGraphProfile::new("SELECT 1", OperationBinding::new(50, 51).expect("binding"))
+                .expect("profile");
+        assert!(profile.parameters(0, 1, 0).is_err());
+        assert!(profile.parameters(1, 0, 0).is_err());
+        assert!(profile.parameters(i64::MAX, 1, 0).is_err());
+        assert!(profile.parameters(1, 1, -1).is_err());
+        assert!(profile.parameters(1, 1, 10_000).is_err());
+    }
+
+    #[test]
+    fn the_review_batch_graph_binds_four_nodes_and_canonical_items() {
+        let profile = ReviewBatchGraphProfile::new(
+            "SELECT 1",
+            OperationBinding::new(60, 61).expect("binding"),
+        )
+        .expect("profile");
+        let registry = profile.graph_registry([1; 32], [2; 32]).expect("registry");
+        let graph = registry.graph(60).expect("graph");
+        assert_eq!(graph.nodes().len(), 4);
+        assert_eq!(graph.nodes()[3].dependencies(), [0, 1, 2]);
+        let items = [
+            ReviewBatchItem::new(10, 100, 50).expect("first item"),
+            ReviewBatchItem::new(200, 50, 225).expect("second item"),
+        ];
+        let parameters = profile.parameters(&items).expect("parameters");
+        assert_eq!(parameters.len(), 4 + 2 * 16);
+        assert_eq!(&parameters[0..4], &2_u32.to_le_bytes());
+        assert_eq!(&parameters[4..12], &10_i64.to_le_bytes());
+        assert_eq!(&parameters[12..16], &100_u32.to_le_bytes());
+        assert_eq!(&parameters[16..20], &50_i32.to_le_bytes());
+        assert_eq!(
+            ReviewBatchGraphProfile::maximum_result_bytes(2).expect("result budget"),
+            38
+        );
+    }
+
+    #[test]
+    fn the_review_batch_graph_refuses_empty_and_excessive_work() {
+        let profile = ReviewBatchGraphProfile::new(
+            "SELECT 1",
+            OperationBinding::new(60, 61).expect("binding"),
+        )
+        .expect("profile");
+        assert!(profile.parameters(&[]).is_err());
+        let maximum = ReviewBatchItem::new(1, 64, 0).expect("maximum item");
+        assert!(profile
+            .parameters(&vec![maximum; MAXIMUM_REVIEW_BATCH_ITEMS as usize])
+            .is_ok());
+        let excessive = ReviewBatchItem::new(1, 65, 0).expect("excessive item");
+        assert!(profile
+            .parameters(&vec![excessive; MAXIMUM_REVIEW_BATCH_ITEMS as usize])
+            .is_err());
+        assert!(profile
+            .parameters(&vec![maximum; MAXIMUM_REVIEW_BATCH_ITEMS as usize + 1])
+            .is_err());
     }
 }

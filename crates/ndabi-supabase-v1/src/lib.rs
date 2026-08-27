@@ -11,12 +11,15 @@ use serde::Deserialize;
 use serde_json::Value;
 use zeroize::Zeroizing;
 
+mod postgres_graph;
 mod postgres_rls;
 
+pub use postgres_graph::UserReviewBatchGraphBackend;
 pub use postgres_rls::UserRangeBackend;
 
 const AUTHENTICATED_ROLE: &str = "authenticated";
 const IDENTITY_DOMAIN: &[u8] = b"ndabi/supabase/user-identity/v1";
+const TENANT_DOMAIN: &[u8] = b"ndabi/supabase/tenant/v1";
 
 pub struct JwtVerifier {
     key: DecodingKey,
@@ -33,7 +36,10 @@ pub struct AdmittedIdentity {
     role: Zeroizing<String>,
     token_expires_unix_s: u64,
     session_expires_unix_s: u64,
+    session_expires_unix_us: u64,
     canonical_claims: Zeroizing<String>,
+    tenant_id: [u8; 16],
+    principal_id: [u8; 16],
     identity_digest: [u8; 32],
 }
 
@@ -162,11 +168,19 @@ impl JwtVerifier {
         if session_expires_unix_s <= now {
             return Err(AdmissionError::Expired);
         }
+        let session_expires_unix_us = session_expires_unix_s
+            .checked_mul(1_000_000)
+            .ok_or(AdmissionError::Clock)?;
         let canonical_claims =
             serde_json::to_string(&decoded.claims).map_err(|_| AdmissionError::Claims)?;
         let mut digest = blake3::Hasher::new();
         digest.update(IDENTITY_DOMAIN);
         digest.update(canonical_claims.as_bytes());
+        let identity_digest = *digest.finalize().as_bytes();
+        let mut tenant = blake3::Hasher::new();
+        tenant.update(TENANT_DOMAIN);
+        tenant.update(required.iss.as_bytes());
+        let tenant_digest = *tenant.finalize().as_bytes();
         Ok(AdmittedIdentity {
             issuer: Zeroizing::new(required.iss),
             audience: Zeroizing::new(audience.clone()),
@@ -174,8 +188,15 @@ impl JwtVerifier {
             role: Zeroizing::new(required.role),
             token_expires_unix_s: required.exp,
             session_expires_unix_s,
+            session_expires_unix_us,
             canonical_claims: Zeroizing::new(canonical_claims),
-            identity_digest: *digest.finalize().as_bytes(),
+            tenant_id: tenant_digest[0..16]
+                .try_into()
+                .map_err(|_| AdmissionError::Claims)?,
+            principal_id: identity_digest[0..16]
+                .try_into()
+                .map_err(|_| AdmissionError::Claims)?,
+            identity_digest,
         })
     }
 }
@@ -205,12 +226,24 @@ impl AdmittedIdentity {
         self.session_expires_unix_s
     }
 
+    pub fn session_expires_unix_us(&self) -> u64 {
+        self.session_expires_unix_us
+    }
+
     pub fn canonical_claims(&self) -> &str {
         self.canonical_claims.as_str()
     }
 
     pub fn identity_digest(&self) -> [u8; 32] {
         self.identity_digest
+    }
+
+    pub fn tenant_id(&self) -> [u8; 16] {
+        self.tenant_id
+    }
+
+    pub fn principal_id(&self) -> [u8; 16] {
+        self.principal_id
     }
 }
 

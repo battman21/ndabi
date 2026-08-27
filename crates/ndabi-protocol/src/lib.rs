@@ -13,6 +13,7 @@ use zeroize::{Zeroize, Zeroizing};
 
 mod batch;
 mod connection;
+mod graph;
 mod registry;
 mod registry_store;
 mod replay;
@@ -34,13 +35,19 @@ pub use connection::{
     NegotiatedTransport, RegisteredRequest, TransportConfig, TransportConnection, TransportPhase,
     TransportRole, FEATURE_CANCELLATION, FEATURE_STREAMING, KNOWN_TRANSPORT_FEATURES,
 };
+pub use graph::{
+    graph_frame_bytes, BorrowedGraphExecution, GraphBackend, GraphExecution, GraphNode,
+    GraphOperation, GraphRegistry, RegisteredGraph, RegisteredGraphBackend, MAX_GRAPH_DEPENDENCIES,
+    MAX_GRAPH_NODES, MAX_GRAPH_PARAMETER_BYTES,
+};
 pub use registry::{
     decode_registry_discovery, encode_registry_discovery, registry_discovery_bytes,
     CapabilityManifest, DiscoveredRegistry, PlanRegistry, RegisteredBackend,
     RegisteredBatchBackend, RegisteredPlan, CAPABILITY_AGGREGATE, CAPABILITY_BATCH,
-    CAPABILITY_CANCELLATION, CAPABILITY_EXPLAIN, CAPABILITY_MUTATION, CAPABILITY_QUERY,
-    CAPABILITY_RELATIONSHIP, CAPABILITY_STREAMING, CAPABILITY_TRANSACTION, KNOWN_CAPABILITIES,
-    MAX_REGISTERED_PLANS, PLAN_REGISTRY_VERSION_MAJOR, PLAN_REGISTRY_VERSION_MINOR,
+    CAPABILITY_CANCELLATION, CAPABILITY_EXPLAIN, CAPABILITY_GRAPH, CAPABILITY_MUTATION,
+    CAPABILITY_QUERY, CAPABILITY_RELATIONSHIP, CAPABILITY_STREAMING, CAPABILITY_TRANSACTION,
+    KNOWN_CAPABILITIES, MAX_REGISTERED_PLANS, PLAN_REGISTRY_VERSION_MAJOR,
+    PLAN_REGISTRY_VERSION_MINOR,
 };
 pub use registry_store::{FileRegistryStore, RegistryKeyProvider};
 pub use replay::FileReplayStore;
@@ -141,6 +148,14 @@ impl AuthorityContext {
 
     pub fn backend(self) -> BackendIdentity {
         self.backend
+    }
+
+    pub fn tenant(self) -> [u8; 16] {
+        self.tenant
+    }
+
+    pub fn principal(self) -> [u8; 16] {
+        self.principal
     }
 
     pub fn digest(self) -> [u8; 32] {
@@ -577,6 +592,18 @@ impl BoundedOutput {
         }
     }
 
+    fn new_reusing(mut bytes: Vec<u8>, maximum_bytes: u32, maximum_rows: u32) -> Self {
+        bytes.clear();
+        Self {
+            bytes,
+            maximum_bytes: maximum_bytes as usize,
+            maximum_rows,
+            rows: 0,
+            result_digest: None,
+            digest_invalidated: false,
+        }
+    }
+
     fn new_deferred_digesting(maximum_bytes: u32, maximum_rows: u32) -> Self {
         Self {
             // Hash each accepted write while the backend already touches the result bytes.
@@ -649,6 +676,42 @@ impl BoundedOutput {
             digest.update(&bytes);
         }
         self.bytes = bytes;
+        self.rows = rows;
+        Ok(())
+    }
+
+    /// Fill one exact result in the retained allocation after one bounds check.
+    ///
+    /// Clear the logical result when encoding fails. The caller cannot observe partial output.
+    pub fn write_exact_reusing<F>(
+        &mut self,
+        total: usize,
+        rows: u32,
+        encode: F,
+    ) -> Result<(), ProtocolError>
+    where
+        F: FnOnce(&mut [u8]) -> Result<(), ProtocolError>,
+    {
+        if !self.bytes.is_empty() || self.rows != 0 {
+            return Err(ProtocolError::OutputShape);
+        }
+        if total > self.maximum_bytes {
+            return Err(ProtocolError::ResultBudgetExceeded);
+        }
+        if rows > self.maximum_rows {
+            return Err(ProtocolError::RowBudgetExceeded);
+        }
+        self.bytes
+            .try_reserve_exact(total)
+            .map_err(|_| ProtocolError::ResultBudgetExceeded)?;
+        self.bytes.resize(total, 0);
+        if let Err(error) = encode(&mut self.bytes) {
+            self.bytes.clear();
+            return Err(error);
+        }
+        if let Some(digest) = self.result_digest.as_mut() {
+            digest.update(&self.bytes);
+        }
         self.rows = rows;
         Ok(())
     }
@@ -935,6 +998,8 @@ pub enum ProtocolError {
     ClockFailed,
     ConnectionState,
     DeadlineBeyondAuthority,
+    DependencyOrder,
+    DuplicateDependency,
     Expired,
     ExpiredDuringExecution,
     FeatureNotNegotiated,
@@ -943,6 +1008,7 @@ pub enum ProtocolError {
     NonceEnded,
     OutputShape,
     DuplicatePlan,
+    ParameterLimitExceeded,
     PlanLimitExceeded,
     PlanNotRegistered,
     PlanRegistryEmpty,
@@ -1264,6 +1330,21 @@ mod tests {
         );
         assert!(failed.bytes.is_empty());
         assert_eq!(failed.rows(), 0);
+
+        let mut reusable = BoundedOutput::new_reusing(Vec::with_capacity(16), 4, 2);
+        let pointer = reusable.bytes.as_ptr();
+        assert_eq!(
+            reusable
+                .write_exact_reusing(4, 2, |bytes| {
+                    bytes[0] = 9;
+                    Err(ProtocolError::BackendRefused)
+                })
+                .unwrap_err(),
+            ProtocolError::BackendRefused
+        );
+        assert!(reusable.bytes.is_empty());
+        assert_eq!(reusable.rows(), 0);
+        assert_eq!(reusable.bytes.as_ptr(), pointer);
     }
 
     #[test]

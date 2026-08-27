@@ -7,7 +7,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 pub const FRAME_BYTES: usize = 76;
 const AUTHENTICATED_BYTES: usize = 60;
@@ -16,8 +16,9 @@ const MAGIC: [u8; 4] = *b"NDA2";
 const VERSION: u8 = 1;
 const READ_FLAGS: u16 = 0b0101;
 const WRITE_FLAGS: u16 = 0b1010;
-const RECEIPT_DOMAIN: &[u8] = b"ndabi/session/receipt/v2";
+const RECEIPT_DOMAIN: &[u8] = b"ndabi/session/receipt/v3";
 const KEY_DOMAIN: &[u8] = b"ndabi/session/key/v1";
+const RECEIPT_KEY_DOMAIN: &[u8] = b"ndabi/session/receipt-key/v1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AccessClass {
@@ -57,7 +58,8 @@ pub struct Authority {
     plan: u32,
     flags: u16,
     access_class: AccessClass,
-    key: Zeroizing<[u8; 32]>,
+    frame_key: Zeroizing<[u8; 32]>,
+    receipt_key: Zeroizing<[u8; 32]>,
 }
 
 impl Authority {
@@ -125,18 +127,32 @@ impl Authority {
         if capability == 0 || schema == 0 || plan == 0 {
             return Err(SessionError::new("the authority contains a zero handle"));
         }
+        let root_key = Zeroizing::new(root_key);
         if root_key.ct_eq(&[0; 32]).unwrap_u8() == 1 {
             return Err(SessionError::new("the root key is zero"));
         }
-        let mut derivation = blake3::Hasher::new_keyed(&root_key);
-        derivation.update(KEY_DOMAIN);
-        derivation.update(&generation.to_le_bytes());
-        derivation.update(&session.to_le_bytes());
-        derivation.update(&expires_unix_us.to_le_bytes());
-        derivation.update(&capability.to_le_bytes());
-        derivation.update(&schema.to_le_bytes());
-        derivation.update(&plan.to_le_bytes());
-        derivation.update(&flags.to_le_bytes());
+        let frame_key = derive_key(
+            &root_key,
+            KEY_DOMAIN,
+            generation,
+            session,
+            expires_unix_us,
+            capability,
+            schema,
+            plan,
+            flags,
+        );
+        let receipt_key = derive_key(
+            &root_key,
+            RECEIPT_KEY_DOMAIN,
+            generation,
+            session,
+            expires_unix_us,
+            capability,
+            schema,
+            plan,
+            flags,
+        );
         Ok(Self {
             generation,
             session,
@@ -146,16 +162,43 @@ impl Authority {
             plan,
             flags,
             access_class,
-            key: Zeroizing::new(*derivation.finalize().as_bytes()),
+            frame_key: Zeroizing::new(frame_key),
+            receipt_key: Zeroizing::new(receipt_key),
         })
     }
 
     fn tag(&self, authenticated: &[u8]) -> [u8; TAG_BYTES] {
-        let digest = blake3::keyed_hash(&self.key, authenticated);
+        let digest = blake3::keyed_hash(&self.frame_key, authenticated);
         let mut tag = [0; TAG_BYTES];
         tag.copy_from_slice(&digest.as_bytes()[..TAG_BYTES]);
         tag
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn derive_key(
+    root_key: &[u8; 32],
+    domain: &[u8],
+    generation: u64,
+    session: u32,
+    expires_unix_us: u64,
+    capability: u32,
+    schema: u32,
+    plan: u32,
+    flags: u16,
+) -> [u8; 32] {
+    let mut derivation = blake3::Hasher::new_keyed(root_key);
+    derivation.update(domain);
+    derivation.update(&generation.to_le_bytes());
+    derivation.update(&session.to_le_bytes());
+    derivation.update(&expires_unix_us.to_le_bytes());
+    derivation.update(&capability.to_le_bytes());
+    derivation.update(&schema.to_le_bytes());
+    derivation.update(&plan.to_le_bytes());
+    derivation.update(&flags.to_le_bytes());
+    let key = *derivation.finalize().as_bytes();
+    derivation.zeroize();
+    key
 }
 
 pub struct ClientSession {
@@ -206,6 +249,30 @@ impl ClientSession {
         let tag = self.authority.tag(&frame[..AUTHENTICATED_BYTES]);
         frame[AUTHENTICATED_BYTES..].copy_from_slice(&tag);
         Ok(frame)
+    }
+
+    /// Verify that the authority authenticated one exact request and result pair.
+    pub fn verify_execution_receipt(
+        &self,
+        frame: &[u8],
+        bytes: &[u8],
+        candidate: &[u8; 32],
+    ) -> Result<(), SessionError> {
+        if frame.len() != FRAME_BYTES {
+            return Err(SessionError::new("the receipt frame length is invalid"));
+        }
+        let expected = receipt(
+            &self.authority,
+            get_u64(frame, 20),
+            *blake3::hash(frame).as_bytes(),
+            bytes,
+        );
+        if expected.ct_eq(candidate).unwrap_u8() != 1 {
+            return Err(SessionError::new(
+                "the execution receipt authentication failed",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -334,18 +401,20 @@ pub struct Execution {
 }
 
 fn receipt(authority: &Authority, nonce: u64, frame_digest: [u8; 32], bytes: &[u8]) -> [u8; 32] {
-    let mut receipt = blake3::Hasher::new();
-    receipt.update(RECEIPT_DOMAIN);
-    receipt.update(&authority.generation.to_le_bytes());
-    receipt.update(&authority.session.to_le_bytes());
-    receipt.update(&authority.capability.to_le_bytes());
-    receipt.update(&authority.schema.to_le_bytes());
-    receipt.update(&authority.plan.to_le_bytes());
-    receipt.update(&authority.flags.to_le_bytes());
-    receipt.update(&nonce.to_le_bytes());
-    receipt.update(&frame_digest);
-    receipt.update(bytes);
-    *receipt.finalize().as_bytes()
+    let mut digest = blake3::Hasher::new_keyed(&authority.receipt_key);
+    digest.update(RECEIPT_DOMAIN);
+    digest.update(&authority.generation.to_le_bytes());
+    digest.update(&authority.session.to_le_bytes());
+    digest.update(&authority.capability.to_le_bytes());
+    digest.update(&authority.schema.to_le_bytes());
+    digest.update(&authority.plan.to_le_bytes());
+    digest.update(&authority.flags.to_le_bytes());
+    digest.update(&nonce.to_le_bytes());
+    digest.update(&frame_digest);
+    digest.update(bytes);
+    let receipt = *digest.finalize().as_bytes();
+    digest.zeroize();
+    receipt
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -424,15 +493,55 @@ mod tests {
 
     #[test]
     fn a_backend_neutral_operation_round_trips() {
+        let client = ClientSession::new(authority(21));
+        let frame = frame();
         let mut server = ServerSession::new(authority(21), 64).expect("server");
         let result = server
-            .execute(&frame(), NOW, &mut TestBackend { fail: false })
+            .execute(&frame, NOW, &mut TestBackend { fail: false })
             .expect("execute");
         assert_eq!(
             result.operation,
             RawOperation::new(7, 1, 2, 3).expect("operation")
         );
         assert_eq!(result.bytes, [7, 3]);
+        client
+            .verify_execution_receipt(&frame, &result.bytes, &result.receipt)
+            .expect("authenticated receipt");
+    }
+
+    #[test]
+    fn changed_execution_evidence_refuses() {
+        let client = ClientSession::new(authority(21));
+        let frame = frame();
+        let mut server = ServerSession::new(authority(21), 64).expect("server");
+        let result = server
+            .execute(&frame, NOW, &mut TestBackend { fail: false })
+            .expect("execute");
+
+        let mut changed_frame = frame;
+        changed_frame[40] ^= 1;
+        assert!(client
+            .verify_execution_receipt(&changed_frame, &result.bytes, &result.receipt)
+            .is_err());
+
+        let mut changed_bytes = result.bytes.clone();
+        changed_bytes[0] ^= 1;
+        assert!(client
+            .verify_execution_receipt(&frame, &changed_bytes, &result.receipt)
+            .is_err());
+
+        let mut changed_receipt = result.receipt;
+        changed_receipt[0] ^= 1;
+        assert!(client
+            .verify_execution_receipt(&frame, &result.bytes, &changed_receipt)
+            .is_err());
+
+        let other_client = ClientSession::new(
+            Authority::new([8; 32], 10, 21, 2_000, 12, 13, 14).expect("other authority"),
+        );
+        assert!(other_client
+            .verify_execution_receipt(&frame, &result.bytes, &result.receipt)
+            .is_err());
     }
 
     #[test]

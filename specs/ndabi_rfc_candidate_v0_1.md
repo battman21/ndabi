@@ -6,6 +6,9 @@
 
 **Scope:** Authenticated, read-only execution of registered plans through one fixed frame or one homogeneous batch frame.
 
+The registered graph extension remains a separate candidate profile.
+Refer to `ndabi_registered_graph_candidate_v0_1.md`.
+
 ## 1. Purpose
 
 NDABI removes repeated textual query syntax, field names, object wrappers, and plan construction from the hot path.

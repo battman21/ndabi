@@ -1,0 +1,581 @@
+{
+  "allocation": {
+    "allocation_diagnostic": {
+      "fused_native": {
+        "allocated_bytes": 100830,
+        "allocations": 286
+      },
+      "ndabi_graph": {
+        "allocated_bytes": 96728,
+        "allocations": 285
+      },
+      "repeated_native": {
+        "allocated_bytes": 151878,
+        "allocations": 2571
+      }
+    },
+    "arm_rotation": "iteration-plus-offset-modulo-three",
+    "client_thread_cpu": {
+      "fused_native": {
+        "mean_ns": 83752,
+        "p50_ns": 79041,
+        "p95_ns": 112833,
+        "p99_ns": 167500,
+        "throughput_per_second": 11940.013
+      },
+      "ndabi_graph": {
+        "mean_ns": 114878,
+        "p50_ns": 110958,
+        "p95_ns": 139291,
+        "p99_ns": 171792,
+        "throughput_per_second": 8704.887
+      },
+      "repeated_native": {
+        "mean_ns": 6296239,
+        "p50_ns": 5941583,
+        "p95_ns": 8279666,
+        "p99_ns": 12486583,
+        "throughput_per_second": 158.825
+      }
+    },
+    "concise_json_request_bytes": 12197,
+    "coordinated": false,
+    "data_queries_per_workflow": {
+      "fused_native": 1,
+      "ndabi_graph": 1,
+      "repeated_native": 256
+    },
+    "exact_results": true,
+    "fused_native": {
+      "mean_ns": 2149862,
+      "p50_ns": 2068041,
+      "p95_ns": 2397917,
+      "p99_ns": 4353667,
+      "throughput_per_second": 465.146
+    },
+    "item_count": 256,
+    "iterations": 100,
+    "measured_arm": "all",
+    "ndabi_graph": {
+      "mean_ns": 2199312,
+      "p50_ns": 2092959,
+      "p95_ns": 2307792,
+      "p99_ns": 5942583,
+      "throughput_per_second": 454.688
+    },
+    "ndabi_vs_fused_mean_ratio": 1.023001,
+    "ndabi_vs_fused_p95_ratio": 0.962415,
+    "raw_samples": null,
+    "receipt_verified": true,
+    "repeated_native": {
+      "mean_ns": 114164777,
+      "p50_ns": 99525458,
+      "p95_ns": 178963000,
+      "p99_ns": 394353083,
+      "throughput_per_second": 8.759
+    },
+    "repeated_vs_ndabi_mean_speedup": 51.909314,
+    "repeated_vs_ndabi_p95_speedup": 77.547283,
+    "request_bytes": 4260,
+    "request_compression_percent": 65.073379,
+    "result_bytes": 4102,
+    "schema": "ndabi-postgresql-review-batch-graph-showdown-v0.1",
+    "warmup": 10,
+    "worker_id": 0
+  },
+  "binaries": {
+    "allocation_sha256": "558cf681d29ca07c349cd0640163c9a9911063f662e8da26dd04d723bfefede6",
+    "cargo": "cargo 1.92.0 (344c4567c 2025-10-21)\nrelease: 1.92.0\ncommit-hash: 344c4567c634a25837e3c3476aac08af84cf9203\ncommit-date: 2025-10-21\nhost: aarch64-apple-darwin\nlibgit2: 1.9.1 (sys:0.20.2 vendored)\nlibcurl: 8.7.1 (sys:0.4.83+curl-8.15.0 system ssl:(SecureTransport) LibreSSL/3.3.6)\nssl: OpenSSL 3.5.4 30 Sep 2025\nos: Mac OS 15.7.8 [64-bit]",
+    "normal_sha256": "217ad003b07722bbe86a56fc7910594507aa46d608c3d6c48d8d6ddcdb98f419",
+    "rustc": "rustc 1.92.0 (ded5c06cf 2025-12-08)\nbinary: rustc\ncommit-hash: ded5c06cf21d2b93bffd5d884aa6e96934ee4234\ncommit-date: 2025-12-08\nhost: aarch64-apple-darwin\nrelease: 1.92.0\nLLVM version: 21.1.3"
+  },
+  "campaign_id": "20260827T013037Z-1787794237450992000",
+  "containers": {
+    "docker": "{\"Client\":{\"Version\":\"29.7.2\",\"ApiVersion\":\"1.55\",\"DefaultAPIVersion\":\"1.55\",\"GitCommit\":\"a7dcaa6\",\"GoVersion\":\"go1.26.5\",\"Os\":\"darwin\",\"Arch\":\"arm64\",\"BuildTime\":\"Wed Aug  5 18:27:50 2026\",\"Context\":\"desktop-linux\"},\"Server\":{\"Platform\":{\"Name\":\"Docker Desktop 4.87.0 (236836)\"},\"Version\":\"29.7.2\",\"ApiVersion\":\"1.55\",\"MinAPIVersion\":\"1.40\",\"Os\":\"linux\",\"Arch\":\"arm64\",\"Components\":[{\"Name\":\"Engine\",\"Version\":\"29.7.2\",\"Details\":{\"ApiVersion\":\"1.55\",\"Arch\":\"arm64\",\"BuildTime\":\"Wed Aug  5 18:28:35 2026\",\"Experimental\":\"false\",\"GitCommit\":\"6a43e3d\",\"GoVersion\":\"go1.26.5\",\"KernelVersion\":\"7.0.12-linuxkit\",\"MinAPIVersion\":\"1.40\",\"Module\":\"github.com/moby/moby/v2\",\"ModuleVersion\":\"v2.0.0+unknown\",\"Os\":\"linux\"}},{\"Name\":\"containerd\",\"Version\":\"v2.2.5\",\"Details\":{\"GitCommit\":\"e53c7c1516c3b2bff98eb76f1f4117477e6f4e66\"}},{\"Name\":\"runc\",\"Version\":\"1.3.6\",\"Details\":{\"GitCommit\":\"v1.3.6-0-g491b69ba\"}},{\"Name\":\"docker-init\",\"Version\":\"0.19.0\",\"Details\":{\"GitCommit\":\"de40ad0\"}}],\"GitCommit\":\"6a43e3d\",\"GoVersion\":\"go1.26.5\",\"KernelVersion\":\"7.0.12-linuxkit\",\"BuildTime\":\"2026-08-05T18:28:35.000000000+00:00\"}}",
+    "image_ids": {
+      "postgres": "sha256:eb9fe6b5815523ffa3e3d8aee9db3532bd564b857634fcfa36979d76bed6ae10",
+      "toxiproxy": "sha256:b0e75e62fcf0abd5c8aea482fd4aa00ff5052fd24d8d0b4103c94668a95b8c99"
+    },
+    "references": {
+      "postgres": "postgres@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20",
+      "toxiproxy": "ghcr.io/shopify/toxiproxy:2.12.0@sha256:5ab4b4e8f476fd5452eb9584a608dd7cf8c11135878a8f7953722a9fcb9b3d87"
+    }
+  },
+  "evaluation": null,
+  "limitations": [
+    "The smoke mode cannot qualify performance.",
+    "The campaign uses local Docker and controlled latency, not a geographic network."
+  ],
+  "post_host": {
+    "captured_unix_ns": 1787794262558501000,
+    "conflicts": [],
+    "idle_percent": 70.95,
+    "load_average": [
+      11.76123046875,
+      10.02685546875,
+      10.357421875
+    ],
+    "machine": "arm64",
+    "platform": "macOS-15.7.8-arm64-arm-64bit-Mach-O",
+    "process_count": 1044,
+    "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded\n"
+  },
+  "pre_host": {
+    "captured_unix_ns": 1787794237901068000,
+    "conflicts": [],
+    "idle_percent": 63.7,
+    "load_average": [
+      8.2841796875,
+      9.2529296875,
+      10.1025390625
+    ],
+    "machine": "arm64",
+    "platform": "macOS-15.7.8-arm64-arm-64bit-Mach-O",
+    "process_count": 1052,
+    "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded\n"
+  },
+  "repetitions": [
+    {
+      "cells": [
+        {
+          "arm_order": [
+            "repeated_native",
+            "fused_native",
+            "ndabi_graph"
+          ],
+          "cell": [
+            8,
+            0,
+            1
+          ],
+          "comparison": {
+            "exact_result_shape": true,
+            "ndabi_allocation_request_reduction": 0.63950617,
+            "ndabi_rss_ratio_vs_fused": 0.9993825343375526,
+            "ndabi_stack_cpu_reduction_vs_repeated": 0.7724577932734831,
+            "ndabi_vs_fused_mean_ratio": 1.0252298632909875,
+            "ndabi_vs_fused_p95_ratio": 0.9594964568570238,
+            "repeated_vs_ndabi_mean_speedup": 6.386347034441305,
+            "repeated_vs_ndabi_p95_speedup": 6.008040552047239
+          },
+          "measurements": {
+            "fused_native": {
+              "arm": "fused_native",
+              "batch_size": 8,
+              "client_cpu_ns": 2698787,
+              "complete_stack_cpu_ns": 31534787,
+              "concise_json_request_bytes": 810,
+              "concurrency": 1,
+              "container_cpu_ns": {
+                "ndabi-semantic-postgres-10006-1787794240804736000": 17303000,
+                "ndabi-semantic-toxiproxy-10006-1787794240804736000": 11533000
+              },
+              "finished_unix_ns": 1787794260996369000,
+              "iterations_per_worker": 100,
+              "logical_operations": 100,
+              "maximum_client_rss_bytes": 3899392,
+              "maximum_complete_stack_rss_bytes": 570486784,
+              "maximum_container_memory_bytes": {
+                "ndabi-semantic-postgres-10006-1787794240804736000": 554299392,
+                "ndabi-semantic-toxiproxy-10006-1787794240804736000": 12288000
+              },
+              "mean_ns": 467343,
+              "overlap_conflicts": [],
+              "p95_ns": 599750,
+              "request_bytes": 292,
+              "request_compression_percent": 63.950617,
+              "result_bytes": 134,
+              "round_trip_ms": 0,
+              "samples": 100,
+              "started_unix_ns": 1787794260949063000,
+              "total_container_cpu_ns": 28836000,
+              "worker_exit_codes": [
+                0
+              ]
+            },
+            "ndabi_graph": {
+              "arm": "ndabi_graph",
+              "batch_size": 8,
+              "client_cpu_ns": 2919418,
+              "complete_stack_cpu_ns": 31966418,
+              "concise_json_request_bytes": 810,
+              "concurrency": 1,
+              "container_cpu_ns": {
+                "ndabi-semantic-postgres-10006-1787794240804736000": 17411000,
+                "ndabi-semantic-toxiproxy-10006-1787794240804736000": 11636000
+              },
+              "finished_unix_ns": 1787794261189542000,
+              "iterations_per_worker": 100,
+              "logical_operations": 100,
+              "maximum_client_rss_bytes": 3735552,
+              "maximum_complete_stack_rss_bytes": 570134528,
+              "maximum_container_memory_bytes": {
+                "ndabi-semantic-postgres-10006-1787794240804736000": 554090496,
+                "ndabi-semantic-toxiproxy-10006-1787794240804736000": 12308480
+              },
+              "mean_ns": 479134,
+              "overlap_conflicts": [],
+              "p95_ns": 575458,
+              "request_bytes": 292,
+              "request_compression_percent": 63.950617,
+              "result_bytes": 134,
+              "round_trip_ms": 0,
+              "samples": 100,
+              "started_unix_ns": 1787794261141062000,
+              "total_container_cpu_ns": 29047000,
+              "worker_exit_codes": [
+                0
+              ]
+            },
+            "repeated_native": {
+              "arm": "repeated_native",
+              "batch_size": 8,
+              "client_cpu_ns": 19280664,
+              "complete_stack_cpu_ns": 140485664,
+              "concise_json_request_bytes": 810,
+              "concurrency": 1,
+              "container_cpu_ns": {
+                "ndabi-semantic-postgres-10006-1787794240804736000": 57469000,
+                "ndabi-semantic-toxiproxy-10006-1787794240804736000": 63736000
+              },
+              "finished_unix_ns": 1787794260799882000,
+              "iterations_per_worker": 100,
+              "logical_operations": 100,
+              "maximum_client_rss_bytes": 3948544,
+              "maximum_complete_stack_rss_bytes": 570163200,
+              "maximum_container_memory_bytes": {
+                "ndabi-semantic-postgres-10006-1787794240804736000": 554135552,
+                "ndabi-semantic-toxiproxy-10006-1787794240804736000": 12079104
+              },
+              "mean_ns": 3059916,
+              "overlap_conflicts": [],
+              "p95_ns": 3457375,
+              "request_bytes": 292,
+              "request_compression_percent": 63.950617,
+              "result_bytes": 134,
+              "round_trip_ms": 0,
+              "samples": 100,
+              "started_unix_ns": 1787794260493227000,
+              "total_container_cpu_ns": 121205000,
+              "worker_exit_codes": [
+                0
+              ]
+            }
+          }
+        },
+        {
+          "arm_order": [
+            "fused_native",
+            "ndabi_graph",
+            "repeated_native"
+          ],
+          "cell": [
+            8,
+            0,
+            8
+          ],
+          "comparison": {
+            "exact_result_shape": true,
+            "ndabi_allocation_request_reduction": 0.63950617,
+            "ndabi_rss_ratio_vs_fused": 1.0070519237185904,
+            "ndabi_stack_cpu_reduction_vs_repeated": 0.7556369476830191,
+            "ndabi_vs_fused_mean_ratio": 0.9968137637224241,
+            "ndabi_vs_fused_p95_ratio": 0.9205206014328123,
+            "repeated_vs_ndabi_mean_speedup": 6.194539148459125,
+            "repeated_vs_ndabi_p95_speedup": 5.495045503477517
+          },
+          "measurements": {
+            "fused_native": {
+              "arm": "fused_native",
+              "batch_size": 8,
+              "client_cpu_ns": 29883534,
+              "complete_stack_cpu_ns": 289176534,
+              "concise_json_request_bytes": 810,
+              "concurrency": 8,
+              "container_cpu_ns": {
+                "ndabi-semantic-postgres-10006-1787794240804736000": 190680000,
+                "ndabi-semantic-toxiproxy-10006-1787794240804736000": 68613000
+              },
+              "finished_unix_ns": 1787794261482098000,
+              "iterations_per_worker": 100,
+              "logical_operations": 800,
+              "maximum_client_rss_bytes": 31981568,
+              "maximum_complete_stack_rss_bytes": 638337024,
+              "maximum_container_memory_bytes": {
+                "ndabi-semantic-postgres-10006-1787794240804736000": 593805312,
+                "ndabi-semantic-toxiproxy-10006-1787794240804736000": 12550144
+              },
+              "mean_ns": 782114,
+              "overlap_conflicts": [],
+              "p95_ns": 1182709,
+              "request_bytes": 292,
+              "request_compression_percent": 63.950617,
+              "result_bytes": 134,
+              "round_trip_ms": 0,
+              "samples": 800,
+              "started_unix_ns": 1787794261400440000,
+              "total_container_cpu_ns": 259293000,
+              "worker_exit_codes": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            },
+            "ndabi_graph": {
+              "arm": "ndabi_graph",
+              "batch_size": 8,
+              "client_cpu_ns": 31207046,
+              "complete_stack_cpu_ns": 301756046,
+              "concise_json_request_bytes": 810,
+              "concurrency": 8,
+              "container_cpu_ns": {
+                "ndabi-semantic-postgres-10006-1787794240804736000": 198064000,
+                "ndabi-semantic-toxiproxy-10006-1787794240804736000": 72485000
+              },
+              "finished_unix_ns": 1787794261772434000,
+              "iterations_per_worker": 100,
+              "logical_operations": 800,
+              "maximum_client_rss_bytes": 31817728,
+              "maximum_complete_stack_rss_bytes": 642838528,
+              "maximum_container_memory_bytes": {
+                "ndabi-semantic-postgres-10006-1787794240804736000": 594014208,
+                "ndabi-semantic-toxiproxy-10006-1787794240804736000": 17006592
+              },
+              "mean_ns": 779622,
+              "overlap_conflicts": [],
+              "p95_ns": 1088708,
+              "request_bytes": 292,
+              "request_compression_percent": 63.950617,
+              "result_bytes": 134,
+              "round_trip_ms": 0,
+              "samples": 800,
+              "started_unix_ns": 1787794261690560000,
+              "total_container_cpu_ns": 270549000,
+              "worker_exit_codes": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            },
+            "repeated_native": {
+              "arm": "repeated_native",
+              "batch_size": 8,
+              "client_cpu_ns": 219614723,
+              "complete_stack_cpu_ns": 1234867723,
+              "concise_json_request_bytes": 810,
+              "concurrency": 8,
+              "container_cpu_ns": {
+                "ndabi-semantic-postgres-10006-1787794240804736000": 509713000,
+                "ndabi-semantic-toxiproxy-10006-1787794240804736000": 505540000
+              },
+              "finished_unix_ns": 1787794262475365000,
+              "iterations_per_worker": 100,
+              "logical_operations": 800,
+              "maximum_client_rss_bytes": 32669696,
+              "maximum_complete_stack_rss_bytes": 644337664,
+              "maximum_container_memory_bytes": {
+                "ndabi-semantic-postgres-10006-1787794240804736000": 593481728,
+                "ndabi-semantic-toxiproxy-10006-1787794240804736000": 18186240
+              },
+              "mean_ns": 4829399,
+              "overlap_conflicts": [],
+              "p95_ns": 5982500,
+              "request_bytes": 292,
+              "request_compression_percent": 63.950617,
+              "result_bytes": 134,
+              "round_trip_ms": 0,
+              "samples": 800,
+              "started_unix_ns": 1787794261984939000,
+              "total_container_cpu_ns": 1015253000,
+              "worker_exit_codes": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            }
+          }
+        }
+      ],
+      "repetition": 1
+    }
+  ],
+  "schema": "ndabi-semantic-batch-campaign-v0.2",
+  "source": {
+    "files": {
+      ".cargo/config.toml": "e94b9a285e80c2db9c80cf4cb029b54ab1b6d3b9dfd3284d7d9d93352b098dec",
+      "Cargo.lock": "fd40a12d62d6281d995b2c567656d5dfff8eb7288459aaf8873829d8b81d0166",
+      "Cargo.toml": "e74f68e055840b63d38201f66a0b0bf28bbdc2dec3c9ebf4cf3ac1d0a5afa306",
+      "campaigns/semantic_batch_v02.py": "34a1cd6735667984a076182fdb3f1128aef828874ce4b222c848eb31628cf8bc",
+      "campaigns/tests/test_semantic_batch_v02.py": "5ddddac979f8402145d53e9ff46e010eacd693f3ee16ddbc3f76ab33a67cc38d",
+      "crates/ndabi-mongodb-v1/Cargo.toml": "7d833162ec07bd49cc629f7e28269b1bef15a9ba6ed9e118e5227d0dba1d8568",
+      "crates/ndabi-mongodb-v1/src/lib.rs": "c8d064d926e87f3022e650c541f984bd4ef8cad289df768cb739cfc930a52b99",
+      "crates/ndabi-mongodb/Cargo.toml": "4cf3cbfe7e97052382ac26264c997d63aaf594cfbf358db7ba20898ed3c36c92",
+      "crates/ndabi-mongodb/src/lib.rs": "d4d17017c1fd3e9c1724946fca2af9529cf15480e576ad15ccce8db8bf28dc22",
+      "crates/ndabi-postgres-v1/Cargo.toml": "a9bace645cb10dcb2d7c355c7ddf2edb64a6edc98818d76536900d912e612023",
+      "crates/ndabi-postgres-v1/examples/review_batch_graph_showdown.rs": "186b86c4e5c2af10ee0125b8bc170ba85c1f91005f47dd0691e20a7812d98761",
+      "crates/ndabi-postgres-v1/examples/review_graph_showdown.rs": "f39d8661fc016896d60250fbd1630b8680867943305627c265e8d7c45470dd3c",
+      "crates/ndabi-postgres-v1/src/lib.rs": "093f35776c07813bc40ccd37eea7fd16228215057b25565eb9fc86ea31a75615",
+      "crates/ndabi-postgres-v1/tests/review_graph.rs": "e1fe6cf043153102c7cfa3afa691ab965286ce136b962e2f46b5ac8663dc7ddd",
+      "crates/ndabi-postgres/Cargo.toml": "51fe3c17a33bfe7b82ce719a42e2424c0fe74bf5f5fff6073e880a3e36c6c1f7",
+      "crates/ndabi-postgres/src/lib.rs": "b0ed0f2ed932f29c7cc0237f0d618ce478e0a7b5aed12cacfedf206542c7e957",
+      "crates/ndabi-protocol/Cargo.toml": "4931c86f03c1ecafd3bb3d68bfdf3b70be8de3728bb819b2db0072d8fbd4e869",
+      "crates/ndabi-protocol/examples/ndabi_transport_vectors_v02.rs": "6c7f557174f5257e5fb5ac2a44234c31ec6a69133703c8658138a95828f45944",
+      "crates/ndabi-protocol/examples/ndabi_vectors_v01.rs": "a2ed10bfeb86b364a1ccdb7f52473df7455ac492827d8cc0f877532ae0b058ea",
+      "crates/ndabi-protocol/src/batch.rs": "eb7a888187a39fab83581e48e064be05525e551a52cc45285e5e6bb41531a7e8",
+      "crates/ndabi-protocol/src/connection.rs": "fd8de54b2e1ab5ea5b926445c79c880e7baaeffa0f82cb6aff1b48e4466dea00",
+      "crates/ndabi-protocol/src/graph.rs": "c770c7324ac88f0cf13c5069e30139e1b893ff97227738f01451cf1daa85f89b",
+      "crates/ndabi-protocol/src/lib.rs": "c619723ee69afe9bc1385826b2809e16a42608b341ad5a0b237f603d3b4a2cd3",
+      "crates/ndabi-protocol/src/registry.rs": "f34e779d2c2f84becb0e980f6bbb751afeab9f37d736bb19f121dec2fb3df433",
+      "crates/ndabi-protocol/src/registry_store.rs": "2654e7f4288130c5a525a08330d10d14e805271952d07422cf2a440fbbf55aea",
+      "crates/ndabi-protocol/src/replay.rs": "96f30b3c6587cbe35776b2e149d50cc270a5eec06786d3ff8f4e30188659f63b",
+      "crates/ndabi-protocol/src/transport.rs": "14742f5a136154018fb6efad33d6cd5268aa9fa6beaba27ed6e018688cba5254",
+      "crates/ndabi-session/Cargo.toml": "cc0b952fefbc3add46b58e0c8f5aa2bf20f0da8e99e0c578df74c531b0d84dab",
+      "crates/ndabi-session/src/lib.rs": "a3c6af34ab84d44c05051c85a361a586eb0af2a41753029dcc5066ac00c62df5",
+      "crates/ndabi-supabase-batch-session-v1/Cargo.toml": "2fd4ec28cfeb7429716a72cc535a39a538051a5bea84452a0c910d02bd16906d",
+      "crates/ndabi-supabase-batch-session-v1/src/lib.rs": "966907e96e3298686836100efe2d31a2288ebb97530e6c17528938ab9303a173",
+      "crates/ndabi-supabase-indexed-batch-session-v1/Cargo.toml": "75dcf3cc0c375811019748609ed2251d15b9d914e8f031d2147302ac2bb321d5",
+      "crates/ndabi-supabase-indexed-batch-session-v1/src/lib.rs": "f1d2e23fb4ecd0b57456f0edef7c54f26dadde646a25128c7a25fa4cacc6fc6a",
+      "crates/ndabi-supabase-packed-session-v1/Cargo.toml": "268539ff61b477b9077631c8763e1177d2eafff9a673f6c8e216d5739c5d64b9",
+      "crates/ndabi-supabase-packed-session-v1/src/lib.rs": "e18eb676acef56af17eca9df4724dc3983acb6a7569dad741356ec1b96b37c2f",
+      "crates/ndabi-supabase-range-session-v1/Cargo.toml": "42008f4a3d37c04e0712f04066fad3131fee4c216e7bc4c6e6dd320785820505",
+      "crates/ndabi-supabase-range-session-v1/src/lib.rs": "21cf78f56c57e04b5f4e608124642106d4caadcb33121c224e72f1363661a4ed",
+      "crates/ndabi-supabase-session-v1/Cargo.toml": "f50823b570974b6b3ea9a1ad9ff44c1576e41f8194bb52306ee5f075a5335e81",
+      "crates/ndabi-supabase-session-v1/src/lib.rs": "b197f68b39655fec21f750e4e4ed0d0a9f7ce9fc65ec6dc0bddea62096a1f76a",
+      "crates/ndabi-supabase-v1/Cargo.toml": "d7ca7b3cfdc29a38f0141b9b147b2e03d131732a068bbd83e92384f6966b40df",
+      "crates/ndabi-supabase-v1/src/lib.rs": "c9a43cec5f1bbe7c70907be39a32ba300c52e4fc37ea25179ed1baa576e05335",
+      "crates/ndabi-supabase-v1/src/postgres_graph.rs": "1884d7d27a9686b4f118889bedfce70e7eeeaba688bc3ea2caf146eb41d789c2",
+      "crates/ndabi-supabase-v1/src/postgres_rls.rs": "387cb0f2ef6ff100a193e8db6c8a7db7b8d4d8fd3f68ffa17a273c3b7cda12df",
+      "crates/ndabi-supabase-v1/tests/review_batch_graph.rs": "4087de5712ba192d86a664b3a824147c5dc44c5d22cc2468738c92e4edd24ee9",
+      "crates/ndabi-write/Cargo.toml": "1edaf4a3017faabdbb3cb8f5833769352329369af36cf51c16e942c679bb76d6",
+      "crates/ndabi-write/src/lib.rs": "ff2853d267c2322b0fe6b3618da128dc96c652c368585a9e45ac50dc7c54a5e7",
+      "rust-toolchain.toml": "1d76a06616a42a984bad672eeb24ca39a0496e95a8b624e21df0d420d1557734",
+      "specs/ndabi_backend_class_binding_campaign_v5_2.md": "2bfbbf62469f336416cea4d36856ad6c640d11221b8846d9ac9bbe24774a564a",
+      "specs/ndabi_canonical_batch_profile_v0_1.md": "8a2c53758aeb817af2d22f2c413d43c00a25a3f564419f96dd69ba56c10441ab",
+      "specs/ndabi_canonical_mongodb_campaign_v6_0.md": "21070d3d29d985bb8f3a563df5e127cf903ec99673931b58c73fd5f938efae1c",
+      "specs/ndabi_canonical_mongodb_profile_v0_1.md": "aa770d0a38bfa02dad72810fd0d41cf630969d22d1cc9e7da88cbd0e4de40e1b",
+      "specs/ndabi_canonical_postgresql_batch_campaign_v6_1.md": "3554469ed0489d1d33b525da4280bfafdc9c693e475f8c16649766c1d4517fb8",
+      "specs/ndabi_canonical_postgresql_batch_campaign_v6_2.md": "d7f4a388b0580d215f1c90ed85e47f372fb6cb33069a5bb0b75bcc5c0ecf9ded",
+      "specs/ndabi_canonical_postgresql_batch_campaign_v6_3.md": "299533faa765403cc212e9f055f4fabd4e8b63a82b4bbbf2fd0e48a8c293079c",
+      "specs/ndabi_canonical_replay_profile_v0_1.md": "05002348878a1bb25bbd62b3fb4de802d6f97e0a6392a1d74ac716615f72bcf2",
+      "specs/ndabi_canonical_supabase_campaign_v5_8.md": "61bf965c111fed75d6165080263f41f3faa8569e3a6a80e2b2b4c87a61668d90",
+      "specs/ndabi_canonical_white_tree_profile_v0_1.md": "306b7c8ad42c623801742d4cf8408296ff78b12b99c5a7ebca6b4e2a0993a9cc",
+      "specs/ndabi_column_batch_profile_v0_1.md": "9cbb2caf82640562e51838c3dd5eb387e2e5889c731c884ac2c5ac442914241f",
+      "specs/ndabi_compact_strided_batch_profile_v0_1.md": "06f0fd64a62f93ca18d4d05d77911e4028c11744f16145f53ea480e7dfb808e7",
+      "specs/ndabi_core_protocol_v0_1.md": "1b0404902c1824ee552d603a5a9dc760b0261e0477d5ae9128d41ac8e2fb129e",
+      "specs/ndabi_core_protocol_v0_2.md": "14caa15a0b4e87e80cf91e01ce3d43a93739591785595211db48d4cb112dcd17",
+      "specs/ndabi_equal_security_white_tree_campaign_v4_5.md": "c659650750e0cf3d6b6e0d6abe59d846473376e1dba3fd788c3e9bc567fbb887",
+      "specs/ndabi_incremental_receipt_profile_v0_1.md": "bf44912562ef7cb68cf6f2aca173a31ba851215fd70b8131c5519135097e57a1",
+      "specs/ndabi_mongodb_closed_evidence_campaign_v5_6.md": "a2093b429aa0c41fddd99cc122d9cbc413e0fbfc988bb3454d54a806c837a6c9",
+      "specs/ndabi_mongodb_compatibility_campaign_v4_8.md": "7a196a258f51b79d290a068eec96dbf504790075deffff9fc1ecf3d684bd1b34",
+      "specs/ndabi_mongodb_final_harness_campaign_v5_7.md": "c0b1a52a8c3e451ddaf1def66e1175f163eb377f1401255f41a438a798c33b41",
+      "specs/ndabi_mongodb_fixed_identity_campaign_v4_9.md": "de472c7c492ffdc433f974ae60f64870dbc03e0df49ef2c08d721d22920a1ff7",
+      "specs/ndabi_mongodb_fused_batch_campaign_v5_3.md": "df39db39dbbf1f4af3375c485d21dc9d4104dade35501b080226bf092bd222b0",
+      "specs/ndabi_mongodb_literal_single_batch_campaign_v5_5.md": "9c17f17b3b73108b5a208d7c0e7958a4dfc6184d70b8f81733cdc3659e13cb7f",
+      "specs/ndabi_mongodb_point_profile_campaign_v4_7.md": "1a6edb9f099ec242f14b229d79e8fae98d6ddf58a318161542cd8e3fe99d84e6",
+      "specs/ndabi_mongodb_single_batch_campaign_v5_4.md": "b0843696a14cb15284ddb8a23f46031395e9926dfeb09fc2d78b2e5a919dbeeb",
+      "specs/ndabi_performance_plan_v0_1.md": "4092691384ed20b9eb0204a3a007733fe122cd4166d97f3eed598a2f925de56d",
+      "specs/ndabi_plan_registry_candidate_v0_1.md": "c1186f01f1b57d82d8ec4ba6412b06ee62e7afad13cafc76c28050c3e6b59cfd",
+      "specs/ndabi_poc_docker_campaign_v1_3.md": "cd51c303f3c3c7cf75f15b0fdd7d0134b679e97580c158cc472e12260b29f0bb",
+      "specs/ndabi_poc_fixed_frame_campaign_v1_7.md": "4ad57a947f3ac99ffa0a1cf6d92e3d4a581879c63cf5ddffe2759ee0d4882774",
+      "specs/ndabi_poc_fused_view_campaign_v1_6.md": "992a1cb48f19e7e51cdd167227a3f281573699e7e24eb30be186fc500ae7f6f1",
+      "specs/ndabi_poc_literal_lossless_campaign_v1_9.md": "543df792618150d8e9621b54dc586474dd91c3d8bcab452c3dd38ffa0688e5da",
+      "specs/ndabi_poc_measurement_campaign_v1_1.md": "6e3a60fa783ac8a16401acf4525b6f2800378584692ddbab8632de9089237998",
+      "specs/ndabi_poc_measurement_campaign_v1_2.md": "8d85547d8e3bab802b45766dfea08f53aac2d66382856bb983eb0255ed59f258",
+      "specs/ndabi_poc_phase_profile_v1_5.md": "bda0239a93426393ce0a5ee193f75abe60087468663e94be5ce1f6ddff38ed68",
+      "specs/ndabi_poc_preregistration_v0_2.md": "83dc5c2db8b0dc92e4c50c52ea0eaf16db764391f38aad6b883401f579d610a5",
+      "specs/ndabi_poc_preregistration_v0_3.md": "3b9d933918463e5dd9e7d78a3086366bb3bfd83d9e05a8cc3af45b299ff7c2ef",
+      "specs/ndabi_poc_preregistration_v0_4.md": "df66bee48acbfe45a0ce3dac9e080820dd77ddf3f61590a80cef99f290f6321d",
+      "specs/ndabi_poc_preregistration_v0_5.md": "a6221c001e3b0f5b15d8e4848b83d882d8f007fbb98b6e9551a966ac8afeb74f",
+      "specs/ndabi_poc_preregistration_v0_6.md": "a6c38186d7086a7f3226e88ffdc86225f7ecc5f9d0dc9176fba851eaa9612f27",
+      "specs/ndabi_poc_preregistration_v0_7.md": "7022faeb8456e5540487feee8dab62beaa6b8fa4f920de85daf4b9c52921dd02",
+      "specs/ndabi_poc_preregistration_v0_8.md": "c480d406052a924280264de9c5c577a15b4f699a5370acf19c88b3e11a41cd14",
+      "specs/ndabi_poc_preregistration_v0_9.md": "6c6023bd318763e7878abdd3c19daa81eac01faf15c2283af3448c66b9aee5fe",
+      "specs/ndabi_poc_preregistration_v1_0.md": "b307f574658b810ce5cf7b5d0e609393e5202e2e916be37229301c3a6d46f66e",
+      "specs/ndabi_poc_protocol_stress_campaign_v2_1.md": "752a6fc3c8c94e5224ba3682860fd5cdeed6dfeff67443c29fea19955b5b8a68",
+      "specs/ndabi_poc_scale_campaign_v1_0.md": "5de2763c4fcb301170c5dc00f766e53ade3ebdfb286f2f5e49497bbadbe59450",
+      "specs/ndabi_poc_session_bound_campaign_v1_8.md": "6b0fec0c890b6d6ec3b2f1bc157d3f9212cd43d7b13d0f371a4a10f425ac670d",
+      "specs/ndabi_poc_stack_campaign_v1_4.md": "02043babf13c466dd49c9aa93f12a4b454fc359025442587068a59e27de23c50",
+      "specs/ndabi_poc_stress_campaign_v2_0.md": "98f346c3dd88e0758ef94aad47ddca1fbb027a0b88c571c1ae4a71e2d6c77790",
+      "specs/ndabi_postgresql_batch_campaign_v2_7.md": "3f17510f924da0f92e3a95c3fee76baae791cf0d587542f1399f39bb9c28971e",
+      "specs/ndabi_postgresql_borrowed_batch_campaign_v2_8.md": "11d84d8f161023073f41351cd0ade539e5408f4f56c5a64c2bc4cba88d6d8dce",
+      "specs/ndabi_postgresql_borrowed_process_campaign_v2_9.md": "2f7787a2bc35fe63237cb38cef9cab7dba1a429c978bd37370db0152031107a0",
+      "specs/ndabi_postgresql_column_batch_campaign_v3_2.md": "d65d07288f9ca03da642e68d9978a0f44a1d57bb26dc83c2e9592a09a4254c53",
+      "specs/ndabi_postgresql_dense_operation_campaign_v3_1.md": "bf3d1e78a37b63181c5b654115877cbdea1498df0064455c298e0535396bd635",
+      "specs/ndabi_postgresql_embedded_campaign_v4_1.md": "cd4510a31c9b6ea53358af7c7eaa42a727ab3b2b8ebd657143a4af6dbd512412",
+      "specs/ndabi_postgresql_gateway_campaign_v4_0.md": "14448d1518e9a1b8f5fc0c34441ed2a4c789b6182499f9a65372af43ce4a284c",
+      "specs/ndabi_postgresql_linux_container_campaign_v3_3.md": "51096e2d779274e08b2b22982885d18ad6a4bd7937cf986aa32a4420aaca4305",
+      "specs/ndabi_postgresql_paired_replay_campaign_v3_5.md": "3a3619490e4bd3795393d0968db1274455fa1d786ef3d075d5583aa8d614e740",
+      "specs/ndabi_postgresql_prepared_dataset_campaign_v3_0.md": "841246f20527c65232deb6d7a546340427b3ba4d04546327f1d6f5678dae5087",
+      "specs/ndabi_postgresql_process_campaign_v2_6.md": "9c2ace368021e6dc2dffc4c06f3d4906105c55589b4def3013c5bd904111e903",
+      "specs/ndabi_postgresql_real_engine_campaign_v2_5.md": "4f9af0d87aed74ecc60632e49d1d73cba7e09a87d31e59c27335258d1fdc9da9",
+      "specs/ndabi_postgresql_repaired_adapter_campaign_v4_3.md": "f699b1430264710296b81999d82b8e9a7c4d4e45ff9ab565d149dd4aca31ccb1",
+      "specs/ndabi_postgresql_replay_campaign_v3_4.md": "ac50a77276243063f4a0dfe9343ea9d01c6b3aca77c4a02a61e7871c7132ee22",
+      "specs/ndabi_postgresql_scale_shapes_campaign_v4_2.md": "4f17ae3f97b884d5f20b4d6aea60d37a43a9ec52089e7b726f94f962afdc12cd",
+      "specs/ndabi_postgresql_transport_performance_campaign_v6_5.md": "bd97dd8daee4a417c782788722120a994f4571e50c10deec995ce9fc0f427a1d",
+      "specs/ndabi_postgresql_write_admission_campaign_v5_1.md": "921fe9dc81f155333001d7e03c9d5194b620aec3c5b4080ad048e22c56848d2c",
+      "specs/ndabi_registered_graph_candidate_v0_1.md": "3b69e836d972e4caf3d3867843259b25a67a155d8250f60bd919fcd03ec48569",
+      "specs/ndabi_registered_mongodb_campaign_v0_1.md": "34ad1519094ad142f768f51c36508452a4b0187dbeb069abcd6dd95718ec2bcd",
+      "specs/ndabi_registered_postgres_supabase_campaign_v0_3.md": "9dcd9c015d184526cbf015762c0a75ea586e891f921172a7d9db97fd572aa767",
+      "specs/ndabi_registry_incremental_cost_campaign_v0_1.md": "0c84a2912f36a92d70a436c8f9c7372aae24cb24c1652cde6ad98aedbd13ebcc",
+      "specs/ndabi_registry_incremental_cost_campaign_v0_2.md": "41d8d8ad5292d152a18af3a05fe343dc193c3fb6bdbfb8af5308d9c792773c65",
+      "specs/ndabi_registry_incremental_cost_campaign_v0_3.md": "e1aec3633558c122f37e93fcc0ffca9aca67633ad4cbb1d492be08b2e47b8795",
+      "specs/ndabi_remote_model_campaign_v0_2.md": "e410e8c3cfb8aec776f05a3e50cf0a82c8839a9535913884f35107e5f18fae6a",
+      "specs/ndabi_remote_transport_campaign_v8_4.md": "ffaec1fc7f4d14c992c836d28be42edff63e8b4b4ac66d399f1fa18822451a6b",
+      "specs/ndabi_remote_transport_campaign_v8_6.md": "30a674142a9f0d12fce2a1f87b852f2d3b2f4bd48d07f6db502db5fbef227acf",
+      "specs/ndabi_replay_state_profile_v0_1.md": "d3a0388d2ca144f5f4e602698ce965bb8337beadd2dfa68852317c816c7028b7",
+      "specs/ndabi_rfc_candidate_v0_1.md": "699ec72c98329fd4324c824b8048c1ea09592d1bbffe95f36bec06012c0a9c4f",
+      "specs/ndabi_security_logic_audit_v0_1.md": "d4c4bc33faaa700d84799a8e70bf9f984aef6e30a5bae349473d31d607dcefba",
+      "specs/ndabi_semantic_batch_campaign_v0_2.md": "b6e1035d0aac12f496b9254a8bb255fdfecb5187ad6f3fce205b5e5fc21b829c",
+      "specs/ndabi_semantic_batch_diagnostic_v0_1.md": "8d4270370022e675e0a0b9a892df573834e96f654808a41810ec3013c717c89e",
+      "specs/ndabi_shared_session_white_tree_campaign_v4_4.md": "c70e7a16beb74953df14a8630fa92ae2192724dad1a3b85cffd447f38ba9654e",
+      "specs/ndabi_showdown_preregistration_v0_1.md": "050dcc92ac1e63c4acd268a0ff17bd5d1a3b3be87acbe1c462aef4e0ee6e8de9",
+      "specs/ndabi_stack_compression_research_v0_1.md": "b019bb8d90aa66e0d51397f7e448f949972162c701a4b2f891dc06a6a1f4fa01",
+      "specs/ndabi_supabase_batch_session_campaign_v7_0.md": "ecefdc4b79bda235e4402f5d8686befa2d0e83533581ffaa441480847166bdf2",
+      "specs/ndabi_supabase_binding_campaign_v5_0.md": "5e645e422022fef24d930b48da0991a756ccd833cc7f8bc9cec426c35421eebd",
+      "specs/ndabi_supabase_cpu_attribution_campaign_v8_2.md": "20f19a1f710db6505be713819a00e16c0fdc6cac342c48c8fa7c45bcd2523952",
+      "specs/ndabi_supabase_cumulative_cpu_campaign_v8_3.md": "96651b0ead6f94bee5d53134fad8b8226d5499dd528f0b5372bf6dc4db3ea02e",
+      "specs/ndabi_supabase_hot_path_campaign_v8_5.md": "e58bd91b2aaa8c5a2fa9562f6b5b9a2b7ca5a74a6a89684d52ed3f5c64d9b577",
+      "specs/ndabi_supabase_indexed_batch_campaign_v7_1.md": "3d976e5bc94553448a9af54dcd3a45b22222fee507f0b6b158db6b1477577a07",
+      "specs/ndabi_supabase_packed_session_campaign_v6_9.md": "22c0f4d692bfa0abe374e340c63c9248602ea033ae465afa0e812214e42db2cc",
+      "specs/ndabi_supabase_production_campaign_v8_0.md": "318d186624fd7ed867a54f2ba1b5115bb9f6d5c865d0ed29cf5a3b40349cbebc",
+      "specs/ndabi_supabase_production_campaign_v8_1.md": "9c6eca1608d9161016a80b4644c7495b8a2a6885407a96d3f5f789b8c4524cef",
+      "specs/ndabi_supabase_range_session_campaign_v6_8.md": "48a72a54ebb9a174506ec6c1a28b2b24053ba585c68d89347d5e96dc61e28c94",
+      "specs/ndabi_supabase_session_repair_campaign_v6_7.md": "521cdd30e685af7d20796e2688ed98d515c8f579a3aedeee57dd07a3d14a15e2",
+      "specs/ndabi_supabase_user_session_campaign_v6_6.md": "800284f83a450341d06ed7349b77868ad2eadd3a6d9b3554c7f378492edf796b",
+      "specs/ndabi_supavisor_concurrency_campaign_v7_3.md": "24fc5c2fabd6a2d4b303c8b16b9384b8a14e73e379921b016d8bf9b97cf5dafa",
+      "specs/ndabi_supavisor_concurrency_campaign_v7_4.md": "9e228d605663401de478b0d1b8524051885e74261499eb891a08185a1f4b3f29",
+      "specs/ndabi_supavisor_concurrency_campaign_v7_5.md": "9b10eb75e9ec5c07459241cd14d2fafea05fc316e83090a8239ef234a25977f8",
+      "specs/ndabi_supavisor_concurrency_campaign_v7_6.md": "7521621eb89ccf03c7d071a08deba13a0ee5914fd723526f006aa7bcdcddb66b",
+      "specs/ndabi_supavisor_session_campaign_v7_2.md": "17c05414545f45a8ad16eddf4874835b02a215cfa11ac2ce005579a7c390b7cd",
+      "specs/ndabi_tls_controlled_delay_campaign_v4_6.md": "8806cb1d28c1cf135ee418698666d2460ece5d8f8ebddc5a744fa634d405faa3",
+      "specs/ndabi_transport_candidate_v0_2.md": "16b3e0089e4f90fe52e1f3cb8a55f83f7b1e8dcb35599ccf82ac5ebe5bd0aa03",
+      "specs/ndabi_transport_supabase_campaign_v6_4.md": "fac294ac41462c976e88c14077d38ec8383d57d4381d9d7105df58053fab0437",
+      "specs/ndabi_white_tree_process_campaign_v2_4.md": "9b8be08654914a0abac98a1995a5cee3bbd96cc4dc00a71df234935c7b10e0f1",
+      "specs/ndabi_white_tree_real_engine_campaign_v2_2.md": "2f4289b42c0fa2df68248483146d55f90295ff78f3770e9e1fbf649e7a1f3bb4",
+      "specs/ndabi_white_tree_repeatability_campaign_v2_3.md": "9109fc3ed5a8944d42ccc49e06517b246f76f00f148abdb807bf2ace04142db8",
+      "tools/registry-proof/Cargo.toml": "fd35e039d809cc96a8bb78545735e173866ba5815098c0aadfce2955e4ff6a64",
+      "tools/registry-proof/src/alloc.rs": "9d22e8c4e39c9dc66b09a8fe3fb4c7912c6b60d1cb64b27f8b4114052eeef453",
+      "tools/registry-proof/src/bin/ndabi_registry_mongodb_v01.rs": "58cef32d451ab2024d9a2c60da9d5dd79308a50c1a52e36e58e9105b5161b3c4",
+      "tools/registry-proof/src/bin/ndabi_registry_postgres_v01.rs": "ac721989a14d1ef01260d20e268abbb56f419a2afbcd318abaef2347f85644f6",
+      "tools/registry-proof/src/bin/ndabi_registry_v01.rs": "ea3af10b5f17b5582ab79ceba4c0ce96bc69c2622cd3ec9c19f5d58f461a3a50",
+      "tools/registry-proof/src/lib.rs": "6154d39680270c9c1a4238c75321e75beb1b4f4b261b5270011f7132882c7b9c"
+    },
+    "sha256": "0dad1feb2ac27ca1b4de72a90560abf1db1f0a7c35521f9e9c3610b0df45fd41"
+  },
+  "status": "smoke"
+}

@@ -10,7 +10,9 @@ It does not define a public RFC or a production security protocol.
 NDABI carries complete typed execution units between an agent compiler and an engine adapter.
 The format removes readable query syntax, repeated schemas, and repeated policy envelopes from the hot path.
 
-The first implementation supports `EXECUTE_ONE`, `EXECUTE_BATCH`, and `EXECUTE_GRAPH`.
+The research parser validates `EXECUTE_ONE`, `EXECUTE_BATCH`, and `EXECUTE_GRAPH` frames.
+It selects graph execution only when an adapter declares native graph support.
+This slice does not contain an engine graph executor.
 It does not support streaming, cancellation, result encoding, or network negotiation.
 
 ## 2. Required behaviour

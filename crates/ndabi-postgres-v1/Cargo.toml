@@ -4,7 +4,11 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[features]
+allocation-counting = []
+
 [dependencies]
 blake3 = "1.8"
+libc = "0.2"
 ndabi-protocol = { path = "../ndabi-protocol" }
 postgres = "0.19"

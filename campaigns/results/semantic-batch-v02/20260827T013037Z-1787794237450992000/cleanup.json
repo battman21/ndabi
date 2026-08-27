@@ -1,0 +1,6 @@
+{
+  "containers_removed": true,
+  "network_removed": true,
+  "runner_pulled_proxy_image_removed": true,
+  "temporary_binaries_removed": true
+}
