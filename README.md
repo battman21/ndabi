@@ -9,6 +9,14 @@ Trusted adapters attach authority, policy, budgets, deadlines, and backend ident
 NDABI does not replace PostgreSQL, MongoDB, Supabase, White Tree, or their query planners.
 It removes repeated readable query construction from the admitted execution path.
 
+## Repository custody
+
+This repository is the canonical source for the NDABI protocol and its reusable implementations.
+Keep protocol specifications, profiles, conformance fixtures, campaign harnesses, and benchmark evidence here.
+PostgreSQL, MongoDB, Supabase, White Tree, and Onlife integrations must consume NDABI through documented boundaries.
+Keep consumer-specific integration code in its consumer repository.
+Do not mirror NDABI source or specifications into consumer repositories.
+
 ## Current state
 
 The repository contains an implemented research candidate, not a production standard.
