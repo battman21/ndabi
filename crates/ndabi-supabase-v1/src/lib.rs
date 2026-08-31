@@ -11,9 +11,11 @@ use serde::Deserialize;
 use serde_json::Value;
 use zeroize::Zeroizing;
 
+mod dynamic_isa;
 mod postgres_graph;
 mod postgres_rls;
 
+pub use dynamic_isa::UserDynamicPostgresBackend;
 pub use postgres_graph::{UserReviewBatchGraphBackend, UserReviewOperandBundleBackend};
 pub use postgres_rls::UserRangeBackend;
 

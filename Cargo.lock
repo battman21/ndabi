@@ -1391,6 +1391,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ndabi-isa"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+]
+
+[[package]]
 name = "ndabi-mongodb"
 version = "0.1.0"
 dependencies = [
@@ -1414,6 +1421,8 @@ dependencies = [
 name = "ndabi-postgres"
 version = "0.1.0"
 dependencies = [
+ "ndabi-isa",
+ "ndabi-protocol",
  "ndabi-session",
  "postgres",
  "serde",
@@ -1436,6 +1445,7 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "libc",
+ "ndabi-isa",
  "serde_json",
  "subtle",
  "tempfile",
@@ -1526,6 +1536,8 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "jsonwebtoken",
+ "ndabi-isa",
+ "ndabi-postgres",
  "ndabi-postgres-v1",
  "ndabi-protocol",
  "p256",

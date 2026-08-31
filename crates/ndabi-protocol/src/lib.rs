@@ -13,6 +13,8 @@ use zeroize::{Zeroize, Zeroizing};
 
 mod batch;
 mod connection;
+mod dynamic;
+mod dynamic_cache;
 mod graph;
 mod operand_bundle;
 mod registry;
@@ -36,6 +38,12 @@ pub use connection::{
     NegotiatedTransport, RegisteredBundleControl, RegisteredBundleControlKind, RegisteredRequest,
     TransportConfig, TransportConnection, TransportPhase, TransportRole, FEATURE_CANCELLATION,
     FEATURE_OPERAND_BUNDLES, FEATURE_STREAMING, KNOWN_TRANSPORT_FEATURES,
+};
+pub use dynamic::{dynamic_frame_bytes, DynamicBackend, DynamicExecution, MAX_DYNAMIC_FRAME_BYTES};
+pub use dynamic_cache::{
+    cached_dynamic_frame_bytes, dynamic_program_registration_bytes, CachedDynamicExecution,
+    DynamicProgramAccepted, DynamicProgramStore, VerifiedDynamicProgramHandle,
+    MAX_CACHED_DYNAMIC_FRAME_BYTES, MAX_DYNAMIC_PROGRAM_REGISTRATION_BYTES,
 };
 pub use graph::{
     graph_frame_bytes, BorrowedGraphExecution, GraphBackend, GraphExecution, GraphNode,
@@ -266,6 +274,10 @@ impl Authority {
 
     pub fn context_digest(&self) -> [u8; 32] {
         self.context_digest
+    }
+
+    pub fn context(&self) -> AuthorityContext {
+        self.context
     }
 
     fn replay_key(&self) -> ReplayKey {
@@ -1023,6 +1035,11 @@ pub enum ProtocolError {
     OperandValueInvalid,
     OutputShape,
     DuplicatePlan,
+    DynamicOperandsInvalid,
+    DynamicProgramLimitExceeded,
+    DynamicProgramInvalid,
+    DynamicProgramNotFound,
+    DynamicProgramScopeMismatch,
     ParameterLimitExceeded,
     PlanLimitExceeded,
     PlanNotRegistered,

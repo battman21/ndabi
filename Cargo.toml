@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/ndabi-isa",
     "crates/ndabi-mongodb",
     "crates/ndabi-mongodb-v1",
     "crates/ndabi-postgres",

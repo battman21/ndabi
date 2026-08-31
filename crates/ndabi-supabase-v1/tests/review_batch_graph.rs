@@ -1,12 +1,25 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use ndabi_isa::{
+    capability_digest, verify_operands, verify_program, Field, OperandBuilder, ParameterDescriptor,
+    ParameterValue, ProgramBuilder, Relation, ScalarType, Schema, SortDirection, SortTerm,
+    VerifyLimits,
+};
+use ndabi_postgres::isa::{FieldBinding, PostgresCatalogue, RelationBinding};
 use ndabi_postgres_v1::{
     digest_label, memory_replay_store, OperationBinding, ReviewBatchGraphProfile, ReviewBatchItem,
     ReviewOperandBundleProfile, ServerSession, WireClientSession,
 };
-use ndabi_protocol::{Authority, AuthorityContext, Clock, OperandBundleStore, ProtocolError};
-use ndabi_supabase_v1::{JwtVerifier, UserReviewBatchGraphBackend, UserReviewOperandBundleBackend};
+use ndabi_protocol::{
+    Authority, AuthorityContext, BackendIdentity, ClientSession as DynamicClientSession, Clock,
+    DynamicProgramStore, MemoryReplayStore, OperandBundleStore, ProtocolError,
+    ServerSession as DynamicServerSession,
+};
+use ndabi_supabase_v1::{
+    JwtVerifier, UserDynamicPostgresBackend, UserReviewBatchGraphBackend,
+    UserReviewOperandBundleBackend,
+};
 use p256::pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
 use p256::SecretKey;
 use postgres::{Client, NoTls};
@@ -269,6 +282,135 @@ fn one_registered_graph_preserves_supabase_rls_and_exact_receipts() {
     assert_eq!(bundle_backend.bundle_decodes(), 1);
 }
 
+#[test]
+#[ignore = "requires NDABI_SUPABASE_GRAPH_TEST_URL"]
+fn one_dynamic_program_preserves_supabase_rls_and_exact_receipts() {
+    const READ: u64 = 1;
+
+    let database_url = std::env::var("NDABI_SUPABASE_GRAPH_TEST_URL").expect("Supabase test URL");
+    prepare_fixture(&database_url);
+    let (verifier, token) = test_identity();
+    let user = verifier.admit(&token).expect("admitted user");
+    let schema = Schema::new(vec![Relation::new(
+        11,
+        READ,
+        vec![
+            Field::new(101, ScalarType::I64, false, READ).expect("id field"),
+            Field::new(102, ScalarType::I64, false, READ).expect("score field"),
+            Field::new(103, ScalarType::Utf8, false, READ).expect("owner field"),
+        ],
+    )
+    .expect("relation")])
+    .expect("schema");
+    let catalogue = PostgresCatalogue::new(
+        &schema,
+        vec![RelationBinding::new(
+            11,
+            "public",
+            "supabase_items",
+            vec![
+                FieldBinding::new(101, "id").expect("id binding"),
+                FieldBinding::new(102, "score").expect("score binding"),
+                FieldBinding::new(103, "owner_sub").expect("owner binding"),
+            ],
+        )
+        .expect("relation binding")],
+    )
+    .expect("catalogue");
+    let mut builder = ProgramBuilder::new(schema.digest(), 16).expect("builder");
+    let limit = builder
+        .parameter(ParameterDescriptor::new(ScalarType::U64, 8).expect("limit type"))
+        .expect("limit parameter");
+    let scan = builder.scan(11).expect("scan");
+    let projected = builder.project(scan, &[101, 103]).expect("project");
+    let sorted = builder
+        .sort(
+            projected,
+            &[SortTerm {
+                field: 101,
+                direction: SortDirection::Ascending,
+            }],
+        )
+        .expect("sort");
+    let limited = builder.limit(sorted, limit).expect("limit");
+    builder.return_result(limited).expect("return");
+    let program_bytes = builder.finish().expect("program");
+    let verified = verify_program(&program_bytes, &schema, READ, VerifyLimits::default())
+        .expect("verified program");
+    let mut operand_builder = OperandBuilder::new(&verified);
+    operand_builder
+        .push(ParameterValue::U64(4))
+        .expect("limit operand");
+    let operand_bytes = operand_builder.finish().expect("operands");
+    let operands = verify_operands(&operand_bytes, &verified).expect("verified operands");
+    let identity = BackendIdentity::new(
+        41,
+        43,
+        schema.digest(),
+        digest_label(
+            b"policy",
+            b"forced-rls:owner_sub=request.jwt.claims.sub;authenticated;read-only",
+        ),
+        digest_label(b"profile", b"dynamic-supabase-v1"),
+    )
+    .expect("identity");
+    let context = AuthorityContext::new(
+        user.tenant_id(),
+        user.principal_id(),
+        47,
+        capability_digest(READ),
+        identity,
+    )
+    .expect("context");
+    let deadline = user.session_expires_unix_us();
+    let authority = Authority::new_read([53; 32], 59, 61, deadline, context).expect("authority");
+    let postgres = Client::connect(&database_url, NoTls).expect("dynamic connection");
+    let mut backend =
+        UserDynamicPostgresBackend::new(postgres, identity, schema, catalogue, READ, &user)
+            .expect("dynamic backend");
+    let server = DynamicServerSession::new(authority.clone(), 4_096, 8).expect("server");
+    let mut client = DynamicClientSession::new(authority.clone());
+    let mut replay = MemoryReplayStore::default();
+    let mut store = DynamicProgramStore::new(16, 4_096, 65_536).expect("program store");
+    let registration = client
+        .encode_dynamic_program_registration(&verified, deadline)
+        .expect("registration");
+    let accepted = server
+        .register_dynamic_program(
+            &registration,
+            &mut store,
+            &backend,
+            &mut replay,
+            &FixedClock(unix_us()),
+        )
+        .expect("accepted program");
+    let handle = client
+        .verify_dynamic_program_accepted(&registration, &accepted)
+        .expect("verified handle");
+    let frame = client
+        .encode_cached_dynamic(handle, &operands, 4_096, 8, deadline)
+        .expect("cached frame");
+    let execution = server
+        .execute_cached_dynamic(
+            &frame,
+            &mut store,
+            &mut backend,
+            &mut replay,
+            &FixedClock(unix_us()),
+        )
+        .expect("dynamic execution");
+
+    assert_eq!(
+        decode_dynamic_users(&execution.bytes),
+        [(2, "user-a"), (4, "user-a"), (6, "user-a"), (8, "user-a")]
+    );
+    assert_eq!(execution.rows, 4);
+    assert_eq!(backend.prepared_programs(), 1);
+    client
+        .verify_execution_receipt(&frame, execution.rows, &execution.bytes, &execution.receipt)
+        .expect("execution receipt");
+}
+
 fn prepare_fixture(database_url: &str) {
     let mut admin = Client::connect(database_url, NoTls).expect("admin connection");
     admin
@@ -345,6 +487,31 @@ fn decode_result(bytes: &[u8]) -> Vec<(u32, u32, i64)> {
                 u32::from_le_bytes(item[4..8].try_into().expect("rows")),
                 i64::from_le_bytes(item[8..16].try_into().expect("sum")),
             )
+        })
+        .collect()
+}
+
+fn decode_dynamic_users(bytes: &[u8]) -> Vec<(i64, &str)> {
+    assert_eq!(&bytes[0..4], b"NDIR");
+    assert_eq!(
+        u16::from_le_bytes(bytes[16..18].try_into().expect("columns")),
+        2
+    );
+    let rows = u32::from_le_bytes(bytes[12..16].try_into().expect("rows")) as usize;
+    let mut offset = 64 + 16;
+    (0..rows)
+        .map(|_| {
+            assert_eq!(bytes[offset], 0b11);
+            offset += 1;
+            let id = i64::from_le_bytes(bytes[offset..offset + 8].try_into().expect("id"));
+            offset += 8;
+            let length =
+                u32::from_le_bytes(bytes[offset..offset + 4].try_into().expect("owner length"))
+                    as usize;
+            offset += 4;
+            let owner = std::str::from_utf8(&bytes[offset..offset + length]).expect("owner");
+            offset += length;
+            (id, owner)
         })
         .collect()
 }

@@ -2,9 +2,10 @@
 
 NDABI is the Neural Data Access Binary Interface.
 
-It provides a compact, authenticated interface for finite database operations.
-Agents select registered handles and supply typed operands.
-Trusted adapters attach authority, policy, budgets, deadlines, and backend identity.
+Its primary target is a compact data instruction set for agents.
+Agents compose bounded numeric programs without SQL, JSON keys, REST paths, or backend field names.
+Trusted adapters verify each program before they lower it into one native backend operation.
+Repeated programs can become compact registered handles with changing typed operands.
 
 NDABI does not replace PostgreSQL, MongoDB, Supabase, White Tree, or their query planners.
 It removes repeated readable query construction from the admitted execution path.
@@ -20,6 +21,16 @@ Do not mirror NDABI source or specifications into consumer repositories.
 ## Current state
 
 The repository contains an implemented research candidate, not a production standard.
+The dynamic ISA vertical slice implements numeric schemas, eight relational instructions, canonical binary programs, typed operand blocks, fail-closed verification, and scoped cache promotion.
+The protocol authenticates complete dynamic programs and operands before it verifies, admits, and dispatches them.
+The PostgreSQL executor resolves identifiers through a trusted numeric catalogue and returns canonical binary results with exact receipts.
+One focused Docker test proves an unregistered filter, projection, sort, and limit program against native PostgreSQL results.
+One focused Docker test proves compact dynamic execution through an admitted Supabase JWT session and forced row-level security.
+Repeated full programs reuse one bounded prepared-statement cache entry.
+An authenticated promotion receipt converts a verified program into an authority-scoped compact handle.
+Later requests send the handle and compact changing operands without resending the program or duplicated metadata.
+Each PostgreSQL request runs in one read-only transaction with a database-side deadline bound.
+The result encoder reuses one validity bitmap and borrows variable fields without per-row clones.
 The implemented v0.1 profile supports authenticated single reads and homogeneous read batches.
 The graph extension executes one registered read graph from one handle and typed parameter block.
 The operand-bundle core implements canonical layouts, session-bound frames, immutable storage, and operand-bound receipts.
@@ -48,14 +59,16 @@ The reusable workspace contains these main components:
 
 | Component | Purpose | State |
 |---|---|---|
-| `ndabi-protocol` | Frames, authority, replay, receipts, transport, and sealed registries | implemented candidate |
+| `ndabi-isa` | Dynamic numeric programs, schema binding, verification, and cache promotion | implemented vertical slice |
+| `ndabi-protocol` | Dynamic, cached, registered, replay-safe, and receipt-bound execution | implemented candidate |
 | `ndabi-transport-rustls` | TLS 1.3 mutual authentication and bounded stream framing | implemented candidate |
-| PostgreSQL adapters | Prepared range, batch, single-graph, and batch-graph operations | implemented research profiles |
-| Supabase adapters | PostgreSQL execution with verified JWT identity, row-level security, and registered batch graphs | implemented research profiles |
+| PostgreSQL adapters | Dynamic execution plus prepared range, batch, single-graph, and batch-graph operations | focused dynamic proof and research profiles implemented |
+| Supabase adapters | Dynamic and registered PostgreSQL execution with verified JWT identity and row-level security | focused dynamic proof and research profiles implemented |
 | MongoDB adapters | Finite identifier-window and batch operations | implemented research profiles |
 | registry proof tools | Local registry, PostgreSQL, Supabase, and MongoDB functional proofs | implemented |
 
 Refer to [`specs/ndabi_rfc_candidate_v0_1.md`](specs/ndabi_rfc_candidate_v0_1.md) for the candidate wire contract.
+Refer to [`specs/ndabi_dynamic_isa_candidate_v0_1.md`](specs/ndabi_dynamic_isa_candidate_v0_1.md) for the primary dynamic instruction-set contract.
 Refer to [`specs/ndabi_plan_registry_candidate_v0_1.md`](specs/ndabi_plan_registry_candidate_v0_1.md) for the registry contract.
 Refer to [`specs/ndabi_registered_graph_candidate_v0_1.md`](specs/ndabi_registered_graph_candidate_v0_1.md) for the graph extension.
 Refer to [`specs/ndabi_operand_bundle_candidate_v0_1.md`](specs/ndabi_operand_bundle_candidate_v0_1.md) for the designed operand-reuse extension.
@@ -65,6 +78,7 @@ Refer to [`specs/ndabi_semantic_batch_diagnostic_v0_1.md`](specs/ndabi_semantic_
 Refer to [`specs/ndabi_semantic_batch_campaign_v0_2.md`](specs/ndabi_semantic_batch_campaign_v0_2.md) for the frozen qualification gates.
 Refer to [`docs/BETA-OPERATIONS.md`](docs/BETA-OPERATIONS.md) for release, installation, upgrade, rollback, and removal procedures.
 Refer to [`docs/SECURITY-REVIEW.md`](docs/SECURITY-REVIEW.md) for the independent beta review scope and refusal rules.
+Refer to [`docs/WHY-NDABI.md`](docs/WHY-NDABI.md) for the developer value, use cases, evidence, and productisation target.
 
 Run the repository-contained campaign smoke with this command:
 
@@ -77,6 +91,15 @@ Run the operand-bundle campaign smoke with this command:
 ```sh
 python3 campaigns/operand_bundle_v02.py --smoke
 ```
+
+Run the dynamic ISA control-path diagnostic with this command:
+
+```sh
+cargo run --release -p ndabi-postgres --example dynamic_isa_smoke
+```
+
+This diagnostic measures verification, PostgreSQL lowering, and cached lookup separately.
+It does not measure database execution or complete workflow performance.
 
 The latest non-formal bundle smoke reduced 1,024-item requests by 74.23%.
 Bundle p95 was 0.47% slower than fused native and 1.39% faster than registered graph execution.
@@ -126,13 +149,15 @@ The White Tree campaign remains a consumer integration and requires the separate
 ## Security boundary
 
 Treat every model-authored operation as untrusted input.
-Use a trusted compiler to select an approved handle.
+Use a trusted numeric schema and verifier to admit each dynamic program.
+Use approved handles only after safe program promotion.
 Protect authority keys outside model context.
 Enforce database permissions and row policies independently.
+Apply every request deadline inside the backend transaction.
 Refuse unknown handles, stale registries, replay, excessive budgets, and changed result shapes before dispatch.
 
 Do not use the public test keys in production.
-Remote administration, public-key registry signing, production custody, writes, and arbitrary queries remain outside the implemented candidate.
+Remote administration, public-key registry signing, production custody, writes, and unbounded queries remain outside the implemented candidate.
 
 ## Licence
 

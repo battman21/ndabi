@@ -167,54 +167,71 @@ impl GraphSessionAdmission for UserGraphAdmission<'_> {
         client: &mut Client,
         maximum_statement_timeout_ms: u32,
     ) -> Result<(), ProtocolError> {
-        if self.user.role() != "authenticated" {
-            return Err(ProtocolError::BackendRefused);
-        }
-        client
-            .batch_execute(
-                "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY; SET ROLE authenticated",
-            )
-            .map_err(|_| ProtocolError::BackendRefused)?;
+        configure_user_session(client, self.user, Some(maximum_statement_timeout_ms))
+    }
+}
+
+pub(crate) fn configure_user_session(
+    client: &mut Client,
+    user: &AdmittedIdentity,
+    maximum_statement_timeout_ms: Option<u32>,
+) -> Result<(), ProtocolError> {
+    if user.role() != "authenticated" {
+        return Err(ProtocolError::BackendRefused);
+    }
+    client
+        .batch_execute(
+            "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY; SET ROLE authenticated",
+        )
+        .map_err(|_| ProtocolError::BackendRefused)?;
+    if let Some(maximum_statement_timeout_ms) = maximum_statement_timeout_ms {
         let timeout = format!("{maximum_statement_timeout_ms}ms");
         client
             .query_one(
                 "SELECT set_config('request.jwt.claims',$1,false),set_config('statement_timeout',$2,false)",
-                &[&self.user.canonical_claims(), &timeout],
+                &[&user.canonical_claims(), &timeout],
             )
             .map_err(|_| ProtocolError::BackendRefused)?;
-        let state = client
+    } else {
+        client
             .query_one(
-                "SELECT current_user,current_setting('transaction_read_only'),current_setting('request.jwt.claims'),current_setting('row_security'),roles.rolsuper,roles.rolbypassrls FROM pg_roles AS roles WHERE roles.rolname=current_user",
-                &[],
+                "SELECT set_config('request.jwt.claims',$1,false)",
+                &[&user.canonical_claims()],
             )
             .map_err(|_| ProtocolError::BackendRefused)?;
-        let current_user: String = state
-            .try_get(0)
-            .map_err(|_| ProtocolError::BackendRefused)?;
-        let read_only: String = state
-            .try_get(1)
-            .map_err(|_| ProtocolError::BackendRefused)?;
-        let claims: String = state
-            .try_get(2)
-            .map_err(|_| ProtocolError::BackendRefused)?;
-        let row_security: String = state
-            .try_get(3)
-            .map_err(|_| ProtocolError::BackendRefused)?;
-        let superuser: bool = state
-            .try_get(4)
-            .map_err(|_| ProtocolError::BackendRefused)?;
-        let bypass_rls: bool = state
-            .try_get(5)
-            .map_err(|_| ProtocolError::BackendRefused)?;
-        if current_user != "authenticated"
-            || read_only != "on"
-            || claims != self.user.canonical_claims()
-            || row_security != "on"
-            || superuser
-            || bypass_rls
-        {
-            return Err(ProtocolError::BackendRefused);
-        }
-        Ok(())
     }
+    let state = client
+        .query_one(
+            "SELECT current_user,current_setting('transaction_read_only'),current_setting('request.jwt.claims'),current_setting('row_security'),roles.rolsuper,roles.rolbypassrls FROM pg_roles AS roles WHERE roles.rolname=current_user",
+            &[],
+        )
+        .map_err(|_| ProtocolError::BackendRefused)?;
+    let current_user: String = state
+        .try_get(0)
+        .map_err(|_| ProtocolError::BackendRefused)?;
+    let read_only: String = state
+        .try_get(1)
+        .map_err(|_| ProtocolError::BackendRefused)?;
+    let claims: String = state
+        .try_get(2)
+        .map_err(|_| ProtocolError::BackendRefused)?;
+    let row_security: String = state
+        .try_get(3)
+        .map_err(|_| ProtocolError::BackendRefused)?;
+    let superuser: bool = state
+        .try_get(4)
+        .map_err(|_| ProtocolError::BackendRefused)?;
+    let bypass_rls: bool = state
+        .try_get(5)
+        .map_err(|_| ProtocolError::BackendRefused)?;
+    if current_user != "authenticated"
+        || read_only != "on"
+        || claims != user.canonical_claims()
+        || row_security != "on"
+        || superuser
+        || bypass_rls
+    {
+        return Err(ProtocolError::BackendRefused);
+    }
+    Ok(())
 }

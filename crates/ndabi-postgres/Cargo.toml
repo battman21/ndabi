@@ -5,6 +5,8 @@ edition = "2021"
 publish = false
 
 [dependencies]
+ndabi-isa = { path = "../ndabi-isa" }
+ndabi-protocol = { path = "../ndabi-protocol" }
 ndabi-session = { path = "../ndabi-session" }
 postgres = "0.19"
 serde = { version = "1", features = ["derive"] }

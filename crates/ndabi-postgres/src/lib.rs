@@ -8,6 +8,8 @@ use ndabi_session::{Backend as SessionBackend, RawOperation};
 use postgres::{Client, Row, Statement};
 use serde::{Deserialize, Serialize};
 
+pub mod isa;
+
 pub use ndabi_session::{Authority, SessionError as AdapterError, FRAME_BYTES};
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

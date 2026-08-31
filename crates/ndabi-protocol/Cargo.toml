@@ -10,6 +10,7 @@ benchmark-governed-native = []
 [dependencies]
 blake3 = { version = "1.8", features = ["zeroize"] }
 libc = "0.2"
+ndabi-isa = { path = "../ndabi-isa" }
 subtle = "2.6"
 tempfile = "3"
 zeroize = "1.9"

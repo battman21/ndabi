@@ -7,6 +7,8 @@ publish = false
 [dependencies]
 blake3 = "1.8"
 jsonwebtoken = { version = "10.4", features = ["aws_lc_rs"] }
+ndabi-isa = { path = "../ndabi-isa" }
+ndabi-postgres = { path = "../ndabi-postgres" }
 ndabi-postgres-v1 = { path = "../ndabi-postgres-v1" }
 ndabi-protocol = { path = "../ndabi-protocol" }
 postgres = "0.19"
