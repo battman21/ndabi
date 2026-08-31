@@ -38,6 +38,7 @@ The server resolves authority before execution.
 | A changed result receipt could reach the caller | Recalculate the receipt before accepting the response | Receipt mutation test |
 | The transport accepted undefined numeric error codes | Limit errors to the ten registered refusal classes | Codec and conformance-vector tests |
 | A stream could finish without one result chunk | Require at least one byte before `STREAM_END` | Connection state test |
+| A bundle acknowledgement did not bind its required digest | Register and compare the expected bundle digest | Changed-digest acknowledgement test |
 
 ## 3. Verified state
 

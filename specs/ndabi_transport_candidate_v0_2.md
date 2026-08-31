@@ -201,6 +201,8 @@ The payload contains `LE32(bundle_handle)` followed by `LE32(graph_handle)`.
 Both handles MUST be non-zero.
 
 The receiver MUST match the acknowledgement to the authenticated control nonce, kind, graph, handle, expiry, and result shape.
+The registration caller MUST supply the expected digest from the authenticated control and reviewed operand layout.
+The receiver MUST match `BUNDLE_ACCEPTED` to that expected digest.
 An `ERROR` can terminate either control, except code 7.
 
 ## 11. State machine

@@ -103,6 +103,7 @@ pub struct RegisteredBundleControl {
     pub graph_handle: u32,
     pub result_shape: u32,
     pub bundle_handle: u32,
+    pub bundle_digest: Option<[u8; 32]>,
 }
 
 #[derive(Clone, Copy)]
@@ -128,6 +129,7 @@ struct BundleControlRecord {
     result_shape: u32,
     bundle_handle: u32,
     expiry_unix_us: Option<u64>,
+    bundle_digest: Option<[u8; 32]>,
 }
 
 enum RequestState {
@@ -204,6 +206,7 @@ impl TransportConnection {
     pub fn register_operand_bundle_control(
         &mut self,
         request_frame: &[u8],
+        expected_bundle_digest: Option<[u8; 32]>,
     ) -> Result<RegisteredBundleControl, ProtocolError> {
         self.require_feature(FEATURE_OPERAND_BUNDLES)?;
         let metadata = authenticate_bundle_control(&self.authority, request_frame)?;
@@ -217,6 +220,7 @@ impl TransportConnection {
             graph_handle: metadata.graph_handle,
             result_shape: metadata.result_shape,
             bundle_handle: metadata.bundle_handle,
+            bundle_digest: expected_bundle_digest,
         };
         if request_frame.is_empty()
             || registered.nonce == 0
@@ -224,6 +228,12 @@ impl TransportConnection {
             || registered.graph_handle == 0
             || registered.result_shape == 0
             || registered.bundle_handle == 0
+            || match registered.kind {
+                RegisteredBundleControlKind::Registration => registered
+                    .bundle_digest
+                    .is_none_or(|digest| digest == [0; 32]),
+                RegisteredBundleControlKind::Removal => registered.bundle_digest.is_some(),
+            }
         {
             return Err(ProtocolError::NonCanonicalFrame);
         }
@@ -240,6 +250,7 @@ impl TransportConnection {
                 result_shape: registered.result_shape,
                 bundle_handle: registered.bundle_handle,
                 expiry_unix_us: metadata.expiry_unix_us,
+                bundle_digest: registered.bundle_digest,
             },
         );
         self.last_registered_nonce = registered.nonce;
@@ -626,6 +637,7 @@ impl TransportConnection {
             || accepted.graph_handle != control.graph_handle
             || accepted.bundle_handle != control.bundle_handle
             || Some(accepted.expiry_unix_us) != control.expiry_unix_us
+            || Some(accepted.bundle_digest) != control.bundle_digest
         {
             return Err(ProtocolError::OutputShape);
         }
@@ -954,13 +966,13 @@ mod tests {
     ) {
         assert_eq!(
             client
-                .register_operand_bundle_control(frame)
+                .register_operand_bundle_control(frame, expected.bundle_digest)
                 .expect("client bundle control"),
             expected
         );
         assert_eq!(
             server
-                .register_operand_bundle_control(frame)
+                .register_operand_bundle_control(frame, expected.bundle_digest)
                 .expect("server bundle control"),
             expected
         );
@@ -1290,6 +1302,7 @@ mod tests {
                 graph_handle: 17,
                 result_shape: 13,
                 bundle_handle: 71,
+                bundle_digest: Some([9; 32]),
             },
         );
 
@@ -1310,6 +1323,24 @@ mod tests {
                 },
                 &encode_bundle_accepted_payload(BundleAccepted {
                     graph_handle: 19,
+                    ..accepted
+                }),
+                &mut refused,
+            ),
+            Err(ProtocolError::OutputShape)
+        );
+        assert!(refused.iter().all(|byte| *byte == 0));
+        refused.fill(0xa5);
+        assert_eq!(
+            server.encode(
+                TransportKind::BundleAccepted,
+                TransportFields {
+                    correlation_nonce: 1,
+                    result_shape: 13,
+                    ..TransportFields::empty()
+                },
+                &encode_bundle_accepted_payload(BundleAccepted {
+                    bundle_digest: [8; 32],
                     ..accepted
                 }),
                 &mut refused,
@@ -1362,6 +1393,7 @@ mod tests {
                 graph_handle: 17,
                 result_shape: 13,
                 bundle_handle: 71,
+                bundle_digest: None,
             },
         );
         transfer(
@@ -1420,7 +1452,7 @@ mod tests {
             .expect("registration");
         let (mut unsupported, _) = pair(0);
         assert_eq!(
-            unsupported.register_operand_bundle_control(&registration),
+            unsupported.register_operand_bundle_control(&registration, Some([9; 32])),
             Err(ProtocolError::FeatureNotNegotiated)
         );
 
@@ -1435,6 +1467,7 @@ mod tests {
                 graph_handle: 17,
                 result_shape: 13,
                 bundle_handle: 71,
+                bundle_digest: Some([9; 32]),
             },
         );
         let mut refused = [0xa5; 160];
@@ -1457,7 +1490,7 @@ mod tests {
             &mut client,
             TransportKind::Error,
             TransportFields {
-                error_code: 12,
+                error_code: 8,
                 correlation_nonce: 1,
                 ..TransportFields::empty()
             },
