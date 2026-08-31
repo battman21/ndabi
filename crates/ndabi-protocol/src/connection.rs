@@ -727,6 +727,9 @@ impl TransportConnection {
         let RequestState::Streaming(stream) = &request.state else {
             return Err(ProtocolError::ConnectionState);
         };
+        if stream.received_bytes == 0 {
+            return Err(ProtocolError::ConnectionState);
+        }
         if fields.sequence != stream.next_sequence {
             return Err(ProtocolError::SequenceMismatch);
         }
@@ -1053,6 +1056,47 @@ mod tests {
             &[],
         )
         .expect("stream start");
+
+        let empty_receipt = server.stream_receipt(1, 0).expect("empty receipt");
+        let mut inbound_empty_end = [0; TRANSPORT_MIN_FRAME_BYTES];
+        encode_transport(
+            &server.authority,
+            TransportDirection::ServerToClient,
+            TransportKind::StreamEnd,
+            TransportFields {
+                correlation_nonce: 1,
+                sequence: 1,
+                rows: 0,
+                result_shape: 3,
+                execution_receipt: empty_receipt,
+                ..TransportFields::empty()
+            },
+            &[],
+            &mut inbound_empty_end,
+        )
+        .expect("authenticated empty stream end");
+        assert_eq!(
+            client.decode(&inbound_empty_end, NOW),
+            Err(ProtocolError::ConnectionState)
+        );
+        let mut empty_end = [0xa5; TRANSPORT_MIN_FRAME_BYTES];
+        assert_eq!(
+            server.encode(
+                TransportKind::StreamEnd,
+                TransportFields {
+                    correlation_nonce: 1,
+                    sequence: 1,
+                    rows: 0,
+                    result_shape: 3,
+                    execution_receipt: empty_receipt,
+                    ..TransportFields::empty()
+                },
+                &[],
+                &mut empty_end,
+            ),
+            Err(ProtocolError::ConnectionState)
+        );
+        assert!(empty_end.iter().all(|byte| *byte == 0));
 
         let mut refused = vec![0xa5; transport_frame_bytes(3).expect("length")];
         assert_eq!(

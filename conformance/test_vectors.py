@@ -84,7 +84,7 @@ class ConformanceVectorTests(unittest.TestCase):
                 "bundle-removed",
             ],
         )
-        self.assertEqual(len(manifest["invalid"]), 6)
+        self.assertEqual(len(manifest["invalid"]), 7)
         self.assertEqual(manifest["invalid"][-1]["id"], "result-reflected-direction")
 
 

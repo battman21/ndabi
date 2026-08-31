@@ -1,10 +1,10 @@
 # NDABI security and logic audit v0.1
 
-**Status:** IMPLEMENTED RESEARCH HARDENING. **Date:** 2026-08-22.
+**Status:** IMPLEMENTED RESEARCH HARDENING. **Initial date:** 2026-08-22. **Transport addendum:** 2026-08-31.
 
 ## 1. Scope
 
-This audit covers the core frames, the column profile, the PostgreSQL adapter, and the evidence verifier.
+This audit covers the core frames, the column profile, the PostgreSQL adapter, the transport candidate, and the evidence verifier.
 It does not approve NDABI for production use.
 
 The threat model includes untrusted frames, replay, expired authority, budget escalation, malformed evidence, and accidental key disclosure.
@@ -36,6 +36,8 @@ The server resolves authority before execution.
 | Pending work checked handles but not the exact authentication key | Add a constant-time binding tag | Same-identity key-confusion test |
 | The gateway repeated session fields in every request | Bind them once and authenticate a 56-byte execute frame | Compact verifier tests |
 | A changed result receipt could reach the caller | Recalculate the receipt before accepting the response | Receipt mutation test |
+| The transport accepted undefined numeric error codes | Limit errors to the ten registered refusal classes | Codec and conformance-vector tests |
+| A stream could finish without one result chunk | Require at least one byte before `STREAM_END` | Connection state test |
 
 ## 3. Verified state
 

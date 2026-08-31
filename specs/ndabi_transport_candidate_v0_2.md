@@ -2,7 +2,7 @@
 
 **Status:** Implemented transport candidate. This document is not a public RFC or a production standard.
 
-**Scope:** Authenticated negotiation, results, errors, cancellation, and bounded streaming after authority provisioning.
+**Scope:** Authenticated negotiation, results, errors, cancellation, bounded streaming, and operand bundle acknowledgements after authority provisioning.
 
 ## 1. Purpose
 
@@ -79,6 +79,8 @@ The receiver MUST refuse expired authority before returning decoded work.
 | 6 | `STREAM_START` | server to client | start one ordered result stream |
 | 7 | `STREAM_CHUNK` | server to client | return one non-empty result fragment |
 | 8 | `STREAM_END` | server to client | finish one stream with rows and receipt |
+| 9 | `BUNDLE_ACCEPTED` | server to client | acknowledge one registered operand bundle |
+| 10 | `BUNDLE_REMOVED` | server to client | acknowledge one removed operand bundle |
 
 Unknown authenticated kinds MUST return `UnsupportedFrame`.
 
@@ -104,6 +106,7 @@ The selected chunk and frame limits MUST not exceed either peer limit.
 |---:|---|
 | `0x00000001` | ordered result streaming |
 | `0x00000002` | cancellation requests |
+| `0x00000004` | registered operand bundle controls |
 
 Negotiation occurs after authority provisioning and secure transport establishment.
 It does not negotiate cryptographic algorithms or weaken authority checks.
@@ -147,6 +150,9 @@ A non-zero correlation nonce identifies request failure.
 | 9 | output shape mismatch |
 | 10 | internal failure without sensitive detail |
 
+All other error codes are unregistered.
+The receiver MUST refuse an authenticated frame that contains an unregistered error code.
+
 Do not return human-readable diagnostics in the binary hot path.
 A diagnostic surface MAY map the numeric code to local text outside NDABI.
 
@@ -178,7 +184,26 @@ The receiver MUST refuse duplicate, missing, reordered, or cross-request chunks.
 The receiver MUST enforce cumulative row and byte budgets.
 The receiver MUST discard an incomplete stream after failure.
 
-## 10. State machine
+## 10. Operand bundle acknowledgements
+
+Use the `REGISTER_BUNDLE` and `REMOVE_BUNDLE` frames from the operand bundle candidate.
+The client and server MUST authenticate the corresponding control before acknowledgement.
+The connection MUST negotiate feature `0x00000004` before it registers a bundle control.
+
+`BUNDLE_ACCEPTED` uses the registration nonce and registered result shape.
+Its payload contains exactly 48 bytes.
+The payload contains `LE32(bundle_handle)`, `LE32(graph_handle)`, `LE64(expiry)`, then the 32-byte bundle digest.
+Every payload field MUST be non-zero.
+
+`BUNDLE_REMOVED` uses the removal nonce and registered result shape.
+Its payload contains exactly eight bytes.
+The payload contains `LE32(bundle_handle)` followed by `LE32(graph_handle)`.
+Both handles MUST be non-zero.
+
+The receiver MUST match the acknowledgement to the authenticated control nonce, kind, graph, handle, expiry, and result shape.
+An `ERROR` can terminate either control, except code 7.
+
+## 11. State machine
 
 The connection starts in `PROVISIONED` state.
 Only `HELLO` is valid before negotiation.
@@ -191,6 +216,8 @@ RESULT
 ERROR
 STREAM_START -> STREAM_CHUNK+ -> STREAM_END
 CANCEL -> ERROR(7) or an already committed terminal result
+REGISTER_BUNDLE -> BUNDLE_ACCEPTED or ERROR
+REMOVE_BUNDLE -> BUNDLE_REMOVED or ERROR
 ```
 
 The transport codec validates individual frames.
@@ -199,11 +226,11 @@ It bounds in-flight requests and requires increasing registered nonces.
 It derives nonce, result shape, and budgets from the authenticated v0.1 request.
 It removes terminal requests and refuses later frames for their correlations.
 
-## 11. Conformance
+## 12. Conformance
 
 A conforming codec MUST pass `ndabi-transport-conformance-v0.2`.
-It MUST reproduce all eight valid message kinds exactly.
-It MUST reproduce all six invalid direction, authentication, authority, and canonicality cases.
+It MUST reproduce all ten valid message kinds exactly.
+It MUST reproduce all seven invalid direction, authentication, authority, and canonicality cases.
 It MUST return each registered invalid class exactly.
 It MUST reject every single-bit mutation of every valid frame.
 It MUST enforce maximum payload and authority expiry before returning decoded data.
@@ -215,9 +242,9 @@ The v8.4 candidate connected separate client and server processes through TLS 1.
 Its exact results, receipts, trust refusals, and same-CA certificate rotation passed in one diagnostic run.
 The host-qualified performance result failed and retained no source or binary digest.
 Treat every v8.4 transport measurement as unattributed diagnostics.
-Independent v0.2 decoders remain the next implementation gate.
+Independent v0.2 transport decoders remain the next implementation gate.
 
-## 12. Security boundaries
+## 13. Security boundaries
 
 Use TLS or an equivalent protected transport for remote connections.
 NDABI tags authenticate frames but do not hide their contents.

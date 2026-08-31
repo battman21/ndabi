@@ -17,6 +17,7 @@ const MAGIC: [u8; 4] = *b"NDBT";
 const VERSION_MAJOR: u8 = 2;
 const VERSION_MINOR: u8 = 0;
 const TRANSPORT_FRAME_DOMAIN: &[u8] = b"ndabi/wire/v2/transport-frame";
+const MAXIMUM_ERROR_CODE: u16 = 10;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
@@ -326,7 +327,7 @@ fn validate_semantics(
             }
         }
         TransportKind::Error => {
-            if fields.error_code == 0
+            if !(1..=MAXIMUM_ERROR_CODE).contains(&fields.error_code)
                 || fields.sequence != 0
                 || fields.rows != 0
                 || fields.result_shape != 0
@@ -692,6 +693,23 @@ mod tests {
                 NOW,
             ),
             Err(ProtocolError::AuthenticationFailed)
+        );
+
+        let undefined_error = TransportFields {
+            error_code: MAXIMUM_ERROR_CODE + 1,
+            correlation_nonce: 1,
+            ..TransportFields::empty()
+        };
+        assert_eq!(
+            encode_transport(
+                &authority,
+                TransportDirection::ServerToClient,
+                TransportKind::Error,
+                undefined_error,
+                &[],
+                &mut [0; TRANSPORT_MIN_FRAME_BYTES],
+            ),
+            Err(ProtocolError::NonCanonicalFrame)
         );
     }
 }

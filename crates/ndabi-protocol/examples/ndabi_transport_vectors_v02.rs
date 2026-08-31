@@ -208,6 +208,13 @@ fn run() -> Result<(), String> {
         &context_digest,
         TransportDirection::ServerToClient,
     )?;
+    let mut unregistered_error = frames[3].clone();
+    unregistered_error[8..10].copy_from_slice(&11_u16.to_le_bytes());
+    retag(
+        &mut unregistered_error,
+        &context_digest,
+        TransportDirection::ServerToClient,
+    )?;
     let mut wrong_context = frames[2].clone();
     wrong_context[64] ^= 1;
     retag(
@@ -239,6 +246,12 @@ fn run() -> Result<(), String> {
             TransportDirection::ServerToClient,
             unknown_kind,
             ProtocolError::UnsupportedFrame,
+        ),
+        (
+            "unregistered-error-code",
+            TransportDirection::ServerToClient,
+            unregistered_error,
+            ProtocolError::NonCanonicalFrame,
         ),
         (
             "transport-context-mismatch",
