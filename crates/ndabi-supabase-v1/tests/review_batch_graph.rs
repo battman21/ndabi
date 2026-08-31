@@ -407,7 +407,7 @@ fn one_dynamic_program_preserves_supabase_rls_and_exact_receipts() {
     assert_eq!(execution.rows, 4);
     assert_eq!(backend.prepared_programs(), 1);
     client
-        .verify_cached_dynamic_receipt(&frame, execution.rows, &execution.bytes, &execution.receipt)
+        .verify_execution_receipt(&frame, execution.rows, &execution.bytes, &execution.receipt)
         .expect("execution receipt");
 }
 

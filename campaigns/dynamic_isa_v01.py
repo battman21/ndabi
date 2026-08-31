@@ -13,6 +13,7 @@ import shutil
 import statistics
 import subprocess
 import sys
+import tempfile
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -113,9 +114,13 @@ def run_worker(
     result_rows: int,
     iterations: int,
     warmup: int,
+    barrier: Path,
+    worker: int,
 ) -> dict[str, Any]:
     environment = os.environ.copy()
     environment["NDABI_TEST_READER_CONNECTION"] = connection
+    environment["NDABI_CAMPAIGN_BARRIER"] = str(barrier)
+    environment["NDABI_CAMPAIGN_WORKER"] = str(worker)
     completed = subprocess.run(
         [
             str(binary),
@@ -140,6 +145,7 @@ def run_worker(
     require(report["exact_results"], "the worker did not prove exact results")
     require(report["receipt_verified"], "the worker did not verify receipts")
     require(report["allocation"] is not None, "the worker did not measure allocations")
+    require(report["barrier_synchronised"], "the worker bypassed the campaign barrier")
     return report
 
 
@@ -153,20 +159,53 @@ def run_arm(
     warmup: int,
 ) -> list[dict[str, Any]]:
     iterations = max(100, math.ceil(total_operations / concurrency))
-    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
-        futures = [
-            executor.submit(
-                run_worker,
-                binary,
-                connection,
-                arm,
-                result_rows,
-                iterations,
-                warmup,
-            )
-            for _ in range(concurrency)
-        ]
-        return [future.result() for future in futures]
+    barrier_root = ROOT / "target" / "campaign-barriers"
+    barrier_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=f"{arm}-", dir=barrier_root) as temporary:
+        barrier = Path(temporary)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = [
+                executor.submit(
+                    run_worker,
+                    binary,
+                    connection,
+                    arm,
+                    result_rows,
+                    iterations,
+                    warmup,
+                    barrier,
+                    worker,
+                )
+                for worker in range(concurrency)
+            ]
+            release_barrier_phase(barrier, futures, concurrency, "latency")
+            release_barrier_phase(barrier, futures, concurrency, "throughput")
+            return [future.result() for future in futures]
+
+
+def release_barrier_phase(
+    barrier: Path,
+    futures: list[concurrent.futures.Future[dict[str, Any]]],
+    concurrency: int,
+    phase: str,
+) -> None:
+    deadline = time.monotonic() + 120
+    release = barrier / f"release-{phase}"
+    while len(list(barrier.glob(f"ready-{phase}-*"))) != concurrency:
+        failed = next((future for future in futures if future.done()), None)
+        if failed is not None:
+            release_all_barrier_phases(barrier, "release after failure\n")
+            failed.result()
+        if time.monotonic() >= deadline:
+            release_all_barrier_phases(barrier, "release after timeout\n")
+            raise CampaignError(f"the workers did not reach the {phase} barrier")
+        time.sleep(0.001)
+    release.write_text("release\n")
+
+
+def release_all_barrier_phases(barrier: Path, reason: str) -> None:
+    for phase in ("latency", "throughput"):
+        (barrier / f"release-{phase}").write_text(reason)
 
 
 def aggregate_arm(reports: list[dict[str, Any]]) -> dict[str, Any]:
@@ -179,6 +218,17 @@ def aggregate_arm(reports: list[dict[str, Any]]) -> dict[str, Any]:
     require(len(full_sizes) == 1, "the full request sizes differ")
     require(len(cached_sizes) == 1, "the cached request sizes differ")
     require(len(reductions) == 1, "the request reductions differ")
+    require(
+        all(report["barrier_synchronised"] for report in reports),
+        "the arm contains an unsynchronised worker",
+    )
+    total_operations = sum(report["iterations"] for report in reports)
+    started_ns = min(
+        report["measurement_started_monotonic_ns"] for report in reports
+    )
+    ended_ns = max(report["measurement_ended_monotonic_ns"] for report in reports)
+    elapsed_ns = ended_ns - started_ns
+    require(elapsed_ns > 0, "the concurrent measurement interval is not positive")
     return {
         "workers": len(reports),
         "wall_mean_ns": statistics.median(report["wall"]["mean_ns"] for report in reports),
@@ -193,7 +243,11 @@ def aggregate_arm(reports: list[dict[str, Any]]) -> dict[str, Any]:
         "allocated_bytes": statistics.median(
             report["allocation"]["allocated_bytes"] for report in reports
         ),
-        "throughput_ops_s": sum(report["throughput_ops_s"] for report in reports),
+        "throughput_ops_s": total_operations * 1_000_000_000.0 / elapsed_ns,
+        "measurement_elapsed_ns": elapsed_ns,
+        "measurement_started_monotonic_ns": started_ns,
+        "measurement_ended_monotonic_ns": ended_ns,
+        "barrier_synchronised": True,
         "full_request_bytes": next(iter(full_sizes)),
         "cached_request_bytes": next(iter(cached_sizes)),
         "request_reduction_percent": next(iter(reductions)),

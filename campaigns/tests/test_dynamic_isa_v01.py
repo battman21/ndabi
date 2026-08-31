@@ -95,6 +95,37 @@ class DynamicIsaCampaignTests(unittest.TestCase):
         reports.pop()
         self.assertFalse(campaign.evaluate_repeatability(reports)["accepted"])
 
+    def test_concurrent_throughput_uses_the_complete_synchronised_interval(self) -> None:
+        reports = []
+        for started_ns, ended_ns in (
+            (1_000_000_000, 2_000_000_000),
+            (1_500_000_000, 3_000_000_000),
+        ):
+            reports.append(
+                {
+                    "result_fingerprint": "same",
+                    "full_request_bytes": 436,
+                    "cached_request_bytes": 120,
+                    "request_reduction_percent": 72.477064,
+                    "wall": {"mean_ns": 10, "p95_ns": 12, "p99_ns": 14},
+                    "client_thread_cpu": {"mean_ns": 5},
+                    "allocation": {"allocations": 2, "allocated_bytes": 64},
+                    "throughput_ops_s": 999_999.0,
+                    "iterations": 100,
+                    "measurement_elapsed_ns": ended_ns - started_ns,
+                    "measurement_started_monotonic_ns": started_ns,
+                    "measurement_ended_monotonic_ns": ended_ns,
+                    "barrier_synchronised": True,
+                }
+            )
+        aggregate = campaign.aggregate_arm(reports)
+        self.assertEqual(aggregate["throughput_ops_s"], 100.0)
+        self.assertEqual(aggregate["measurement_elapsed_ns"], 2_000_000_000)
+        self.assertEqual(
+            aggregate["measurement_started_monotonic_ns"], 1_000_000_000
+        )
+        self.assertEqual(aggregate["measurement_ended_monotonic_ns"], 3_000_000_000)
+
 
 if __name__ == "__main__":
     unittest.main()

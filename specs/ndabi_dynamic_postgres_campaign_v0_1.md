@@ -48,6 +48,9 @@ Prepare authenticated frames before the measured interval.
 Include server admission, replay control, database execution, canonical result encoding, and receipt verification.
 Measure wall latency, client-thread CPU, allocations, request bytes, and per-worker throughput.
 Run one process and one retained PostgreSQL connection per worker.
+Synchronise all workers immediately before their measured operations.
+Calculate concurrent throughput from total operations and the complete synchronised worker interval.
+Use separate synchronised passes for latency sampling and uninstrumented throughput.
 
 ## Correctness gates
 
@@ -75,7 +78,7 @@ Apply all gates to each formal cell.
 
 The smoke run uses 100 operations, 10 warm-ups, 32 result rows, and concurrency one.
 The formal run uses five repetitions.
-Each formal arm executes 4,096 total measured operations per cell.
+Each formal arm executes 4,096 operations per measurement pass and cell.
 Divide these operations across workers at concurrency 8 and 32.
 Rotate the arm order for every cell and repetition.
 

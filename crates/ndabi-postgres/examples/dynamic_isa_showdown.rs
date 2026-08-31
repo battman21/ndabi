@@ -1,6 +1,8 @@
 use std::error::Error;
 use std::hint::black_box;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::path::PathBuf;
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(feature = "allocation-counting")]
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -148,6 +150,10 @@ struct Measurement {
     cpu: Summary,
     allocation: String,
     throughput_ops_s: f64,
+    measurement_elapsed_ns: u64,
+    measurement_started_monotonic_ns: u64,
+    measurement_ended_monotonic_ns: u64,
+    barrier_synchronised: bool,
 }
 
 fn main() {
@@ -247,6 +253,8 @@ fn run() -> Result<(), Box<dyn Error>> {
             "\"cached_request_bytes\":{},\"request_reduction_percent\":{:.6},",
             "\"result_fingerprint\":\"{:016x}\",\"wall\":{},",
             "\"client_thread_cpu\":{},\"allocation\":{},\"throughput_ops_s\":{:.6},",
+            "\"measurement_elapsed_ns\":{},\"measurement_started_monotonic_ns\":{},",
+            "\"measurement_ended_monotonic_ns\":{},\"barrier_synchronised\":{},",
             "\"exact_results\":true,\"receipt_verified\":true}}"
         ),
         arm.name(),
@@ -263,6 +271,10 @@ fn run() -> Result<(), Box<dyn Error>> {
         measurement.cpu.json(),
         measurement.allocation,
         measurement.throughput_ops_s,
+        measurement.measurement_elapsed_ns,
+        measurement.measurement_started_monotonic_ns,
+        measurement.measurement_ended_monotonic_ns,
+        measurement.barrier_synchronised,
     );
     Ok(())
 }
@@ -476,7 +488,7 @@ fn measure_governed(
     let server = ServerSession::new(authority.clone(), RESULT_BUDGET, ROW_BUDGET)?;
     let mut client = GovernedDynamicClientSession::new(authority);
     let mut replay = MemoryReplayStore::default();
-    let requests = (0..iterations + warmup + 1)
+    let requests = (0..prepared_operation_count(iterations, warmup)?)
         .map(|index| {
             client.prepare(
                 program,
@@ -529,7 +541,7 @@ fn measure_full(
         &mut client,
         program,
         operands,
-        iterations + warmup + 1,
+        prepared_operation_count(iterations, warmup)?,
         deadline,
     )?;
     let mut index = 0;
@@ -583,7 +595,7 @@ fn measure_cached(
         &mut client,
         handle,
         operands,
-        iterations + warmup + 1,
+        prepared_operation_count(iterations, warmup)?,
         deadline,
     )?;
     let mut index = 0;
@@ -597,7 +609,7 @@ fn measure_cached(
             &mut replay,
             &SystemClock,
         )?;
-        client.verify_cached_dynamic_receipt(
+        client.verify_execution_receipt(
             frame,
             execution.rows,
             &execution.bytes,
@@ -670,6 +682,7 @@ where
             &expected[warmup % VARIANT_COUNT],
         )
     })?;
+    let latency_synchronised = await_campaign_barrier("latency")?;
     let mut wall = Vec::with_capacity(iterations);
     let mut cpu = Vec::with_capacity(iterations);
     for index in 0..iterations {
@@ -684,18 +697,53 @@ where
                 .ok_or("the CPU clock moved backwards")?,
         );
     }
-    let wall_total = wall.iter().try_fold(0_u128, |total, sample| {
-        total
-            .checked_add(u128::from(*sample))
-            .ok_or("the wall sample sum overflowed")
-    })?;
-    let throughput_ops_s = iterations as f64 * 1_000_000_000.0 / wall_total as f64;
+    let throughput_synchronised = await_campaign_barrier("throughput")?;
+    let measurement_started_monotonic_ns = monotonic_ns()?;
+    for index in 0..iterations {
+        let variant = (warmup + 1 + iterations + index) % VARIANT_COUNT;
+        require_exact(operation(variant)?, &expected[variant])?;
+    }
+    let measurement_ended_monotonic_ns = monotonic_ns()?;
+    let measurement_elapsed_ns = measurement_ended_monotonic_ns
+        .checked_sub(measurement_started_monotonic_ns)
+        .ok_or("the monotonic clock moved backwards")?;
+    let throughput_ops_s = iterations as f64 * 1_000_000_000.0 / measurement_elapsed_ns as f64;
     Ok(Measurement {
         wall: Summary::new(&wall)?,
         cpu: Summary::new(&cpu)?,
         allocation,
         throughput_ops_s,
+        measurement_elapsed_ns,
+        measurement_started_monotonic_ns,
+        measurement_ended_monotonic_ns,
+        barrier_synchronised: latency_synchronised && throughput_synchronised,
     })
+}
+
+fn prepared_operation_count(iterations: usize, warmup: usize) -> Result<usize, Box<dyn Error>> {
+    iterations
+        .checked_mul(2)
+        .and_then(|count| count.checked_add(warmup))
+        .and_then(|count| count.checked_add(1))
+        .ok_or_else(|| "the prepared operation count overflowed".into())
+}
+
+fn await_campaign_barrier(phase: &str) -> Result<bool, Box<dyn Error>> {
+    let Some(root) = std::env::var_os("NDABI_CAMPAIGN_BARRIER") else {
+        return Ok(false);
+    };
+    let worker = std::env::var("NDABI_CAMPAIGN_WORKER")?;
+    let root = PathBuf::from(root);
+    std::fs::write(root.join(format!("ready-{phase}-{worker}")), b"ready\n")?;
+    let release = root.join(format!("release-{phase}"));
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while !release.is_file() {
+        if Instant::now() >= deadline {
+            return Err("the campaign barrier timed out".into());
+        }
+        thread::sleep(Duration::from_millis(1));
+    }
+    Ok(true)
 }
 
 fn require_exact(candidate: Vec<u8>, expected: &[u8]) -> Result<(), Box<dyn Error>> {
@@ -754,21 +802,29 @@ fn unix_us() -> Result<u64, Box<dyn Error>> {
 }
 
 fn thread_cpu_ns() -> Result<u64, Box<dyn Error>> {
+    clock_ns(libc::CLOCK_THREAD_CPUTIME_ID, "the thread CPU clock failed")
+}
+
+fn monotonic_ns() -> Result<u64, Box<dyn Error>> {
+    clock_ns(libc::CLOCK_MONOTONIC, "the monotonic clock failed")
+}
+
+fn clock_ns(clock: libc::clockid_t, failure: &'static str) -> Result<u64, Box<dyn Error>> {
     let mut value = libc::timespec {
         tv_sec: 0,
         tv_nsec: 0,
     };
     // SAFETY: The pointer is valid for one writable timespec.
-    if unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut value) } != 0
+    if unsafe { libc::clock_gettime(clock, &mut value) } != 0
         || value.tv_sec < 0
         || value.tv_nsec < 0
     {
-        return Err("the thread CPU clock failed".into());
+        return Err(failure.into());
     }
     let seconds = u64::try_from(value.tv_sec)?;
     let nanoseconds = u64::try_from(value.tv_nsec)?;
     seconds
         .checked_mul(1_000_000_000)
         .and_then(|total| total.checked_add(nanoseconds))
-        .ok_or_else(|| "the thread CPU clock overflowed".into())
+        .ok_or_else(|| "the selected clock overflowed".into())
 }

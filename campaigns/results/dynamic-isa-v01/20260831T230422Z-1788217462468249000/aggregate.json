@@ -1,0 +1,256 @@
+{
+  "accepted": false,
+  "build": {
+    "path": "/Users/obatt/Dev/vs/ndabi/target/campaign-binaries/20260831T230422Z-1788217462468249000/dynamic_isa_showdown",
+    "sha256": "d3ce76002213856114131f3d60ded692fa613365bda587b5e859ad182a275de1"
+  },
+  "campaign_id": "20260831T230422Z-1788217462468249000",
+  "images": {
+    "ids": {
+      "postgres": "sha256:eb9fe6b5815523ffa3e3d8aee9db3532bd564b857634fcfa36979d76bed6ae10",
+      "toxiproxy": "sha256:b0e75e62fcf0abd5c8aea482fd4aa00ff5052fd24d8d0b4103c94668a95b8c99"
+    },
+    "references": {
+      "postgres": "postgres@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20",
+      "toxiproxy": "ghcr.io/shopify/toxiproxy:2.12.0@sha256:5ab4b4e8f476fd5452eb9584a608dd7cf8c11135878a8f7953722a9fcb9b3d87"
+    }
+  },
+  "mode": "smoke",
+  "post_host": {
+    "captured_unix_ns": 1788217495223886000,
+    "conflicts": [],
+    "idle_percent": 0.0,
+    "load_average": [
+      130.03662109375,
+      53.29296875,
+      27.6611328125
+    ],
+    "machine": "arm64",
+    "platform": "macOS-15.7.8-arm64-arm-64bit-Mach-O",
+    "process_count": 1108,
+    "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded\n"
+  },
+  "pre_host": {
+    "captured_unix_ns": 1788217475215215000,
+    "conflicts": [],
+    "idle_percent": 0.0,
+    "load_average": [
+      111.59423828125,
+      44.70458984375,
+      24.10009765625
+    ],
+    "machine": "arm64",
+    "platform": "macOS-15.7.8-arm64-arm-64bit-Mach-O",
+    "process_count": 1110,
+    "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded\n"
+  },
+  "qualification": {
+    "qualified": false,
+    "reason": "smoke mode"
+  },
+  "repeatability": null,
+  "reports": [
+    {
+      "accepted": false,
+      "arm_order": [
+        "governed_native",
+        "dynamic_full",
+        "dynamic_cached"
+      ],
+      "arms": {
+        "dynamic_cached": {
+          "allocated_bytes": 24393,
+          "allocations": 92,
+          "barrier_synchronised": true,
+          "cached_request_bytes": 120,
+          "cpu_mean_ns": 236133,
+          "full_request_bytes": 436,
+          "measurement_elapsed_ns": 610944125,
+          "request_reduction_percent": 72.477064,
+          "result_fingerprint": "447b530f39b87866",
+          "throughput_ops_s": 163.6810894940679,
+          "wall_mean_ns": 6105827,
+          "wall_p95_ns": 21414125,
+          "wall_p99_ns": 55403292,
+          "workers": 1
+        },
+        "dynamic_full": {
+          "allocated_bytes": 24677,
+          "allocations": 99,
+          "barrier_synchronised": true,
+          "cached_request_bytes": 120,
+          "cpu_mean_ns": 254998,
+          "full_request_bytes": 436,
+          "measurement_elapsed_ns": 755812708,
+          "request_reduction_percent": 72.477064,
+          "result_fingerprint": "447b530f39b87866",
+          "throughput_ops_s": 132.30791033484448,
+          "wall_mean_ns": 7557036,
+          "wall_p95_ns": 22345333,
+          "wall_p99_ns": 89237167,
+          "workers": 1
+        },
+        "governed_native": {
+          "allocated_bytes": 24393,
+          "allocations": 92,
+          "barrier_synchronised": true,
+          "cached_request_bytes": 120,
+          "cpu_mean_ns": 255478,
+          "full_request_bytes": 436,
+          "measurement_elapsed_ns": 653661625,
+          "request_reduction_percent": 72.477064,
+          "result_fingerprint": "447b530f39b87866",
+          "throughput_ops_s": 152.98435180434527,
+          "wall_mean_ns": 6535467,
+          "wall_p95_ns": 17975333,
+          "wall_p99_ns": 62789166,
+          "workers": 1
+        }
+      },
+      "concurrency": 1,
+      "gates": {
+        "allocation_non_regression": true,
+        "client_cpu_floor": true,
+        "exact_cross_arm_results": true,
+        "mean_floor": true,
+        "p95_floor": false,
+        "request_reduction": true,
+        "throughput_floor": true
+      },
+      "repetition": 1,
+      "result_rows": 32,
+      "worker_reports": {
+        "dynamic_cached": [
+          {
+            "allocation": {
+              "allocated_bytes": 24393,
+              "allocations": 92
+            },
+            "arm": "dynamic_cached",
+            "barrier_synchronised": true,
+            "cached_request_bytes": 120,
+            "client_thread_cpu": {
+              "mean_ns": 236133,
+              "p50_ns": 224916,
+              "p95_ns": 349292,
+              "p99_ns": 435875
+            },
+            "exact_results": true,
+            "full_request_bytes": 436,
+            "iterations": 100,
+            "measurement_elapsed_ns": 610944125,
+            "program_bytes": 188,
+            "receipt_verified": true,
+            "request_reduction_percent": 72.477064,
+            "result_fingerprint": "447b530f39b87866",
+            "result_rows": 32,
+            "schema": "ndabi-dynamic-isa-showdown-v0.1",
+            "throughput_ops_s": 163.681089,
+            "variant_count": 16,
+            "wall": {
+              "mean_ns": 6105827,
+              "p50_ns": 3340625,
+              "p95_ns": 21414125,
+              "p99_ns": 55403292
+            },
+            "warmup": 10
+          }
+        ],
+        "dynamic_full": [
+          {
+            "allocation": {
+              "allocated_bytes": 24677,
+              "allocations": 99
+            },
+            "arm": "dynamic_full",
+            "barrier_synchronised": true,
+            "cached_request_bytes": 120,
+            "client_thread_cpu": {
+              "mean_ns": 254998,
+              "p50_ns": 253041,
+              "p95_ns": 334666,
+              "p99_ns": 471958
+            },
+            "exact_results": true,
+            "full_request_bytes": 436,
+            "iterations": 100,
+            "measurement_elapsed_ns": 755812708,
+            "program_bytes": 188,
+            "receipt_verified": true,
+            "request_reduction_percent": 72.477064,
+            "result_fingerprint": "447b530f39b87866",
+            "result_rows": 32,
+            "schema": "ndabi-dynamic-isa-showdown-v0.1",
+            "throughput_ops_s": 132.30791,
+            "variant_count": 16,
+            "wall": {
+              "mean_ns": 7557036,
+              "p50_ns": 4127834,
+              "p95_ns": 22345333,
+              "p99_ns": 89237167
+            },
+            "warmup": 10
+          }
+        ],
+        "governed_native": [
+          {
+            "allocation": {
+              "allocated_bytes": 24393,
+              "allocations": 92
+            },
+            "arm": "governed_native",
+            "barrier_synchronised": true,
+            "cached_request_bytes": 120,
+            "client_thread_cpu": {
+              "mean_ns": 255478,
+              "p50_ns": 250833,
+              "p95_ns": 352375,
+              "p99_ns": 465625
+            },
+            "exact_results": true,
+            "full_request_bytes": 436,
+            "iterations": 100,
+            "measurement_elapsed_ns": 653661625,
+            "program_bytes": 188,
+            "receipt_verified": true,
+            "request_reduction_percent": 72.477064,
+            "result_fingerprint": "447b530f39b87866",
+            "result_rows": 32,
+            "schema": "ndabi-dynamic-isa-showdown-v0.1",
+            "throughput_ops_s": 152.984352,
+            "variant_count": 16,
+            "wall": {
+              "mean_ns": 6535467,
+              "p50_ns": 4027625,
+              "p95_ns": 17975333,
+              "p99_ns": 62789166
+            },
+            "warmup": 10
+          }
+        ]
+      }
+    }
+  ],
+  "schema": "ndabi-dynamic-isa-campaign-v0.1",
+  "source": {
+    "files": {
+      "Cargo.lock": "bfcdd4c83b010312ec3e5b4450a176c5541bf8865a87442a5d9c038fff8fe5bf",
+      "Cargo.toml": "b56b91a90e3013a91fe8ba69cc9586e4ba870f534fba61c09721140ff89db25f",
+      "campaigns/dynamic_isa_v01.py": "8c3e9a675a9b6777b294baf2dc60f30723e91bc80c2d250573bdc2bee264aec2",
+      "campaigns/semantic_batch_v02.py": "6624ea080087a363e28be9dccde0d4ba4827980d300b13448f5250f9df3b8ab9",
+      "crates/ndabi-isa/Cargo.toml": "463e37d01576ec6b475104ba7741dd0c5edc6864268e4864d3f238c73bbec8de",
+      "crates/ndabi-isa/src/lib.rs": "399ae790bb5e418446bffbf8f1b46a41e396ab65e2d2f4a476369ecbef69c1bb",
+      "crates/ndabi-postgres/Cargo.toml": "6b3e8399411cc5a8e6ebf2cd5467867bafca45314a619d7e4ec1bc226b2ba3c2",
+      "crates/ndabi-postgres/examples/dynamic_isa_showdown.rs": "f50ff7dccdd591ccbc51ebc6c4d2852e26519dd90364c6670df2f9256d08d08c",
+      "crates/ndabi-postgres/src/isa.rs": "9d2cb884e3a79a8cc17bf3841b62d9e53039331a90ff7de6976ff7a523f36acd",
+      "crates/ndabi-protocol/Cargo.toml": "dc1ac6111200d7a4a407b39abb960b2eb47a971197e0675357f13d94f6aa72fa",
+      "crates/ndabi-protocol/src/dynamic.rs": "ac6d4fcea5f6c7eb6c75a36b5ab2d3137ee89fff5fb4f76baa9bcd39460844b2",
+      "crates/ndabi-protocol/src/dynamic_cache.rs": "e4ec000375f0037c2be40fc9696c7a6208e48b78d9cb62987187b2765cf7952b",
+      "crates/ndabi-protocol/src/lib.rs": "0b726ae7f25e1388c5c89777f0d53f29ffda2ce6a09b359427198b02028a1629",
+      "rust-toolchain.toml": "1d76a06616a42a984bad672eeb24ca39a0496e95a8b624e21df0d420d1557734",
+      "specs/ndabi_dynamic_isa_candidate_v0_1.md": "823a0baeccbfe6d8022b70517d47671897ac73ae81fdc2aba661250786272a73",
+      "specs/ndabi_dynamic_postgres_campaign_v0_1.md": "38c5fc9c1d32041bbed8d896cb91ca247d07e7d43c0bbc4735b4331c020a4ba1"
+    },
+    "sha256": "24d83f6b6ab14d2da363e2770b98b79bac3acfeb8460005d89a1c8febbbf46de"
+  }
+}

@@ -177,7 +177,6 @@ Backend APIs must accept that capability instead of unverified bytes.
 ## 10. Backend lowering
 
 PostgreSQL lowers a verified program through a trusted numeric catalogue.
-Cached receipts bind the authenticated request tag without hashing the frame again.
 The catalogue maps numeric handles to validated SQL identifiers outside the wire program.
 The lowerer emits parameter placeholders and never copies an identifier from program bytes.
 The first PostgreSQL lowerer limits generated SQL to eight MiB.
