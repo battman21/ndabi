@@ -57,7 +57,8 @@ A committed nonce refuses the same request.
 
 ## 4. Unproved boundaries
 
-The implementation has no production key manager, TLS profile, capability resolver, or trusted rollback anchor.
+The implementation has no production key manager, capability resolver, certificate revocation delivery, or trusted rollback anchor.
+The reusable TLS profile enforces transport policy but does not provide certificate custody.
 The result receipt is a deterministic benchmark digest, not a signature.
 The code has no coverage-guided fuzzing, independent cryptographic review, or deployed side-channel test.
 

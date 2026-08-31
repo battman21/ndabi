@@ -30,6 +30,7 @@ The MongoDB bundle adapter passes a real Docker execution with one retained stat
 The White Tree bundle adapter remains a consumer integration.
 The v0.2 transport adds negotiation, results, errors, cancellation, and streaming controls.
 Independent Go and TypeScript decoders pass its shared message and mutation vectors.
+The reusable Rustls profile requires TLS 1.3, mutual certificates, NDABI ALPN, and no early data.
 The sealed registry binds handles to reviewed implementations, schemas, policies, capabilities, and budgets.
 The PostgreSQL adapter executes registered single and heterogeneous batch read graphs.
 The Supabase adapter executes the batch graph through one admitted forced-RLS user session.
@@ -43,6 +44,7 @@ The reusable workspace contains these main components:
 | Component | Purpose | State |
 |---|---|---|
 | `ndabi-protocol` | Frames, authority, replay, receipts, transport, and sealed registries | implemented candidate |
+| `ndabi-transport-rustls` | TLS 1.3 mutual authentication and bounded stream framing | implemented candidate |
 | PostgreSQL adapters | Prepared range, batch, single-graph, and batch-graph operations | implemented research profiles |
 | Supabase adapters | PostgreSQL execution with verified JWT identity, row-level security, and registered batch graphs | implemented research profiles |
 | MongoDB adapters | Finite identifier-window and batch operations | implemented research profiles |

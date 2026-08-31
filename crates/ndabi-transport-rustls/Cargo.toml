@@ -1,0 +1,12 @@
+[package]
+name = "ndabi-transport-rustls"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+ndabi-protocol = { path = "../ndabi-protocol" }
+rustls = "0.23"
+
+[dev-dependencies]
+rcgen = "0.14"

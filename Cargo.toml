@@ -12,6 +12,7 @@ members = [
     "crates/ndabi-supabase-range-session-v1",
     "crates/ndabi-supabase-session-v1",
     "crates/ndabi-supabase-v1",
+    "crates/ndabi-transport-rustls",
     "crates/ndabi-write",
     "tools/registry-proof",
 ]
