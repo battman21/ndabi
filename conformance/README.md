@@ -36,6 +36,6 @@ Run the committed-vector drift test from the prototype root:
 python3 -m unittest tests.test_conformance_v01
 ```
 
-The v0.2 vectors cover negotiation, results, errors, cancellation, and streaming frames.
+The v0.2 vectors cover negotiation, results, errors, cancellation, streaming, and operand-bundle acknowledgements.
 All keys and identities in both vector sets are public test material.
 Do not copy them into a deployment.

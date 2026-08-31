@@ -5,6 +5,7 @@
 //! A backend must execute the graph as one fused engine operation or refuse it.
 
 use subtle::ConstantTimeEq;
+use zeroize::Zeroize;
 
 use super::registry::{
     CapabilityManifest, CAPABILITY_GRAPH, CAPABILITY_MUTATION, CAPABILITY_QUERY,
@@ -415,6 +416,26 @@ pub fn graph_frame_bytes(parameter_bytes: usize) -> Result<usize, ProtocolError>
         .ok_or(ProtocolError::ParameterLimitExceeded)
 }
 
+/// Retain one immutable graph request body across authenticated executions.
+///
+/// The client updates only the nonce, deadline, and authentication tag.
+/// The parameter block and all registered operation fields remain unchanged.
+pub struct PreparedGraphFrame {
+    bytes: Vec<u8>,
+}
+
+impl PreparedGraphFrame {
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
+impl Drop for PreparedGraphFrame {
+    fn drop(&mut self) {
+        self.bytes.zeroize();
+    }
+}
+
 impl ClientSession {
     #[allow(clippy::too_many_arguments)]
     pub fn encode_graph(
@@ -447,6 +468,50 @@ impl ClientSession {
         deadline_unix_us: u64,
         output: &mut [u8],
     ) -> Result<(), ProtocolError> {
+        self.prepare_graph_into(operation, parameters, result_budget, row_budget, output)?;
+        self.sign_prepared_graph(output, deadline_unix_us)
+    }
+
+    /// Prepare all immutable graph request bytes without consuming a nonce.
+    pub fn prepare_graph_frame(
+        &self,
+        operation: GraphOperation,
+        parameters: &[u8],
+        result_budget: u32,
+        row_budget: u32,
+    ) -> Result<PreparedGraphFrame, ProtocolError> {
+        let mut bytes = vec![0_u8; graph_frame_bytes(parameters.len())?];
+        self.prepare_graph_into(operation, parameters, result_budget, row_budget, &mut bytes)?;
+        Ok(PreparedGraphFrame { bytes })
+    }
+
+    /// Authenticate one prepared graph request without rewriting its immutable bytes.
+    pub fn encode_prepared_graph<'a>(
+        &mut self,
+        prepared: &'a mut PreparedGraphFrame,
+        deadline_unix_us: u64,
+    ) -> Result<&'a [u8], ProtocolError> {
+        if prepared.bytes.len() < GRAPH_BASE_BYTES {
+            return Err(ProtocolError::LengthMismatch);
+        }
+        if get_u64(&prepared.bytes, 16) != self.authority.session
+            || get_u64(&prepared.bytes, 24) != self.authority.generation
+            || prepared.bytes[96..128] != self.authority.context_digest
+        {
+            return Err(ProtocolError::AuthorityMismatch);
+        }
+        self.sign_prepared_graph(&mut prepared.bytes, deadline_unix_us)?;
+        Ok(&prepared.bytes)
+    }
+
+    fn prepare_graph_into(
+        &self,
+        operation: GraphOperation,
+        parameters: &[u8],
+        result_budget: u32,
+        row_budget: u32,
+        output: &mut [u8],
+    ) -> Result<(), ProtocolError> {
         GraphOperation::new(
             operation.opcode,
             operation.graph_handle,
@@ -459,11 +524,6 @@ impl ClientSession {
         if result_budget == 0 || row_budget == 0 {
             return Err(ProtocolError::ZeroBudget);
         }
-        if deadline_unix_us == 0 || deadline_unix_us > self.authority.expires_unix_us {
-            return Err(ProtocolError::DeadlineBeyondAuthority);
-        }
-        let nonce = self.next_nonce;
-        let next_nonce = nonce.checked_add(1).ok_or(ProtocolError::NonceEnded)?;
         output.fill(0);
         output[0..4].copy_from_slice(&MAGIC);
         output[4] = VERSION_MAJOR;
@@ -479,8 +539,6 @@ impl ClientSession {
         );
         put_u64(output, 16, self.authority.session);
         put_u64(output, 24, self.authority.generation);
-        put_u64(output, 32, nonce);
-        put_u64(output, 40, deadline_unix_us);
         put_u32(output, 48, result_budget);
         put_u32(output, 52, row_budget);
         put_u32(output, 56, operation.graph_handle);
@@ -493,6 +551,22 @@ impl ClientSession {
         output[96..128].copy_from_slice(&self.authority.context_digest);
         let tag_offset = output.len() - TAG_BYTES;
         output[GRAPH_HEADER_BYTES..tag_offset].copy_from_slice(parameters);
+        Ok(())
+    }
+
+    fn sign_prepared_graph(
+        &mut self,
+        output: &mut [u8],
+        deadline_unix_us: u64,
+    ) -> Result<(), ProtocolError> {
+        if deadline_unix_us == 0 || deadline_unix_us > self.authority.expires_unix_us {
+            return Err(ProtocolError::DeadlineBeyondAuthority);
+        }
+        let nonce = self.next_nonce;
+        let next_nonce = nonce.checked_add(1).ok_or(ProtocolError::NonceEnded)?;
+        put_u64(output, 32, nonce);
+        put_u64(output, 40, deadline_unix_us);
+        let tag_offset = output.len() - TAG_BYTES;
         let tag = self
             .authority
             .tag_for(GRAPH_FRAME_DOMAIN, &output[..tag_offset]);
@@ -977,6 +1051,98 @@ mod tests {
 
         assert_eq!(calls.get(), 2);
         assert_eq!(result_buffer.as_ptr(), initial_pointer);
+    }
+
+    #[test]
+    fn a_prepared_graph_rewrites_only_the_nonce_and_authentication_tag() {
+        let registry = registry();
+        let authority = authority(&registry);
+        let operation = GraphOperation::new(11, 17, 13).expect("operation");
+        let mut ordinary_client = ClientSession::new(authority.clone());
+        let ordinary = ordinary_client
+            .encode_graph(operation, b"typed-operands", 128, 1, DEADLINE)
+            .expect("ordinary frame");
+        let mut prepared_client = ClientSession::new(authority);
+        let mut prepared = prepared_client
+            .prepare_graph_frame(operation, b"typed-operands", 128, 1)
+            .expect("prepared frame");
+
+        let first = prepared_client
+            .encode_prepared_graph(&mut prepared, DEADLINE)
+            .expect("first frame")
+            .to_vec();
+        assert_eq!(first, ordinary);
+        let second = prepared_client
+            .encode_prepared_graph(&mut prepared, DEADLINE)
+            .expect("second frame")
+            .to_vec();
+        let tag_offset = second.len() - TAG_BYTES;
+
+        assert_eq!(&first[..32], &second[..32]);
+        assert_ne!(&first[32..40], &second[32..40]);
+        assert_eq!(&first[40..tag_offset], &second[40..tag_offset]);
+        assert_ne!(&first[tag_offset..], &second[tag_offset..]);
+        assert_eq!(get_u64(&second, 32), 2);
+    }
+
+    #[test]
+    fn a_prepared_graph_refuses_authority_drift_without_consuming_a_nonce() {
+        let registry = registry();
+        let original_authority = authority(&registry);
+        let operation = GraphOperation::new(11, 17, 13).expect("operation");
+        let mut prepared = ClientSession::new(original_authority)
+            .prepare_graph_frame(operation, b"typed-operands", 128, 1)
+            .expect("prepared frame");
+        let changed_context = AuthorityContext::new(
+            [5; 16],
+            [9; 16],
+            47,
+            digest_label(b"capability", &[7]),
+            registry.identity(),
+        )
+        .expect("changed context");
+        let changed_authority =
+            Authority::new_read([8; 32], 53, 59, DEADLINE, changed_context).expect("authority");
+        let mut changed_client = ClientSession::new(changed_authority);
+
+        assert_eq!(
+            changed_client
+                .encode_prepared_graph(&mut prepared, DEADLINE)
+                .expect_err("authority drift"),
+            ProtocolError::AuthorityMismatch,
+        );
+        let mut matching = changed_client
+            .prepare_graph_frame(operation, b"typed-operands", 128, 1)
+            .expect("matching prepared frame");
+        let encoded = changed_client
+            .encode_prepared_graph(&mut matching, DEADLINE)
+            .expect("first matching frame");
+        assert_eq!(get_u64(encoded, 32), 1);
+    }
+
+    #[test]
+    fn a_failed_prepared_deadline_does_not_consume_a_nonce() {
+        let registry = registry();
+        let mut client = ClientSession::new(authority(&registry));
+        let mut prepared = client
+            .prepare_graph_frame(
+                GraphOperation::new(11, 17, 13).expect("operation"),
+                b"typed-operands",
+                128,
+                1,
+            )
+            .expect("prepared frame");
+
+        assert_eq!(
+            client
+                .encode_prepared_graph(&mut prepared, DEADLINE + 1)
+                .expect_err("expired authority"),
+            ProtocolError::DeadlineBeyondAuthority,
+        );
+        let encoded = client
+            .encode_prepared_graph(&mut prepared, DEADLINE)
+            .expect("first valid frame");
+        assert_eq!(get_u64(encoded, 32), 1);
     }
 
     #[test]

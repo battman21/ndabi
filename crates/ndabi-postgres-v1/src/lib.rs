@@ -6,16 +6,26 @@
 
 use ndabi_protocol::{
     Authority, Backend, BackendIdentity, BatchBackend, BatchItems, BatchOperation,
-    BorrowedGraphExecution, BoundedOutput, CapabilityManifest, Clock, Execution, ExecutionLimits,
-    GraphBackend, GraphExecution, GraphNode, GraphOperation, GraphRegistry, MemoryReplayStore,
-    Operation, PlanRegistry, ProtocolError, RegisteredGraph, RegisteredPlan, ReplayStore,
-    SingleSessionReplayStore, CAPABILITY_AGGREGATE, CAPABILITY_BATCH, CAPABILITY_GRAPH,
-    CAPABILITY_QUERY,
+    BorrowedBundledGraphExecution, BorrowedGraphExecution, BoundedOutput, BundleAccepted,
+    BundleRemoved, BundledGraphBackend, BundledGraphExecution, CapabilityManifest, Clock,
+    Execution, ExecutionLimits, GraphBackend, GraphExecution, GraphNode, GraphOperation,
+    GraphRegistry, MemoryReplayStore, OperandBundleStore, OperandLayout, Operation, PlanRegistry,
+    ProtocolError, RegisteredGraph, RegisteredPlan, ReplayStore, SingleSessionReplayStore,
+    CAPABILITY_AGGREGATE, CAPABILITY_BATCH, CAPABILITY_GRAPH, CAPABILITY_QUERY,
 };
 use postgres::{Client, Row, Statement};
 
+mod operand_bundle;
+
+pub use operand_bundle::{
+    ReviewBatchBundle, ReviewBatchThresholds, ReviewOperandBundleBackend,
+    ReviewOperandBundleProfile, POSTGRESQL_REVIEW_OPERAND_BUNDLE_PROFILE_ID,
+    REVIEW_OPERAND_BUNDLE_OPCODE,
+};
+
 pub use ndabi_protocol::{
-    digest_label, AuthorityContext, ClientSession as WireClientSession, FRAME_BYTES,
+    digest_label, AuthorityContext, ClientSession as WireClientSession, PreparedBundledGraphFrame,
+    PreparedGraphFrame, FRAME_BYTES,
 };
 
 pub const POSTGRESQL_ENGINE_ID: u32 = 0x5047_0001;
@@ -1046,6 +1056,70 @@ impl ServerSession {
     ) -> Result<BorrowedGraphExecution<'a>, ProtocolError> {
         self.inner
             .execute_graph_reusing(frame, backend, replay, clock, result_buffer)
+    }
+
+    pub fn register_operand_bundle<R: ReplayStore, C: Clock>(
+        &self,
+        frame: &[u8],
+        registry: &GraphRegistry,
+        layout: &OperandLayout,
+        store: &mut OperandBundleStore,
+        replay: &mut R,
+        clock: &C,
+    ) -> Result<BundleAccepted, ProtocolError> {
+        self.inner
+            .register_operand_bundle(frame, registry, layout, store, replay, clock)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn execute_bundled_graph<B: BundledGraphBackend, R: ReplayStore, C: Clock>(
+        &self,
+        frame: &[u8],
+        registry: &GraphRegistry,
+        layout: &OperandLayout,
+        store: &mut OperandBundleStore,
+        backend: &mut B,
+        replay: &mut R,
+        clock: &C,
+    ) -> Result<BundledGraphExecution, ProtocolError> {
+        self.inner
+            .execute_bundled_graph(frame, registry, layout, store, backend, replay, clock)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn execute_bundled_graph_reusing<'a, B: BundledGraphBackend, R: ReplayStore, C: Clock>(
+        &self,
+        frame: &[u8],
+        registry: &GraphRegistry,
+        layout: &OperandLayout,
+        store: &mut OperandBundleStore,
+        backend: &mut B,
+        replay: &mut R,
+        clock: &C,
+        result_buffer: &'a mut Vec<u8>,
+    ) -> Result<BorrowedBundledGraphExecution<'a>, ProtocolError> {
+        self.inner.execute_bundled_graph_reusing(
+            frame,
+            registry,
+            layout,
+            store,
+            backend,
+            replay,
+            clock,
+            result_buffer,
+        )
+    }
+
+    pub fn remove_operand_bundle<R: ReplayStore, C: Clock>(
+        &self,
+        frame: &[u8],
+        registry: &GraphRegistry,
+        store: &mut OperandBundleStore,
+        replay: &mut R,
+        clock: &C,
+    ) -> Result<BundleRemoved, ProtocolError> {
+        self.inner
+            .remove_operand_bundle(frame, registry, store, replay, clock)
     }
 }
 

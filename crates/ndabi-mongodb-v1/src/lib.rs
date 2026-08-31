@@ -13,6 +13,13 @@ use ndabi_protocol::{
 };
 use serde::Deserialize;
 
+mod operand_bundle;
+
+pub use operand_bundle::{
+    IdSetBundle, IdSetBundleBackend, IdSetBundleProfile, ScoreThreshold,
+    MONGODB_ID_SET_BUNDLE_PROFILE_ID,
+};
+
 pub const MONGODB_ENGINE_ID: u32 = 0x4d47_0001;
 pub const MONGODB_ID_WINDOW_PROFILE_ID: u32 = 0x4d47_1001;
 pub const MONGODB_ID_WINDOW_REGISTRY_PROFILE_ID: u32 = 0x4d47_1002;
@@ -195,13 +202,13 @@ impl IdWindowProfile {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
-struct MongoItem {
+pub(crate) struct MongoItem {
     #[serde(rename = "_id")]
-    id: i64,
-    bucket: i32,
-    owner: i32,
-    score: i32,
-    payload: Binary,
+    pub(crate) id: i64,
+    pub(crate) bucket: i32,
+    pub(crate) owner: i32,
+    pub(crate) score: i32,
+    pub(crate) payload: Binary,
 }
 
 pub struct IdWindowBackend {
@@ -336,7 +343,10 @@ impl Backend for IdWindowBackend {
     }
 }
 
-fn encode_item(item: &MongoItem, output: &mut BoundedOutput) -> Result<(), ProtocolError> {
+pub(crate) fn encode_item(
+    item: &MongoItem,
+    output: &mut BoundedOutput,
+) -> Result<(), ProtocolError> {
     if item.payload.subtype != BinarySubtype::Generic || item.payload.bytes.len() != 64 {
         return Err(ProtocolError::BackendRefused);
     }

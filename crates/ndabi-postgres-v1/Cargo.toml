@@ -12,3 +12,4 @@ blake3 = "1.8"
 libc = "0.2"
 ndabi-protocol = { path = "../ndabi-protocol" }
 postgres = "0.19"
+zeroize = "1.9"

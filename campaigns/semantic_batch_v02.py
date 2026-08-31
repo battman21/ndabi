@@ -82,6 +82,7 @@ def command(
     *,
     timeout: float = 120,
     check: bool = True,
+    environment: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     completed = subprocess.run(
         arguments,
@@ -90,6 +91,7 @@ def command(
         capture_output=True,
         timeout=timeout,
         check=False,
+        env=environment,
     )
     if check and completed.returncode != 0:
         detail = completed.stderr.strip() or completed.stdout.strip()
@@ -427,23 +429,34 @@ class DockerFixture:
         GRANT SELECT ON items TO {READER_ROLE};
         ANALYZE items;
         """
-        command(
-            [
-                "docker",
-                "exec",
-                self.postgres,
-                "psql",
-                "-U",
-                "postgres",
-                "-d",
-                "postgres",
-                "-v",
-                "ON_ERROR_STOP=1",
-                "-c",
-                sql,
-            ],
-            timeout=180,
-        )
+        seed_arguments = [
+            "docker",
+            "exec",
+            self.postgres,
+            "psql",
+            "-U",
+            "postgres",
+            "-d",
+            "postgres",
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-c",
+            sql,
+        ]
+        for _ in range(30):
+            seeded = command(seed_arguments, timeout=180, check=False)
+            if seeded.returncode == 0:
+                break
+            detail = seeded.stderr.strip() or seeded.stdout.strip()
+            transient = (
+                "No such file or directory" in detail
+                or "the database system is starting up" in detail
+            )
+            if not transient:
+                raise CampaignError(f"PostgreSQL seeding failed: {detail}")
+            time.sleep(1)
+        else:
+            raise CampaignError("PostgreSQL did not remain ready for seeding")
         refusal = command(
             [
                 "docker",
@@ -645,6 +658,31 @@ def aggregate_samples(reports: list[dict[str, Any]], arm: str) -> dict[str, Any]
     }
 
 
+def worker_arguments(
+    binary: Path,
+    arm: str,
+    batch_size: int,
+    iterations: int,
+    warmup: int,
+) -> list[str]:
+    return [
+        str(binary),
+        "environment",
+        str(batch_size),
+        str(iterations),
+        str(warmup),
+        "--raw",
+        "--coordinated",
+        f"--arm={arm}",
+    ]
+
+
+def worker_environment(connection: str) -> dict[str, str]:
+    environment = os.environ.copy()
+    environment["NDABI_TEST_READER_CONNECTION"] = connection
+    return environment
+
+
 def run_arm(
     binary: Path,
     fixture: DockerFixture,
@@ -656,16 +694,8 @@ def run_arm(
     warmup: int,
     enforce_quiet: bool,
 ) -> dict[str, Any]:
-    base_arguments = [
-        str(binary),
-        fixture.reader_connection(),
-        str(batch_size),
-        str(iterations),
-        str(warmup),
-        "--raw",
-        "--coordinated",
-        f"--arm={arm}",
-    ]
+    environment = worker_environment(fixture.reader_connection())
+    base_arguments = worker_arguments(binary, arm, batch_size, iterations, warmup)
     processes = [
         subprocess.Popen(
             base_arguments + [f"--worker-id={worker_id}"],
@@ -674,6 +704,7 @@ def run_arm(
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=environment,
         )
         for worker_id in range(1, concurrency + 1)
     ]
@@ -841,18 +872,50 @@ def compact_cell_report(cell_report: dict[str, Any]) -> dict[str, Any]:
 
 def run_allocation(binary: Path, fixture: DockerFixture) -> dict[str, Any]:
     completed = command(
-        [
-            str(binary),
-            fixture.reader_connection(),
-            "256",
-            "100",
-            "10",
-        ],
+        allocation_arguments(binary),
         timeout=180,
+        environment=worker_environment(fixture.reader_connection()),
     )
     value = json.loads(completed.stdout)
     require(value["allocation_diagnostic"] is not None, "allocation evidence is absent")
     return value
+
+
+def allocation_arguments(binary: Path) -> list[str]:
+    return [str(binary), "environment", "256", "100", "10"]
+
+
+def cleanup_campaign(
+    fixture: DockerFixture | None,
+    binary_root: Path,
+    campaign_root: Path,
+    campaign_failed: bool,
+) -> None:
+    cleanup = {
+        "containers_removed": fixture is None,
+        "network_removed": fixture is None,
+        "runner_pulled_proxy_image_removed": fixture is None,
+    }
+    errors: list[str] = []
+    if fixture is not None:
+        try:
+            cleanup = fixture.cleanup()
+        except Exception as error:
+            errors.append(f"fixture cleanup failed: {type(error).__name__}: {error}")
+    try:
+        if binary_root.exists():
+            shutil.rmtree(binary_root, ignore_errors=False)
+    except Exception as error:
+        errors.append(f"temporary binary cleanup failed: {type(error).__name__}: {error}")
+    cleanup["temporary_binaries_removed"] = not binary_root.exists()
+    if errors:
+        cleanup["cleanup_errors"] = errors
+    try:
+        write_json_exclusive(campaign_root / "cleanup.json", cleanup)
+    except Exception as error:
+        errors.append(f"cleanup evidence failed: {type(error).__name__}: {error}")
+    if errors and not campaign_failed:
+        raise CampaignError("; ".join(errors))
 
 
 def arm_order(repetition: int, cell_index: int) -> tuple[str, ...]:
@@ -876,21 +939,22 @@ def run_campaign(smoke: bool) -> dict[str, Any]:
     campaign_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + f"-{time.time_ns()}"
     campaign_root = RESULT_ROOT / campaign_id
     binary_root = ROOT / "target" / "campaign-binaries" / campaign_id
-    source = source_manifest()
-    binaries = build_binaries(binary_root)
-    binary_evidence = {
-        key: value
-        for key, value in binaries.items()
-        if key not in {"normal", "allocation"}
-    }
-    pre_host = host_snapshot() if smoke else await_quiet_host()
-    fixture = DockerFixture(suffix=f"{os.getpid()}-{time.time_ns()}")
+    fixture: DockerFixture | None = None
     repetitions = 1 if smoke else 5
     cells = ((8, 0, 1), (8, 0, 8)) if smoke else FORMAL_CELLS
     warmup = 5 if smoke else 20
     reports: list[dict[str, Any]] = []
     allocation: dict[str, Any] | None = None
     try:
+        source = source_manifest()
+        binaries = build_binaries(binary_root)
+        binary_evidence = {
+            key: value
+            for key, value in binaries.items()
+            if key not in {"normal", "allocation"}
+        }
+        pre_host = host_snapshot() if smoke else await_quiet_host()
+        fixture = DockerFixture(suffix=f"{os.getpid()}-{time.time_ns()}")
         fixture.start()
         identities = {
             "references": {
@@ -960,10 +1024,12 @@ def run_campaign(smoke: bool) -> dict[str, Any]:
         write_json_exclusive(campaign_root / "aggregate.json", result)
         return result
     finally:
-        cleanup = fixture.cleanup()
-        shutil.rmtree(binary_root, ignore_errors=False)
-        cleanup["temporary_binaries_removed"] = not binary_root.exists()
-        write_json_exclusive(campaign_root / "cleanup.json", cleanup)
+        cleanup_campaign(
+            fixture,
+            binary_root,
+            campaign_root,
+            campaign_failed=sys.exc_info()[0] is not None,
+        )
 
 
 def parse_arguments() -> argparse.Namespace:

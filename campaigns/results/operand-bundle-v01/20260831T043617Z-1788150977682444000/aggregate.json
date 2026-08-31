@@ -1,0 +1,70 @@
+{
+  "accepted": false,
+  "build": {
+    "path": "/Users/obatt/Dev/vs/ndabi/target/campaign-binaries/20260831T043617Z-1788150977682444000/review_operand_bundle_showdown",
+    "sha256": "393ab126b07608d8dbc046b526eafad6197cd7bdbabdc07def00371cc6da6d20"
+  },
+  "campaign_id": "20260831T043617Z-1788150977682444000",
+  "mode": "smoke",
+  "quiet_host": {
+    "qualified": false,
+    "reason": "smoke mode"
+  },
+  "reports": [
+    {
+      "accepted": false,
+      "arm_order": [
+        "fused_native",
+        "ndabi_graph",
+        "ndabi_bundle"
+      ],
+      "arms": {
+        "fused_native": {
+          "allocated_bytes": 361374,
+          "bundle_decodes": [
+            0
+          ],
+          "cpu_mean_ns": 242950,
+          "request_reduction_percent": 74.232536,
+          "wall_mean_ns": 5793793,
+          "wall_p95_ns": 6747917,
+          "workers": 1
+        },
+        "ndabi_bundle": {
+          "allocated_bytes": 344984,
+          "bundle_decodes": [
+            1
+          ],
+          "cpu_mean_ns": 291620,
+          "request_reduction_percent": 74.232536,
+          "wall_mean_ns": 5933650,
+          "wall_p95_ns": 6779375,
+          "workers": 1
+        },
+        "ndabi_graph": {
+          "allocated_bytes": 344984,
+          "bundle_decodes": [
+            0
+          ],
+          "cpu_mean_ns": 314440,
+          "request_reduction_percent": 74.232536,
+          "wall_mean_ns": 5900040,
+          "wall_p95_ns": 6874750,
+          "workers": 1
+        }
+      },
+      "concurrency": 1,
+      "gates": {
+        "allocation_reduction": false,
+        "cpu_reduction": false,
+        "mean_floor": true,
+        "one_static_decode": true,
+        "p95_floor": true,
+        "request_reduction": true
+      },
+      "item_count": 1024,
+      "repetition": 1
+    }
+  ],
+  "schema": "ndabi-operand-bundle-campaign-v0.1"
+}

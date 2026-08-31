@@ -14,6 +14,7 @@ use zeroize::{Zeroize, Zeroizing};
 mod batch;
 mod connection;
 mod graph;
+mod operand_bundle;
 mod registry;
 mod registry_store;
 mod replay;
@@ -32,13 +33,20 @@ pub use batch::{
 #[cfg(feature = "benchmark-governed-native")]
 pub use batch::{GovernedBatchBackend, GovernedBatchClientSession, GovernedBatchRequest};
 pub use connection::{
-    NegotiatedTransport, RegisteredRequest, TransportConfig, TransportConnection, TransportPhase,
-    TransportRole, FEATURE_CANCELLATION, FEATURE_STREAMING, KNOWN_TRANSPORT_FEATURES,
+    NegotiatedTransport, RegisteredBundleControl, RegisteredBundleControlKind, RegisteredRequest,
+    TransportConfig, TransportConnection, TransportPhase, TransportRole, FEATURE_CANCELLATION,
+    FEATURE_OPERAND_BUNDLES, FEATURE_STREAMING, KNOWN_TRANSPORT_FEATURES,
 };
 pub use graph::{
     graph_frame_bytes, BorrowedGraphExecution, GraphBackend, GraphExecution, GraphNode,
-    GraphOperation, GraphRegistry, RegisteredGraph, RegisteredGraphBackend, MAX_GRAPH_DEPENDENCIES,
-    MAX_GRAPH_NODES, MAX_GRAPH_PARAMETER_BYTES,
+    GraphOperation, GraphRegistry, PreparedGraphFrame, RegisteredGraph, RegisteredGraphBackend,
+    MAX_GRAPH_DEPENDENCIES, MAX_GRAPH_NODES, MAX_GRAPH_PARAMETER_BYTES,
+};
+pub use operand_bundle::{
+    operand_bundle_frame_bytes, BorrowedBundledGraphExecution, BundleAccepted, BundleRemoved,
+    BundledGraphBackend, BundledGraphExecution, BundledOperandContext, OperandBundleStore,
+    OperandLayout, OperandSlot, OperandStorage, OperandType, OperandValue, OperandValueIter,
+    OperandValueRef, OperandValues, PreparedBundledGraphFrame,
 };
 pub use registry::{
     decode_registry_discovery, encode_registry_discovery, registry_discovery_bytes,
@@ -52,8 +60,10 @@ pub use registry::{
 pub use registry_store::{FileRegistryStore, RegistryKeyProvider};
 pub use replay::FileReplayStore;
 pub use transport::{
-    decode_transport, encode_transport, transport_frame_bytes, TransportDirection, TransportFields,
-    TransportFrame, TransportKind, TRANSPORT_HEADER_BYTES, TRANSPORT_MIN_FRAME_BYTES,
+    decode_bundle_accepted_payload, decode_bundle_removed_payload, decode_transport,
+    encode_bundle_accepted_payload, encode_bundle_removed_payload, encode_transport,
+    transport_frame_bytes, TransportDirection, TransportFields, TransportFrame, TransportKind,
+    TRANSPORT_HEADER_BYTES, TRANSPORT_MIN_FRAME_BYTES,
 };
 
 pub const FRAME_BYTES: usize = 160;
@@ -1006,6 +1016,11 @@ pub enum ProtocolError {
     LengthMismatch,
     NonCanonicalFrame,
     NonceEnded,
+    OperandBundleCollision,
+    OperandBundleLimitExceeded,
+    OperandBundleNotFound,
+    OperandLayoutInvalid,
+    OperandValueInvalid,
     OutputShape,
     DuplicatePlan,
     ParameterLimitExceeded,

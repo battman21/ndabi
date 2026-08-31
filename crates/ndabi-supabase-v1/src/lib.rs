@@ -14,7 +14,7 @@ use zeroize::Zeroizing;
 mod postgres_graph;
 mod postgres_rls;
 
-pub use postgres_graph::UserReviewBatchGraphBackend;
+pub use postgres_graph::{UserReviewBatchGraphBackend, UserReviewOperandBundleBackend};
 pub use postgres_rls::UserRangeBackend;
 
 const AUTHENTICATED_ROLE: &str = "authenticated";

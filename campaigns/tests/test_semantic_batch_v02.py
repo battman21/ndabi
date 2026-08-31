@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "semantic_batch_v02.py"
@@ -118,6 +121,78 @@ class SemanticBatchCampaignTests(unittest.TestCase):
         ]
         with self.assertRaises(campaign.CampaignError):
             campaign.aggregate_samples(reports, "ndabi_graph")
+
+    def test_worker_arguments_do_not_expose_the_database_connection(self) -> None:
+        connection = "host=127.0.0.1 password=test-only"
+        arguments = campaign.worker_arguments(Path("candidate"), "ndabi_graph", 8, 100, 5)
+        allocation_arguments = campaign.allocation_arguments(Path("candidate"))
+        environment = campaign.worker_environment(connection)
+
+        self.assertNotIn(connection, arguments)
+        self.assertNotIn(connection, allocation_arguments)
+        self.assertEqual(arguments[1], "environment")
+        self.assertEqual(allocation_arguments[1], "environment")
+        self.assertEqual(environment["NDABI_TEST_READER_CONNECTION"], connection)
+
+    def test_quiet_host_refusal_removes_temporary_binaries(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            result_root = root / "results"
+
+            def build(destination: Path) -> dict:
+                destination.mkdir(parents=True)
+                (destination / "binary").write_bytes(b"candidate")
+                return {
+                    "normal": str(destination / "binary"),
+                    "allocation": str(destination / "binary"),
+                }
+
+            with (
+                mock.patch.object(campaign, "ROOT", root),
+                mock.patch.object(campaign, "RESULT_ROOT", result_root),
+                mock.patch.object(campaign, "clean_checkout", return_value=True),
+                mock.patch.object(campaign, "source_manifest", return_value={"sha256": "1"}),
+                mock.patch.object(campaign, "build_binaries", side_effect=build),
+                mock.patch.object(
+                    campaign,
+                    "await_quiet_host",
+                    side_effect=campaign.CampaignError("host busy"),
+                ),
+            ):
+                with self.assertRaisesRegex(campaign.CampaignError, "host busy"):
+                    campaign.run_campaign(smoke=False)
+
+            binary_root = root / "target" / "campaign-binaries"
+            self.assertFalse(binary_root.exists() and any(binary_root.iterdir()))
+            cleanup_files = list(result_root.rglob("cleanup.json"))
+            self.assertEqual(len(cleanup_files), 1)
+            cleanup = json.loads(cleanup_files[0].read_text())
+            self.assertTrue(cleanup["temporary_binaries_removed"])
+
+    def test_fixture_cleanup_failure_does_not_leak_temporary_binaries(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            binary_root = root / "target" / "campaign-binaries" / "candidate"
+            campaign_root = root / "results" / "candidate"
+            binary_root.mkdir(parents=True)
+            (binary_root / "binary").write_bytes(b"candidate")
+            fixture = mock.Mock()
+            fixture.cleanup.side_effect = campaign.CampaignError("Docker cleanup failed")
+
+            campaign.cleanup_campaign(
+                fixture,
+                binary_root,
+                campaign_root,
+                campaign_failed=True,
+            )
+
+            self.assertFalse(binary_root.exists())
+            cleanup = json.loads((campaign_root / "cleanup.json").read_text())
+            self.assertTrue(cleanup["temporary_binaries_removed"])
+            self.assertEqual(
+                cleanup["cleanup_errors"],
+                ["fixture cleanup failed: CampaignError: Docker cleanup failed"],
+            )
 
 
 if __name__ == "__main__":

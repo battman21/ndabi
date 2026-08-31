@@ -7,8 +7,8 @@ use subtle::ConstantTimeEq;
 use zeroize::Zeroize;
 
 use super::{
-    get_u16, get_u32, get_u64, is_zero, put_u16, put_u32, put_u64, Authority, ProtocolError,
-    TAG_BYTES,
+    get_u16, get_u32, get_u64, is_zero, put_u16, put_u32, put_u64, Authority, BundleAccepted,
+    BundleRemoved, ProtocolError, TAG_BYTES,
 };
 
 pub const TRANSPORT_HEADER_BYTES: usize = 128;
@@ -36,6 +36,8 @@ pub enum TransportKind {
     StreamStart = 6,
     StreamChunk = 7,
     StreamEnd = 8,
+    BundleAccepted = 9,
+    BundleRemoved = 10,
 }
 
 impl TryFrom<u8> for TransportKind {
@@ -51,9 +53,54 @@ impl TryFrom<u8> for TransportKind {
             6 => Ok(Self::StreamStart),
             7 => Ok(Self::StreamChunk),
             8 => Ok(Self::StreamEnd),
+            9 => Ok(Self::BundleAccepted),
+            10 => Ok(Self::BundleRemoved),
             _ => Err(ProtocolError::UnsupportedFrame),
         }
     }
+}
+
+pub fn encode_bundle_accepted_payload(value: BundleAccepted) -> [u8; 48] {
+    let mut output = [0_u8; 48];
+    put_u32(&mut output, 0, value.bundle_handle);
+    put_u32(&mut output, 4, value.graph_handle);
+    put_u64(&mut output, 8, value.expiry_unix_us);
+    output[16..48].copy_from_slice(&value.bundle_digest);
+    output
+}
+
+pub fn decode_bundle_accepted_payload(payload: &[u8]) -> Result<BundleAccepted, ProtocolError> {
+    if payload.len() != 48
+        || get_u32(payload, 0) == 0
+        || get_u32(payload, 4) == 0
+        || get_u64(payload, 8) == 0
+        || is_zero(&payload[16..48])
+    {
+        return Err(ProtocolError::NonCanonicalFrame);
+    }
+    Ok(BundleAccepted {
+        bundle_handle: get_u32(payload, 0),
+        graph_handle: get_u32(payload, 4),
+        expiry_unix_us: get_u64(payload, 8),
+        bundle_digest: payload[16..48].try_into().expect("checked payload"),
+    })
+}
+
+pub fn encode_bundle_removed_payload(value: BundleRemoved) -> [u8; 8] {
+    let mut output = [0_u8; 8];
+    put_u32(&mut output, 0, value.bundle_handle);
+    put_u32(&mut output, 4, value.graph_handle);
+    output
+}
+
+pub fn decode_bundle_removed_payload(payload: &[u8]) -> Result<BundleRemoved, ProtocolError> {
+    if payload.len() != 8 || get_u32(payload, 0) == 0 || get_u32(payload, 4) == 0 {
+        return Err(ProtocolError::NonCanonicalFrame);
+    }
+    Ok(BundleRemoved {
+        bundle_handle: get_u32(payload, 0),
+        graph_handle: get_u32(payload, 4),
+    })
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -345,6 +392,34 @@ fn validate_semantics(
                 return Err(ProtocolError::NonCanonicalFrame);
             }
         }
+        TransportKind::BundleAccepted => {
+            if fields.error_code != 0
+                || fields.correlation_nonce == 0
+                || fields.sequence != 0
+                || fields.rows != 0
+                || fields.result_shape == 0
+                || fields.features != 0
+                || fields.auxiliary != 0
+                || !receipt_is_zero
+            {
+                return Err(ProtocolError::NonCanonicalFrame);
+            }
+            decode_bundle_accepted_payload(payload)?;
+        }
+        TransportKind::BundleRemoved => {
+            if fields.error_code != 0
+                || fields.correlation_nonce == 0
+                || fields.sequence != 0
+                || fields.rows != 0
+                || fields.result_shape == 0
+                || fields.features != 0
+                || fields.auxiliary != 0
+                || !receipt_is_zero
+            {
+                return Err(ProtocolError::NonCanonicalFrame);
+            }
+            decode_bundle_removed_payload(payload)?;
+        }
     }
     Ok(())
 }
@@ -455,6 +530,34 @@ mod tests {
                     ..TransportFields::empty()
                 },
                 vec![],
+            ),
+            (
+                TransportKind::BundleAccepted,
+                TransportFields {
+                    correlation_nonce: 1,
+                    result_shape: 3,
+                    ..TransportFields::empty()
+                },
+                encode_bundle_accepted_payload(BundleAccepted {
+                    bundle_handle: 4,
+                    graph_handle: 2,
+                    expiry_unix_us: 1_500_000,
+                    bundle_digest: [5; 32],
+                })
+                .to_vec(),
+            ),
+            (
+                TransportKind::BundleRemoved,
+                TransportFields {
+                    correlation_nonce: 1,
+                    result_shape: 3,
+                    ..TransportFields::empty()
+                },
+                encode_bundle_removed_payload(BundleRemoved {
+                    bundle_handle: 4,
+                    graph_handle: 2,
+                })
+                .to_vec(),
             ),
         ]
     }

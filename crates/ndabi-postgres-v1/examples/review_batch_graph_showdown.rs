@@ -11,8 +11,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use ndabi_postgres_v1::{
     digest_label, single_session_replay_store, AuthorityContext, OperationBinding,
-    ReviewBatchGraphBackend, ReviewBatchGraphProfile, ReviewBatchItem, ServerSession,
-    WireClientSession, REVIEW_BATCH_GRAPH_OPCODE,
+    PreparedGraphFrame, ReviewBatchGraphBackend, ReviewBatchGraphProfile, ReviewBatchItem,
+    ServerSession, WireClientSession, REVIEW_BATCH_GRAPH_OPCODE,
 };
 use ndabi_protocol::{Authority, Clock, ProtocolError};
 use postgres::{Client, NoTls, Row, Statement};
@@ -192,9 +192,9 @@ fn main() {
 
 fn run() -> Result<(), Box<dyn Error>> {
     let arguments = std::env::args().collect::<Vec<_>>();
-    let connection = arguments
-        .get(1)
-        .cloned()
+    let connection = std::env::var("NDABI_TEST_READER_CONNECTION")
+        .ok()
+        .or_else(|| arguments.get(1).cloned())
         .ok_or("a PostgreSQL reader connection is required")?;
     let item_count = arguments
         .get(2)
@@ -293,27 +293,21 @@ fn run() -> Result<(), Box<dyn Error>> {
         Client::connect(&connection, NoTls)?,
         usize::try_from(item_count)?,
     )?;
-    let request_bytes =
-        ndabi_protocol::graph_frame_bytes(parameters.len()).map_err(boxed_protocol)?;
-    let mut graph_frame = vec![0_u8; request_bytes];
+    let mut graph_frame = wire_client
+        .prepare_graph_frame(operation, &parameters, result_budget, item_count)
+        .map_err(boxed_protocol)?;
+    let request_bytes = graph_frame.as_bytes().len();
     let mut graph_result = Vec::with_capacity(result_budget as usize);
 
     for _ in 0..warmup {
         let expected = native.execute(&inputs)?;
         let fused_result = fused.execute(&inputs)?;
-        wire_client
-            .encode_graph_into(
-                operation,
-                &parameters,
-                result_budget,
-                item_count,
-                deadline,
-                &mut graph_frame,
-            )
+        let encoded_graph = wire_client
+            .encode_prepared_graph(&mut graph_frame, deadline)
             .map_err(boxed_protocol)?;
         let graph = server
             .execute_graph_reusing(
-                &graph_frame,
+                encoded_graph,
                 &mut graph_backend,
                 &mut replay,
                 &clock,
@@ -321,7 +315,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             )
             .map_err(boxed_protocol)?;
         wire_client
-            .verify_execution_receipt(&graph_frame, graph.rows, graph.bytes, &graph.receipt)
+            .verify_execution_receipt(encoded_graph, graph.rows, graph.bytes, &graph.receipt)
             .map_err(boxed_protocol)?;
         if expected != fused_result || expected.as_slice() != graph.bytes {
             return Err("warm-up result equality failed".into());
@@ -329,7 +323,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         black_box(graph.receipt);
     }
     let canonical_result = native.execute(&inputs)?;
-    let concise_json_request_bytes = concise_json_request(&graph_frame, &inputs)?.len();
+    let concise_json_request_bytes = concise_json_request(graph_frame.as_bytes(), &inputs)?.len();
     let request_compression_percent =
         100.0 * (1.0 - request_bytes as f64 / concise_json_request_bytes as f64);
 
@@ -362,19 +356,12 @@ fn run() -> Result<(), Box<dyn Error>> {
                 0 => native.execute(&inputs)? == canonical_result,
                 1 => fused.execute(&inputs)? == canonical_result,
                 2 => {
-                    wire_client
-                        .encode_graph_into(
-                            operation,
-                            &parameters,
-                            result_budget,
-                            item_count,
-                            deadline,
-                            &mut graph_frame,
-                        )
+                    let encoded_graph = wire_client
+                        .encode_prepared_graph(&mut graph_frame, deadline)
                         .map_err(boxed_protocol)?;
                     let execution = server
                         .execute_graph_reusing(
-                            &graph_frame,
+                            encoded_graph,
                             &mut graph_backend,
                             &mut replay,
                             &clock,
@@ -383,7 +370,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                         .map_err(boxed_protocol)?;
                     wire_client
                         .verify_execution_receipt(
-                            &graph_frame,
+                            encoded_graph,
                             execution.rows,
                             execution.bytes,
                             &execution.receipt,
@@ -433,10 +420,6 @@ fn run() -> Result<(), Box<dyn Error>> {
         &inputs,
         &canonical_result,
         &mut wire_client,
-        operation,
-        &parameters,
-        result_budget,
-        item_count,
         deadline,
         &mut graph_frame,
         &server,
@@ -538,12 +521,8 @@ fn allocation_diagnostics(
     inputs: &[ReviewInput],
     canonical_result: &[u8],
     wire_client: &mut WireClientSession,
-    operation: ndabi_protocol::GraphOperation,
-    parameters: &[u8],
-    result_budget: u32,
-    item_count: u32,
     deadline: u64,
-    graph_frame: &mut [u8],
+    graph_frame: &mut PreparedGraphFrame,
     server: &ServerSession,
     graph_backend: &mut ReviewBatchGraphBackend,
     replay: &mut ndabi_protocol::SingleSessionReplayStore,
@@ -563,22 +542,15 @@ fn allocation_diagnostics(
         Ok(())
     })?;
     let graph = measure_allocations(|| {
-        wire_client
-            .encode_graph_into(
-                operation,
-                parameters,
-                result_budget,
-                item_count,
-                deadline,
-                graph_frame,
-            )
+        let encoded_graph = wire_client
+            .encode_prepared_graph(graph_frame, deadline)
             .map_err(boxed_protocol)?;
         let execution = server
-            .execute_graph_reusing(graph_frame, graph_backend, replay, clock, graph_result)
+            .execute_graph_reusing(encoded_graph, graph_backend, replay, clock, graph_result)
             .map_err(boxed_protocol)?;
         wire_client
             .verify_execution_receipt(
-                graph_frame,
+                encoded_graph,
                 execution.rows,
                 execution.bytes,
                 &execution.receipt,
@@ -605,12 +577,8 @@ fn allocation_diagnostics(
     _inputs: &[ReviewInput],
     _canonical_result: &[u8],
     _wire_client: &mut WireClientSession,
-    _operation: ndabi_protocol::GraphOperation,
-    _parameters: &[u8],
-    _result_budget: u32,
-    _item_count: u32,
     _deadline: u64,
-    _graph_frame: &mut [u8],
+    _graph_frame: &mut PreparedGraphFrame,
     _server: &ServerSession,
     _graph_backend: &mut ReviewBatchGraphBackend,
     _replay: &mut ndabi_protocol::SingleSessionReplayStore,

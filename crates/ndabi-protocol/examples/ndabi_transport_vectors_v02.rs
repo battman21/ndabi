@@ -3,8 +3,10 @@
 //! Every key and identity in this executable is public test material.
 
 use ndabi_protocol::{
-    decode_transport, encode_transport, transport_frame_bytes, Authority, AuthorityContext,
-    BackendIdentity, ProtocolError, TransportDirection, TransportFields, TransportKind,
+    decode_transport, encode_bundle_accepted_payload, encode_bundle_removed_payload,
+    encode_transport, transport_frame_bytes, Authority, AuthorityContext, BackendIdentity,
+    BundleAccepted, BundleRemoved, ProtocolError, TransportDirection, TransportFields,
+    TransportKind,
 };
 use serde_json::{json, Value};
 use zeroize::Zeroize;
@@ -129,6 +131,34 @@ fn run() -> Result<(), String> {
                 ..TransportFields::empty()
             },
             vec![],
+        ),
+        case(
+            TransportKind::BundleAccepted,
+            TransportFields {
+                correlation_nonce: 2,
+                result_shape: 0x1718_191a,
+                ..TransportFields::empty()
+            },
+            encode_bundle_accepted_payload(BundleAccepted {
+                bundle_handle: 0x2122_2324,
+                graph_handle: 0x2526_2728,
+                expiry_unix_us: 3_000_000,
+                bundle_digest: sequence::<32>(0xe0),
+            })
+            .to_vec(),
+        ),
+        case(
+            TransportKind::BundleRemoved,
+            TransportFields {
+                correlation_nonce: 3,
+                result_shape: 0x1718_191a,
+                ..TransportFields::empty()
+            },
+            encode_bundle_removed_payload(BundleRemoved {
+                bundle_handle: 0x2122_2324,
+                graph_handle: 0x2526_2728,
+            })
+            .to_vec(),
         ),
     ];
 
@@ -256,6 +286,7 @@ fn run() -> Result<(), String> {
             {"id": "single-result", "messages": ["result"]},
             {"id": "stream-result", "messages": ["stream-start", "stream-chunk", "stream-end"]},
             {"id": "cancel-request", "messages": ["cancel", "error"]},
+            {"id": "bundle-lifecycle", "messages": ["bundle-accepted", "bundle-removed"]},
         ],
     });
     println!(
@@ -308,6 +339,8 @@ fn kind_name(kind: TransportKind) -> &'static str {
         TransportKind::StreamStart => "stream-start",
         TransportKind::StreamChunk => "stream-chunk",
         TransportKind::StreamEnd => "stream-end",
+        TransportKind::BundleAccepted => "bundle-accepted",
+        TransportKind::BundleRemoved => "bundle-removed",
     }
 }
 

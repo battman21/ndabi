@@ -3,10 +3,13 @@
 //! The session retains one user role and one exact claims document until it closes.
 //! Do not return its connection to a generic pool or use transaction pooling.
 
-use ndabi_postgres_v1::{GraphSessionAdmission, ReviewBatchGraphBackend, ReviewBatchGraphProfile};
+use ndabi_postgres_v1::{
+    GraphSessionAdmission, ReviewBatchGraphBackend, ReviewBatchGraphProfile,
+    ReviewOperandBundleBackend, ReviewOperandBundleProfile,
+};
 use ndabi_protocol::{
-    BackendIdentity, BoundedOutput, ExecutionLimits, GraphBackend, GraphOperation, GraphRegistry,
-    ProtocolError,
+    BackendIdentity, BoundedOutput, BundledGraphBackend, BundledOperandContext, ExecutionLimits,
+    GraphBackend, GraphOperation, GraphRegistry, OperandValues, ProtocolError,
 };
 use postgres::Client;
 
@@ -14,6 +17,13 @@ use crate::AdmittedIdentity;
 
 pub struct UserReviewBatchGraphBackend {
     inner: ReviewBatchGraphBackend,
+    tenant: [u8; 16],
+    principal: [u8; 16],
+    maximum_deadline_unix_us: u64,
+}
+
+pub struct UserReviewOperandBundleBackend {
+    inner: ReviewOperandBundleBackend,
     tenant: [u8; 16],
     principal: [u8; 16],
     maximum_deadline_unix_us: u64,
@@ -48,6 +58,39 @@ impl UserReviewBatchGraphBackend {
     }
 }
 
+impl UserReviewOperandBundleBackend {
+    pub fn new_registered(
+        client: Client,
+        profile: ReviewOperandBundleProfile,
+        registry: &GraphRegistry,
+        user: &AdmittedIdentity,
+        maximum_statement_timeout_ms: u32,
+    ) -> Result<Self, ProtocolError> {
+        let admission = UserGraphAdmission { user };
+        let inner = ReviewOperandBundleBackend::new_registered_with_admission(
+            client,
+            profile,
+            registry,
+            maximum_statement_timeout_ms,
+            &admission,
+        )?;
+        Ok(Self {
+            inner,
+            tenant: user.tenant_id(),
+            principal: user.principal_id(),
+            maximum_deadline_unix_us: user.session_expires_unix_us(),
+        })
+    }
+
+    pub fn data_queries(&self) -> u64 {
+        self.inner.data_queries()
+    }
+
+    pub fn bundle_decodes(&self) -> u64 {
+        self.inner.bundle_decodes()
+    }
+}
+
 impl GraphBackend for UserReviewBatchGraphBackend {
     fn identity(&self) -> BackendIdentity {
         self.inner.identity()
@@ -74,6 +117,43 @@ impl GraphBackend for UserReviewBatchGraphBackend {
     ) -> Result<(), ProtocolError> {
         self.inner
             .execute_graph(operation, parameters, limits, output)
+    }
+}
+
+impl BundledGraphBackend for UserReviewOperandBundleBackend {
+    fn identity(&self) -> BackendIdentity {
+        self.inner.identity()
+    }
+
+    fn required_tenant(&self) -> Option<[u8; 16]> {
+        Some(self.tenant)
+    }
+
+    fn required_principal(&self) -> Option<[u8; 16]> {
+        Some(self.principal)
+    }
+
+    fn maximum_deadline_unix_us(&self) -> Option<u64> {
+        Some(self.maximum_deadline_unix_us)
+    }
+
+    fn execute_bundled_graph(
+        &mut self,
+        operation: GraphOperation,
+        bundle_context: BundledOperandContext,
+        bundle_values: OperandValues<'_>,
+        execution_values: OperandValues<'_>,
+        limits: ExecutionLimits,
+        output: &mut BoundedOutput,
+    ) -> Result<(), ProtocolError> {
+        self.inner.execute_bundled_graph(
+            operation,
+            bundle_context,
+            bundle_values,
+            execution_values,
+            limits,
+            output,
+        )
     }
 }
 

@@ -7,15 +7,19 @@ use std::collections::BTreeMap;
 use subtle::ConstantTimeEq;
 use zeroize::Zeroize;
 
+use super::operand_bundle::{authenticate_bundle_control, BundleControlKind};
 use super::{
-    authenticate_request, decode_transport, digest_receipt, encode_transport,
-    transport_frame_bytes, Authority, ProtocolError, TransportDirection, TransportFields,
-    TransportFrame, TransportKind, TRANSPORT_MIN_FRAME_BYTES,
+    authenticate_request, decode_bundle_accepted_payload, decode_bundle_removed_payload,
+    decode_transport, digest_receipt, encode_transport, transport_frame_bytes, Authority,
+    ProtocolError, TransportDirection, TransportFields, TransportFrame, TransportKind,
+    TRANSPORT_MIN_FRAME_BYTES,
 };
 
 pub const FEATURE_STREAMING: u32 = 0x0000_0001;
 pub const FEATURE_CANCELLATION: u32 = 0x0000_0002;
-pub const KNOWN_TRANSPORT_FEATURES: u32 = FEATURE_STREAMING | FEATURE_CANCELLATION;
+pub const FEATURE_OPERAND_BUNDLES: u32 = 0x0000_0004;
+pub const KNOWN_TRANSPORT_FEATURES: u32 =
+    FEATURE_STREAMING | FEATURE_CANCELLATION | FEATURE_OPERAND_BUNDLES;
 
 const VERSION_MAJOR: u16 = 2;
 const VERSION_MINOR: u16 = 0;
@@ -86,6 +90,21 @@ pub struct RegisteredRequest {
     pub row_budget: u32,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegisteredBundleControlKind {
+    Registration,
+    Removal,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RegisteredBundleControl {
+    pub kind: RegisteredBundleControlKind,
+    pub nonce: u64,
+    pub graph_handle: u32,
+    pub result_shape: u32,
+    pub bundle_handle: u32,
+}
+
 #[derive(Clone, Copy)]
 struct Offer {
     minimum_major: u16,
@@ -101,6 +120,14 @@ struct RequestRecord {
     result_budget: u32,
     row_budget: u32,
     state: RequestState,
+}
+
+struct BundleControlRecord {
+    kind: RegisteredBundleControlKind,
+    graph_handle: u32,
+    result_shape: u32,
+    bundle_handle: u32,
+    expiry_unix_us: Option<u64>,
 }
 
 enum RequestState {
@@ -124,6 +151,7 @@ pub struct TransportConnection {
     offer: Option<Offer>,
     negotiated: Option<NegotiatedTransport>,
     requests: BTreeMap<u64, RequestRecord>,
+    bundle_controls: BTreeMap<u64, BundleControlRecord>,
     last_registered_nonce: u64,
 }
 
@@ -137,6 +165,7 @@ impl TransportConnection {
             offer: None,
             negotiated: None,
             requests: BTreeMap::new(),
+            bundle_controls: BTreeMap::new(),
             last_registered_nonce: 0,
         }
     }
@@ -172,6 +201,51 @@ impl TransportConnection {
         Ok(registered)
     }
 
+    pub fn register_operand_bundle_control(
+        &mut self,
+        request_frame: &[u8],
+    ) -> Result<RegisteredBundleControl, ProtocolError> {
+        self.require_feature(FEATURE_OPERAND_BUNDLES)?;
+        let metadata = authenticate_bundle_control(&self.authority, request_frame)?;
+        let kind = match metadata.kind {
+            BundleControlKind::Registration => RegisteredBundleControlKind::Registration,
+            BundleControlKind::Removal => RegisteredBundleControlKind::Removal,
+        };
+        let registered = RegisteredBundleControl {
+            kind,
+            nonce: metadata.nonce,
+            graph_handle: metadata.graph_handle,
+            result_shape: metadata.result_shape,
+            bundle_handle: metadata.bundle_handle,
+        };
+        if request_frame.is_empty()
+            || registered.nonce == 0
+            || registered.nonce <= self.last_registered_nonce
+            || registered.graph_handle == 0
+            || registered.result_shape == 0
+            || registered.bundle_handle == 0
+        {
+            return Err(ProtocolError::NonCanonicalFrame);
+        }
+        if self.requests.len() + self.bundle_controls.len()
+            >= self.config.maximum_in_flight as usize
+        {
+            return Err(ProtocolError::RequestLimitExceeded);
+        }
+        self.bundle_controls.insert(
+            registered.nonce,
+            BundleControlRecord {
+                kind,
+                graph_handle: registered.graph_handle,
+                result_shape: registered.result_shape,
+                bundle_handle: registered.bundle_handle,
+                expiry_unix_us: metadata.expiry_unix_us,
+            },
+        );
+        self.last_registered_nonce = registered.nonce;
+        Ok(registered)
+    }
+
     fn register_request(
         &mut self,
         request_frame: &[u8],
@@ -189,7 +263,9 @@ impl TransportConnection {
         {
             return Err(ProtocolError::NonCanonicalFrame);
         }
-        if self.requests.len() >= self.config.maximum_in_flight as usize {
+        if self.requests.len() + self.bundle_controls.len()
+            >= self.config.maximum_in_flight as usize
+        {
             return Err(ProtocolError::RequestLimitExceeded);
         }
         self.requests.insert(
@@ -446,6 +522,14 @@ impl TransportConnection {
             | (TransportRole::Server, true, TransportKind::StreamEnd) => {
                 self.apply_stream_end(fields)
             }
+            (TransportRole::Client, false, TransportKind::BundleAccepted)
+            | (TransportRole::Server, true, TransportKind::BundleAccepted) => {
+                self.apply_bundle_accepted(fields, payload)
+            }
+            (TransportRole::Client, false, TransportKind::BundleRemoved)
+            | (TransportRole::Server, true, TransportKind::BundleRemoved) => {
+                self.apply_bundle_removed(fields, payload)
+            }
             _ => Err(ProtocolError::ConnectionState),
         }
     }
@@ -509,14 +593,65 @@ impl TransportConnection {
         if fields.correlation_nonce == 0 {
             return Err(ProtocolError::ConnectionState);
         }
-        let request = self
-            .requests
+        if let Some(request) = self.requests.get(&fields.correlation_nonce) {
+            if fields.error_code == 7 && !request.cancel_requested() {
+                return Err(ProtocolError::ConnectionState);
+            }
+            self.requests.remove(&fields.correlation_nonce);
+            return Ok(());
+        }
+        if self.bundle_controls.contains_key(&fields.correlation_nonce) {
+            if fields.error_code == 7 {
+                return Err(ProtocolError::ConnectionState);
+            }
+            self.bundle_controls.remove(&fields.correlation_nonce);
+            return Ok(());
+        }
+        Err(ProtocolError::UnknownCorrelation)
+    }
+
+    fn apply_bundle_accepted(
+        &mut self,
+        fields: TransportFields,
+        payload: &[u8],
+    ) -> Result<(), ProtocolError> {
+        self.require_feature(FEATURE_OPERAND_BUNDLES)?;
+        let control = self
+            .bundle_controls
             .get(&fields.correlation_nonce)
             .ok_or(ProtocolError::UnknownCorrelation)?;
-        if fields.error_code == 7 && !request.cancel_requested() {
-            return Err(ProtocolError::ConnectionState);
+        let accepted = decode_bundle_accepted_payload(payload)?;
+        if control.kind != RegisteredBundleControlKind::Registration
+            || fields.result_shape != control.result_shape
+            || accepted.graph_handle != control.graph_handle
+            || accepted.bundle_handle != control.bundle_handle
+            || Some(accepted.expiry_unix_us) != control.expiry_unix_us
+        {
+            return Err(ProtocolError::OutputShape);
         }
-        self.requests.remove(&fields.correlation_nonce);
+        self.bundle_controls.remove(&fields.correlation_nonce);
+        Ok(())
+    }
+
+    fn apply_bundle_removed(
+        &mut self,
+        fields: TransportFields,
+        payload: &[u8],
+    ) -> Result<(), ProtocolError> {
+        self.require_feature(FEATURE_OPERAND_BUNDLES)?;
+        let control = self
+            .bundle_controls
+            .get(&fields.correlation_nonce)
+            .ok_or(ProtocolError::UnknownCorrelation)?;
+        let removed = decode_bundle_removed_payload(payload)?;
+        if control.kind != RegisteredBundleControlKind::Removal
+            || fields.result_shape != control.result_shape
+            || removed.graph_handle != control.graph_handle
+            || removed.bundle_handle != control.bundle_handle
+        {
+            return Err(ProtocolError::OutputShape);
+        }
+        self.bundle_controls.remove(&fields.correlation_nonce);
         Ok(())
     }
 
@@ -690,7 +825,11 @@ fn get_u32(bytes: &[u8], offset: usize) -> Result<u32, ProtocolError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{digest_label, AuthorityContext, BackendIdentity};
+    use crate::{
+        digest_label, encode_bundle_accepted_payload, encode_bundle_removed_payload,
+        AuthorityContext, BackendIdentity, BundleAccepted, BundleRemoved, ClientSession,
+        GraphOperation, OperandLayout, OperandSlot, OperandStorage, OperandType, OperandValue,
+    };
 
     const NOW: u64 = 1_000_000;
     const MAXIMUM_FRAME_BYTES: u32 = 4096;
@@ -790,6 +929,38 @@ mod tests {
         assert_eq!(client_request, server_request);
         assert_eq!(client_request.nonce, nonce);
         assert_eq!(client_request.result_shape, 3);
+    }
+
+    fn bundle_layout() -> OperandLayout {
+        OperandLayout::new([OperandSlot::new(
+            1,
+            OperandStorage::Bundle,
+            OperandType::Bytes,
+            false,
+            32,
+        )
+        .expect("bundle slot")])
+        .expect("bundle layout")
+    }
+
+    fn register_bundle_control_pair(
+        client: &mut TransportConnection,
+        server: &mut TransportConnection,
+        frame: &[u8],
+        expected: RegisteredBundleControl,
+    ) {
+        assert_eq!(
+            client
+                .register_operand_bundle_control(frame)
+                .expect("client bundle control"),
+            expected
+        );
+        assert_eq!(
+            server
+                .register_operand_bundle_control(frame)
+                .expect("server bundle control"),
+            expected
+        );
     }
 
     #[test]
@@ -1046,5 +1217,208 @@ mod tests {
                 row_budget: 8,
             }
         );
+    }
+
+    #[test]
+    fn bundle_acknowledgements_require_feature_correlation_and_exact_identity() {
+        let (mut client, mut server) = pair(FEATURE_OPERAND_BUNDLES);
+        let operation = GraphOperation::new(11, 17, 13).expect("operation");
+        let mut encoder = ClientSession::new(authority());
+        let registration = encoder
+            .encode_operand_bundle_registration(
+                operation,
+                &bundle_layout(),
+                71,
+                1_500_000,
+                &[OperandValue {
+                    slot_id: 1,
+                    value: Some(b"static"),
+                }],
+            )
+            .expect("registration");
+        register_bundle_control_pair(
+            &mut client,
+            &mut server,
+            &registration,
+            RegisteredBundleControl {
+                kind: RegisteredBundleControlKind::Registration,
+                nonce: 1,
+                graph_handle: 17,
+                result_shape: 13,
+                bundle_handle: 71,
+            },
+        );
+
+        let accepted = BundleAccepted {
+            bundle_handle: 71,
+            graph_handle: 17,
+            expiry_unix_us: 1_500_000,
+            bundle_digest: [9; 32],
+        };
+        let mut refused = vec![0xa5; transport_frame_bytes(48).expect("length")];
+        assert_eq!(
+            server.encode(
+                TransportKind::BundleAccepted,
+                TransportFields {
+                    correlation_nonce: 1,
+                    result_shape: 13,
+                    ..TransportFields::empty()
+                },
+                &encode_bundle_accepted_payload(BundleAccepted {
+                    graph_handle: 19,
+                    ..accepted
+                }),
+                &mut refused,
+            ),
+            Err(ProtocolError::OutputShape)
+        );
+        assert!(refused.iter().all(|byte| *byte == 0));
+        refused.fill(0xa5);
+        assert_eq!(
+            server.encode(
+                TransportKind::BundleAccepted,
+                TransportFields {
+                    correlation_nonce: 1,
+                    result_shape: 13,
+                    ..TransportFields::empty()
+                },
+                &encode_bundle_accepted_payload(BundleAccepted {
+                    expiry_unix_us: 1_400_000,
+                    ..accepted
+                }),
+                &mut refused,
+            ),
+            Err(ProtocolError::OutputShape)
+        );
+        assert!(refused.iter().all(|byte| *byte == 0));
+
+        transfer(
+            &mut server,
+            &mut client,
+            TransportKind::BundleAccepted,
+            TransportFields {
+                correlation_nonce: 1,
+                result_shape: 13,
+                ..TransportFields::empty()
+            },
+            &encode_bundle_accepted_payload(accepted),
+        )
+        .expect("bundle accepted");
+
+        let removal = encoder
+            .encode_operand_bundle_removal(operation, 71, 1_500_000)
+            .expect("removal");
+        register_bundle_control_pair(
+            &mut client,
+            &mut server,
+            &removal,
+            RegisteredBundleControl {
+                kind: RegisteredBundleControlKind::Removal,
+                nonce: 2,
+                graph_handle: 17,
+                result_shape: 13,
+                bundle_handle: 71,
+            },
+        );
+        transfer(
+            &mut server,
+            &mut client,
+            TransportKind::BundleRemoved,
+            TransportFields {
+                correlation_nonce: 2,
+                result_shape: 13,
+                ..TransportFields::empty()
+            },
+            &encode_bundle_removed_payload(BundleRemoved {
+                bundle_handle: 71,
+                graph_handle: 17,
+            }),
+        )
+        .expect("bundle removed");
+
+        let mut replayed = vec![0; transport_frame_bytes(8).expect("length")];
+        encode_transport(
+            &authority(),
+            TransportDirection::ServerToClient,
+            TransportKind::BundleRemoved,
+            TransportFields {
+                correlation_nonce: 2,
+                result_shape: 13,
+                ..TransportFields::empty()
+            },
+            &encode_bundle_removed_payload(BundleRemoved {
+                bundle_handle: 71,
+                graph_handle: 17,
+            }),
+            &mut replayed,
+        )
+        .expect("replayed frame");
+        assert_eq!(
+            client.decode(&replayed, NOW),
+            Err(ProtocolError::UnknownCorrelation)
+        );
+    }
+
+    #[test]
+    fn bundle_controls_refuse_unnegotiated_features_and_cancellation_errors() {
+        let operation = GraphOperation::new(11, 17, 13).expect("operation");
+        let registration = ClientSession::new(authority())
+            .encode_operand_bundle_registration(
+                operation,
+                &bundle_layout(),
+                71,
+                1_500_000,
+                &[OperandValue {
+                    slot_id: 1,
+                    value: Some(b"static"),
+                }],
+            )
+            .expect("registration");
+        let (mut unsupported, _) = pair(0);
+        assert_eq!(
+            unsupported.register_operand_bundle_control(&registration),
+            Err(ProtocolError::FeatureNotNegotiated)
+        );
+
+        let (mut client, mut server) = pair(FEATURE_OPERAND_BUNDLES);
+        register_bundle_control_pair(
+            &mut client,
+            &mut server,
+            &registration,
+            RegisteredBundleControl {
+                kind: RegisteredBundleControlKind::Registration,
+                nonce: 1,
+                graph_handle: 17,
+                result_shape: 13,
+                bundle_handle: 71,
+            },
+        );
+        let mut refused = [0xa5; 160];
+        assert_eq!(
+            server.encode(
+                TransportKind::Error,
+                TransportFields {
+                    error_code: 7,
+                    correlation_nonce: 1,
+                    ..TransportFields::empty()
+                },
+                &[],
+                &mut refused,
+            ),
+            Err(ProtocolError::ConnectionState)
+        );
+        assert!(refused.iter().all(|byte| *byte == 0));
+        transfer(
+            &mut server,
+            &mut client,
+            TransportKind::Error,
+            TransportFields {
+                error_code: 12,
+                correlation_nonce: 1,
+                ..TransportFields::empty()
+            },
+            &[],
+        )
+        .expect("bundle refusal");
     }
 }

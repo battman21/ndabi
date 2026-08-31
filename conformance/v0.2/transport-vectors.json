@@ -69,6 +69,13 @@
         "cancel",
         "error"
       ]
+    },
+    {
+      "id": "bundle-lifecycle",
+      "messages": [
+        "bundle-accepted",
+        "bundle-removed"
+      ]
     }
   ],
   "status": "implemented transport candidate vectors",
@@ -208,6 +215,40 @@
       "id": "stream-end",
       "kind": 8,
       "payload_hex": ""
+    },
+    {
+      "decoded": {
+        "auxiliary": 0,
+        "correlation_nonce": "2",
+        "error_code": 0,
+        "execution_receipt_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+        "features": 0,
+        "result_shape": 387455258,
+        "rows": 0,
+        "sequence": 0
+      },
+      "direction": "server-to-client",
+      "frame_hex": "4e4442540200090000000000d00000001817161514131211080706050403020102000000000000000000000030000000000000001a191817000000000000000094254be1d2d8af05270f2bcd00d1f572eba8445e633d4c6ca006054a5d94a48800000000000000000000000000000000000000000000000000000000000000002423222128272625c0c62d0000000000e0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff51451a31c23e9f073ed2dc67b5642da6027e8e4aec91bfcc7070144fb07cdf91",
+      "id": "bundle-accepted",
+      "kind": 9,
+      "payload_hex": "2423222128272625c0c62d0000000000e0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"
+    },
+    {
+      "decoded": {
+        "auxiliary": 0,
+        "correlation_nonce": "3",
+        "error_code": 0,
+        "execution_receipt_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+        "features": 0,
+        "result_shape": 387455258,
+        "rows": 0,
+        "sequence": 0
+      },
+      "direction": "server-to-client",
+      "frame_hex": "4e44425402000a0000000000a80000001817161514131211080706050403020103000000000000000000000008000000000000001a191817000000000000000094254be1d2d8af05270f2bcd00d1f572eba8445e633d4c6ca006054a5d94a48800000000000000000000000000000000000000000000000000000000000000002423222128272625d3ff71898a0bafb54bab1da263fc624acdf4cd465c70ce95420c677ed04c989e",
+      "id": "bundle-removed",
+      "kind": 10,
+      "payload_hex": "2423222128272625"
     }
   ],
   "warning": "All keys and identities are public test material."

@@ -1,9 +1,9 @@
 use ndabi_postgres_v1::{
     digest_label, memory_replay_store, AuthorityContext, OperationBinding, ReviewBatchGraphBackend,
     ReviewBatchGraphProfile, ReviewBatchItem, ReviewGraphBackend, ReviewGraphProfile,
-    ServerSession, WireClientSession,
+    ReviewOperandBundleBackend, ReviewOperandBundleProfile, ServerSession, WireClientSession,
 };
-use ndabi_protocol::{Authority, ProtocolError};
+use ndabi_protocol::{Authority, OperandBundleStore, ProtocolError};
 use postgres::{Client, NoTls};
 
 const NOW: u64 = 1_000_000;
@@ -208,6 +208,157 @@ fn one_registered_graph_executes_one_read_only_postgresql_query() {
         )
         .is_err());
     assert_eq!(batch_backend.data_queries(), 1);
+
+    let bundle_profile = ReviewOperandBundleProfile::new(
+        REVIEW_BATCH_SQL,
+        OperationBinding::new(109, 113).expect("bundle binding"),
+    )
+    .expect("bundle profile");
+    let bundle_registry = bundle_profile
+        .graph_registry(
+            digest_label(b"schema", b"items-v1"),
+            digest_label(b"policy", b"read-only-v1"),
+        )
+        .expect("bundle registry");
+    let bundle_context = AuthorityContext::new(
+        [7; 16],
+        [8; 16],
+        127,
+        digest_label(b"capability", b"review-operand-bundle-v1"),
+        bundle_registry.identity(),
+    )
+    .expect("bundle context");
+    let bundle_authority =
+        Authority::new_read([9; 32], 131, 137, DEADLINE, bundle_context).expect("bundle authority");
+    let layout = bundle_profile.operand_layout().expect("bundle layout");
+    let (bundle, thresholds) = bundle_profile
+        .operands(&batch_items)
+        .expect("bundle operands");
+    let mut bundle_client = WireClientSession::new(bundle_authority.clone());
+    let registration = bundle_client
+        .encode_operand_bundle_registration(
+            bundle_profile.operation().expect("bundle operation"),
+            &layout,
+            139,
+            DEADLINE,
+            &bundle.operand_values(),
+        )
+        .expect("bundle registration");
+    let bundle_postgres = Client::connect(&reader_url, NoTls).expect("bundle reader connection");
+    let mut bundle_backend = ReviewOperandBundleBackend::new_registered(
+        bundle_postgres,
+        bundle_profile,
+        &bundle_registry,
+        5_000,
+    )
+    .expect("bundle backend");
+    let bundle_server = ServerSession::new(bundle_authority.clone(), batch_result_budget, 4)
+        .expect("bundle server");
+    let mut bundle_store =
+        OperandBundleStore::new(&bundle_authority, 4, 65_536, 32_768).expect("bundle store");
+    let mut bundle_replay = memory_replay_store();
+    let accepted = bundle_server
+        .register_operand_bundle(
+            &registration,
+            &bundle_registry,
+            &layout,
+            &mut bundle_store,
+            &mut bundle_replay,
+            &FixedClock,
+        )
+        .expect("accepted bundle");
+    let bundle_frame = bundle_client
+        .encode_bundled_graph(
+            bundle_profile.operation().expect("bundle operation"),
+            &layout,
+            accepted.bundle_handle,
+            &thresholds.operand_values(),
+            batch_result_budget,
+            4,
+            DEADLINE,
+        )
+        .expect("bundle execution frame");
+    let bundle_execution = bundle_server
+        .execute_bundled_graph(
+            &bundle_frame,
+            &bundle_registry,
+            &layout,
+            &mut bundle_store,
+            &mut bundle_backend,
+            &mut bundle_replay,
+            &FixedClock,
+        )
+        .expect("bundle execution");
+    assert_eq!(bundle_execution.bytes, batch_execution.bytes);
+    assert_eq!(
+        decode_batch_result(&bundle_execution.bytes),
+        [(1, 60, 4_770), (2, 25, 5_925), (3, 0, 0), (4, 10, 10_045),]
+    );
+    bundle_client
+        .verify_bundled_execution_receipt(
+            &bundle_frame,
+            accepted.bundle_digest,
+            layout.digest(),
+            bundle_execution.rows,
+            &bundle_execution.bytes,
+            &bundle_execution.receipt,
+        )
+        .expect("bundle receipt");
+
+    let changed_thresholds = bundle_profile
+        .thresholds(&[0, 0, 0, 0])
+        .expect("changed thresholds");
+    let changed_frame = bundle_client
+        .encode_bundled_graph(
+            bundle_profile.operation().expect("bundle operation"),
+            &layout,
+            accepted.bundle_handle,
+            &changed_thresholds.operand_values(),
+            batch_result_budget,
+            4,
+            DEADLINE,
+        )
+        .expect("changed execution frame");
+    let changed_execution = bundle_server
+        .execute_bundled_graph(
+            &changed_frame,
+            &bundle_registry,
+            &layout,
+            &mut bundle_store,
+            &mut bundle_backend,
+            &mut bundle_replay,
+            &FixedClock,
+        )
+        .expect("changed execution");
+    assert_eq!(
+        decode_batch_result(&changed_execution.bytes),
+        [
+            (1, 100, 5_950),
+            (2, 50, 11_225),
+            (3, 25, 12_800),
+            (4, 10, 10_045),
+        ]
+    );
+    assert_eq!(bundle_backend.data_queries(), 2);
+    assert_eq!(bundle_backend.bundle_decodes(), 1);
+
+    let removal = bundle_client
+        .encode_operand_bundle_removal(
+            bundle_profile.operation().expect("bundle operation"),
+            accepted.bundle_handle,
+            DEADLINE,
+        )
+        .expect("bundle removal");
+    bundle_server
+        .remove_operand_bundle(
+            &removal,
+            &bundle_registry,
+            &mut bundle_store,
+            &mut bundle_replay,
+            &FixedClock,
+        )
+        .expect("removed bundle");
+    assert!(bundle_store.is_empty());
 }
 
 fn decode_batch_result(bytes: &[u8]) -> Vec<(u32, u32, i64)> {

@@ -1327,6 +1327,7 @@ dependencies = [
  "mongodb",
  "ndabi-protocol",
  "serde",
+ "zeroize",
 ]
 
 [[package]]
@@ -1346,6 +1347,7 @@ dependencies = [
  "libc",
  "ndabi-protocol",
  "postgres",
+ "zeroize",
 ]
 
 [[package]]

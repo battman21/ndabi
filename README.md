@@ -22,11 +22,19 @@ Do not mirror NDABI source or specifications into consumer repositories.
 The repository contains an implemented research candidate, not a production standard.
 The implemented v0.1 profile supports authenticated single reads and homogeneous read batches.
 The graph extension executes one registered read graph from one handle and typed parameter block.
+The operand-bundle core implements canonical layouts, session-bound frames, immutable storage, and operand-bound receipts.
+The transport negotiates operand-bundle support and correlates authenticated registration and removal acknowledgements.
+A PostgreSQL bundle profile and Supabase RLS wrapper pass focused Docker integration tests.
+The complete local Supabase stack passes Auth health, forced RLS, exact results, and receipt checks.
+The MongoDB bundle adapter passes a real Docker execution with one retained static decode.
+The White Tree bundle adapter remains a consumer integration.
 The v0.2 transport adds negotiation, results, errors, cancellation, and streaming controls.
 The sealed registry binds handles to reviewed implementations, schemas, policies, capabilities, and budgets.
 The PostgreSQL adapter executes registered single and heterogeneous batch read graphs.
 The Supabase adapter executes the batch graph through one admitted forced-RLS user session.
-MongoDB and White Tree do not execute registered graphs yet.
+Both adapters support one registered bundle graph with immutable ranges and dynamic thresholds.
+MongoDB executes one registered identifier-set bundle with a changing score threshold.
+White Tree does not execute registered operand bundles yet.
 
 The reusable workspace contains these main components:
 
@@ -41,6 +49,8 @@ The reusable workspace contains these main components:
 Refer to [`specs/ndabi_rfc_candidate_v0_1.md`](specs/ndabi_rfc_candidate_v0_1.md) for the candidate wire contract.
 Refer to [`specs/ndabi_plan_registry_candidate_v0_1.md`](specs/ndabi_plan_registry_candidate_v0_1.md) for the registry contract.
 Refer to [`specs/ndabi_registered_graph_candidate_v0_1.md`](specs/ndabi_registered_graph_candidate_v0_1.md) for the graph extension.
+Refer to [`specs/ndabi_operand_bundle_candidate_v0_1.md`](specs/ndabi_operand_bundle_candidate_v0_1.md) for the designed operand-reuse extension.
+Refer to [`specs/ndabi_operand_bundle_campaign_v0_1.md`](specs/ndabi_operand_bundle_campaign_v0_1.md) for the frozen comparative campaign.
 Refer to [`specs/ndabi_semantic_batch_diagnostic_v0_1.md`](specs/ndabi_semantic_batch_diagnostic_v0_1.md) for the complete diagnostic limits.
 Refer to [`specs/ndabi_semantic_batch_campaign_v0_2.md`](specs/ndabi_semantic_batch_campaign_v0_2.md) for the frozen qualification gates.
 
@@ -49,6 +59,17 @@ Run the repository-contained campaign smoke with this command:
 ```sh
 python3 campaigns/semantic_batch_v02.py --smoke
 ```
+
+Run the operand-bundle campaign smoke with this command:
+
+```sh
+python3 campaigns/operand_bundle_v01.py --smoke
+```
+
+The latest non-formal bundle smoke reduced 1,024-item requests by 74.23%.
+Bundle p95 was 0.47% slower than fused native and 1.39% faster than registered graph execution.
+Bundle client CPU was 7.26% lower than graph execution, but allocated bytes were equal.
+The formal campaign remains unaccepted because the host was not quiet and two efficiency gates failed.
 
 The runner creates a pinned one-million-row PostgreSQL fixture and controlled Toxiproxy connection.
 It coordinates isolated arms and captures raw latency, client CPU, container CPU, RSS, allocations, source hashes, and binary hashes.

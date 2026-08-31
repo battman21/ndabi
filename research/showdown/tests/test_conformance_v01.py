@@ -71,7 +71,18 @@ class ConformanceVectorTests(unittest.TestCase):
         self.assertEqual(manifest["schema"], "ndabi-transport-conformance-v0.2")
         self.assertEqual(
             [vector["id"] for vector in manifest["valid"]],
-            ["hello", "accept", "result", "error", "cancel", "stream-start", "stream-chunk", "stream-end"],
+            [
+                "hello",
+                "accept",
+                "result",
+                "error",
+                "cancel",
+                "stream-start",
+                "stream-chunk",
+                "stream-end",
+                "bundle-accepted",
+                "bundle-removed",
+            ],
         )
         self.assertEqual(len(manifest["invalid"]), 6)
         self.assertEqual(manifest["invalid"][-1]["id"], "result-reflected-direction")

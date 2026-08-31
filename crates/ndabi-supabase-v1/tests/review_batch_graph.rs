@@ -3,10 +3,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use ndabi_postgres_v1::{
     digest_label, memory_replay_store, OperationBinding, ReviewBatchGraphProfile, ReviewBatchItem,
-    ServerSession, WireClientSession,
+    ReviewOperandBundleProfile, ServerSession, WireClientSession,
 };
-use ndabi_protocol::{Authority, AuthorityContext, Clock, ProtocolError};
-use ndabi_supabase_v1::{JwtVerifier, UserReviewBatchGraphBackend};
+use ndabi_protocol::{Authority, AuthorityContext, Clock, OperandBundleStore, ProtocolError};
+use ndabi_supabase_v1::{JwtVerifier, UserReviewBatchGraphBackend, UserReviewOperandBundleBackend};
 use p256::pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
 use p256::SecretKey;
 use postgres::{Client, NoTls};
@@ -165,6 +165,108 @@ fn one_registered_graph_preserves_supabase_rls_and_exact_receipts() {
         .execute_graph(&frame, &mut backend, &mut replay, &FixedClock(now))
         .is_err());
     assert_eq!(backend.data_queries(), 1);
+
+    let bundle_profile = ReviewOperandBundleProfile::new(
+        REVIEW_BATCH_SQL,
+        OperationBinding::new(197, 199).expect("bundle binding"),
+    )
+    .expect("bundle profile");
+    let bundle_registry = bundle_profile
+        .graph_registry(
+            digest_label(b"schema", b"supabase-items-v1"),
+            digest_label(
+                b"policy",
+                b"forced-rls:owner_sub=request.jwt.claims.sub;authenticated;read-only",
+            ),
+        )
+        .expect("bundle registry");
+    let bundle_context = AuthorityContext::new(
+        user.tenant_id(),
+        user.principal_id(),
+        211,
+        digest_label(b"capability", b"supabase-review-operand-bundle-v1"),
+        bundle_registry.identity(),
+    )
+    .expect("bundle context");
+    let bundle_authority = Authority::new_read([31; 32], 223, 227, deadline, bundle_context)
+        .expect("bundle authority");
+    let layout = bundle_profile.operand_layout().expect("bundle layout");
+    let (bundle, thresholds) = bundle_profile.operands(&items).expect("bundle operands");
+    let mut bundle_client = WireClientSession::new(bundle_authority.clone());
+    let registration = bundle_client
+        .encode_operand_bundle_registration(
+            bundle_profile.operation().expect("bundle operation"),
+            &layout,
+            229,
+            deadline,
+            &bundle.operand_values(),
+        )
+        .expect("bundle registration");
+    let bundle_postgres = Client::connect(&database_url, NoTls).expect("bundle connection");
+    let mut bundle_backend = UserReviewOperandBundleBackend::new_registered(
+        bundle_postgres,
+        bundle_profile,
+        &bundle_registry,
+        &user,
+        5_000,
+    )
+    .expect("user bundle backend");
+    let bundle_result_budget =
+        ReviewOperandBundleProfile::maximum_result_bytes(4).expect("bundle result budget");
+    let bundle_server = ServerSession::new(bundle_authority.clone(), bundle_result_budget, 4)
+        .expect("bundle server");
+    let mut bundle_store =
+        OperandBundleStore::new(&bundle_authority, 4, 65_536, 32_768).expect("bundle store");
+    let mut bundle_replay = memory_replay_store();
+    let accepted = bundle_server
+        .register_operand_bundle(
+            &registration,
+            &bundle_registry,
+            &layout,
+            &mut bundle_store,
+            &mut bundle_replay,
+            &FixedClock(now),
+        )
+        .expect("accepted bundle");
+    let bundle_frame = bundle_client
+        .encode_bundled_graph(
+            bundle_profile.operation().expect("bundle operation"),
+            &layout,
+            accepted.bundle_handle,
+            &thresholds.operand_values(),
+            bundle_result_budget,
+            4,
+            deadline,
+        )
+        .expect("bundle frame");
+    let bundle_execution = bundle_server
+        .execute_bundled_graph(
+            &bundle_frame,
+            &bundle_registry,
+            &layout,
+            &mut bundle_store,
+            &mut bundle_backend,
+            &mut bundle_replay,
+            &FixedClock(now),
+        )
+        .expect("bundle execution");
+    assert_eq!(bundle_execution.bytes, execution.bytes);
+    assert_eq!(
+        decode_result(&bundle_execution.bytes),
+        [(1, 30, 2_370), (2, 12, 2_844), (3, 0, 0), (4, 5, 5_020),]
+    );
+    bundle_client
+        .verify_bundled_execution_receipt(
+            &bundle_frame,
+            accepted.bundle_digest,
+            layout.digest(),
+            bundle_execution.rows,
+            &bundle_execution.bytes,
+            &bundle_execution.receipt,
+        )
+        .expect("bundle receipt");
+    assert_eq!(bundle_backend.data_queries(), 1);
+    assert_eq!(bundle_backend.bundle_decodes(), 1);
 }
 
 fn prepare_fixture(database_url: &str) {
@@ -175,11 +277,10 @@ fn prepare_fixture(database_url: &str) {
              DO $block$
              BEGIN
                  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='authenticated') THEN
-                     CREATE ROLE authenticated NOLOGIN;
+                     CREATE ROLE authenticated NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
                  END IF;
              END
              $block$;
-             ALTER ROLE authenticated NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
              CREATE TABLE supabase_items(
                  id bigint PRIMARY KEY,
                  score integer NOT NULL,
