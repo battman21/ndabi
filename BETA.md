@@ -19,7 +19,7 @@ It must not claim arbitrary query support or production key custody.
 | CPU | complete CPU and floor-adjusted protocol CPU pass v0.2 | one old smoke passes corrected mathematics |
 | memory | bundle allocations do not exceed graph allocations | one smoke measured equal allocations |
 | repeatability | five repetitions remain below 10% variation at every frozen cell | not executed |
-| security | an independent review closes critical and high findings | not started |
+| security | an independent review closes critical and high findings | review package ready; independent review not started |
 | remote transport | authenticated TLS, cancellation, and failure behaviour pass a controlled network campaign | reusable TLS and external-signer paths pass focused tests; controlled campaign remains open |
 | release custody | signed source tag, reproducible artefact digest, installation guide, and rollback guide exist | deterministic source-bundle tool and operator guide implemented; signed beta tag remains open |
 
