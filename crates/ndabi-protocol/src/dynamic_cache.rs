@@ -212,6 +212,33 @@ impl ClientSession {
         self.next_nonce = next_nonce;
         Ok(frame)
     }
+
+    /// Verify a cached receipt with the authenticated tag as its request binding.
+    pub fn verify_cached_dynamic_receipt(
+        &self,
+        frame: &[u8],
+        rows: u32,
+        bytes: &[u8],
+        candidate: &[u8; 32],
+    ) -> Result<(), ProtocolError> {
+        if frame.len() < CACHED_BASE_BYTES {
+            return Err(ProtocolError::LengthMismatch);
+        }
+        let tag_offset = frame.len() - TAG_BYTES;
+        let mut request_binding = [0_u8; TAG_BYTES];
+        request_binding.copy_from_slice(&frame[tag_offset..]);
+        let expected = receipt(
+            &self.authority,
+            request_binding,
+            get_u64(frame, 32),
+            rows,
+            bytes,
+        );
+        if expected.ct_eq(candidate).unwrap_u8() != 1 {
+            return Err(ProtocolError::ReceiptMismatch);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -389,6 +416,7 @@ struct AuthenticatedCachedExecution<'a> {
     row_budget: u32,
     handle: u32,
     operands: &'a [u8],
+    request_binding: [u8; TAG_BYTES],
 }
 
 impl ServerSession {
@@ -498,7 +526,7 @@ impl ServerSession {
         replay.commit(self.authority.replay_key(), previous_nonce, request.nonce)?;
         let receipt = receipt(
             &self.authority,
-            *blake3::hash(frame).as_bytes(),
+            request.request_binding,
             request.nonce,
             output.rows,
             &output.bytes,
@@ -584,6 +612,8 @@ fn authenticate_cached_execution<'a>(
     if get_u64(frame, 16) != authority.session || get_u64(frame, 24) != authority.generation {
         return Err(ProtocolError::AuthorityMismatch);
     }
+    let mut request_binding = [0_u8; TAG_BYTES];
+    request_binding.copy_from_slice(&frame[tag_offset..]);
     Ok(AuthenticatedCachedExecution {
         nonce: get_u64(frame, 32),
         deadline_unix_us: get_u64(frame, 40),
@@ -591,6 +621,7 @@ fn authenticate_cached_execution<'a>(
         row_budget: get_u32(frame, 52),
         handle: get_u32(frame, 56),
         operands: &frame[CACHED_HEADER_BYTES..tag_offset],
+        request_binding,
     })
 }
 
@@ -804,13 +835,25 @@ mod tests {
         assert_eq!(execution.bytes, 17_i64.to_le_bytes());
         assert_eq!(execution.rows, 1);
         client
-            .verify_execution_receipt(
+            .verify_cached_dynamic_receipt(
                 &cached,
                 execution.rows,
                 &execution.bytes,
                 &execution.receipt,
             )
             .expect("execution receipt");
+        let mut changed_binding = cached.clone();
+        let last = changed_binding.len() - 1;
+        changed_binding[last] ^= 1;
+        assert_eq!(
+            client.verify_cached_dynamic_receipt(
+                &changed_binding,
+                execution.rows,
+                &execution.bytes,
+                &execution.receipt,
+            ),
+            Err(ProtocolError::ReceiptMismatch)
+        );
         assert_eq!(backend.calls.get(), 1);
         assert_eq!(store.len(), 1);
     }

@@ -201,7 +201,7 @@ fn an_unregistered_dynamic_program_matches_native_postgresql() {
     assert_eq!(cached.bytes, native_result(&native_rows, verified.digest()));
     assert_eq!(cached.rows, native_rows.len() as u32);
     client_session
-        .verify_execution_receipt(&cached_frame, cached.rows, &cached.bytes, &cached.receipt)
+        .verify_cached_dynamic_receipt(&cached_frame, cached.rows, &cached.bytes, &cached.receipt)
         .expect("cached receipt");
 
     let frame = client_session

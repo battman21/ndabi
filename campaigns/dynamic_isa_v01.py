@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from semantic_batch_v02 import (
+    CampaignError as FixtureCampaignError,
     DockerFixture,
     PINNED_POSTGRES,
     PINNED_TOXIPROXY,
@@ -52,6 +53,7 @@ SOURCE_CLOSURE = (
     ROOT / "crates" / "ndabi-postgres" / "examples" / f"{EXAMPLE}.rs",
     ROOT / "campaigns" / "semantic_batch_v02.py",
     Path(__file__).resolve(),
+    ROOT / "specs" / "ndabi_dynamic_isa_candidate_v0_1.md",
     SPECIFICATION,
 )
 
@@ -367,6 +369,11 @@ def parse_arguments() -> argparse.Namespace:
 if __name__ == "__main__":
     try:
         print(json.dumps(run_campaign(parse_arguments().smoke), sort_keys=True))
-    except (CampaignError, OSError, subprocess.SubprocessError) as error:
+    except (
+        CampaignError,
+        FixtureCampaignError,
+        OSError,
+        subprocess.SubprocessError,
+    ) as error:
         print(str(error), file=sys.stderr)
         raise SystemExit(1) from error

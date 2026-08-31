@@ -597,7 +597,7 @@ fn measure_cached(
             &mut replay,
             &SystemClock,
         )?;
-        client.verify_execution_receipt(
+        client.verify_cached_dynamic_receipt(
             frame,
             execution.rows,
             &execution.bytes,
