@@ -1,0 +1,127 @@
+{
+  "accepted": false,
+  "build": {
+    "path": "/Users/obatt/Dev/vs/ndabi/target/campaign-binaries/20260831T233316Z-1788219196569540000/dynamic_rls_probe",
+    "sha256": "9f68c6b2ca33cb147dfcd81b292465581d22bfd2510679235a2b8a051c9171da"
+  },
+  "campaign_id": "20260831T233316Z-1788219196569540000",
+  "images": {
+    "ids": {
+      "postgres": "sha256:eb9fe6b5815523ffa3e3d8aee9db3532bd564b857634fcfa36979d76bed6ae10",
+      "toxiproxy": "sha256:b0e75e62fcf0abd5c8aea482fd4aa00ff5052fd24d8d0b4103c94668a95b8c99"
+    },
+    "references": {
+      "postgres": "postgres@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20",
+      "toxiproxy": "ghcr.io/shopify/toxiproxy:2.12.0@sha256:5ab4b4e8f476fd5452eb9584a608dd7cf8c11135878a8f7953722a9fcb9b3d87"
+    }
+  },
+  "mode": "smoke",
+  "reports": [
+    {
+      "accepted": true,
+      "gates": {
+        "complete_refusals": true,
+        "exact_user_a": true,
+        "exact_user_b": true,
+        "separate_results": true
+      },
+      "probes": [
+        {
+          "cached_request_bytes": 108,
+          "exact_results": true,
+          "full_request_bytes": 396,
+          "mutation_refused": true,
+          "prepared_programs": 1,
+          "principal_refused": true,
+          "receipt_verified": true,
+          "replay_refused": true,
+          "request_reduction_percent": 72.72727272727273,
+          "result_digest": "b18cab805ab35fce00545b590c875772abac9cbd5820afbe9c808a0965ba31d3",
+          "rls_isolated": true,
+          "row_count": 4,
+          "rows": [
+            [
+              2,
+              "user-a"
+            ],
+            [
+              4,
+              "user-a"
+            ],
+            [
+              6,
+              "user-a"
+            ],
+            [
+              8,
+              "user-a"
+            ]
+          ],
+          "schema": "ndabi-dynamic-supabase-rls-probe-v0.1",
+          "subject": "user-a"
+        },
+        {
+          "cached_request_bytes": 108,
+          "exact_results": true,
+          "full_request_bytes": 396,
+          "mutation_refused": true,
+          "prepared_programs": 1,
+          "principal_refused": true,
+          "receipt_verified": true,
+          "replay_refused": true,
+          "request_reduction_percent": 72.72727272727273,
+          "result_digest": "5d326782b25ae401b50d7e4efd618cc192108a2ebb1ae62e7468a4e4cd1cbef6",
+          "rls_isolated": true,
+          "row_count": 4,
+          "rows": [
+            [
+              1,
+              "user-b"
+            ],
+            [
+              3,
+              "user-b"
+            ],
+            [
+              5,
+              "user-b"
+            ],
+            [
+              7,
+              "user-b"
+            ]
+          ],
+          "schema": "ndabi-dynamic-supabase-rls-probe-v0.1",
+          "subject": "user-b"
+        }
+      ],
+      "repetition": 1
+    }
+  ],
+  "schema": "ndabi-dynamic-supabase-rls-campaign-v0.1",
+  "source": {
+    "files": {
+      "Cargo.lock": "bfcdd4c83b010312ec3e5b4450a176c5541bf8865a87442a5d9c038fff8fe5bf",
+      "Cargo.toml": "b56b91a90e3013a91fe8ba69cc9586e4ba870f534fba61c09721140ff89db25f",
+      "campaigns/dynamic_supabase_rls_v01.py": "2cc3490dc01131524677996791a18c740e2f9e00ca69348cde0a8348e0ed0ccf",
+      "campaigns/semantic_batch_v02.py": "6624ea080087a363e28be9dccde0d4ba4827980d300b13448f5250f9df3b8ab9",
+      "crates/ndabi-isa/Cargo.toml": "463e37d01576ec6b475104ba7741dd0c5edc6864268e4864d3f238c73bbec8de",
+      "crates/ndabi-isa/src/lib.rs": "399ae790bb5e418446bffbf8f1b46a41e396ab65e2d2f4a476369ecbef69c1bb",
+      "crates/ndabi-postgres/Cargo.toml": "6b3e8399411cc5a8e6ebf2cd5467867bafca45314a619d7e4ec1bc226b2ba3c2",
+      "crates/ndabi-postgres/src/isa.rs": "9d2cb884e3a79a8cc17bf3841b62d9e53039331a90ff7de6976ff7a523f36acd",
+      "crates/ndabi-protocol/Cargo.toml": "dc1ac6111200d7a4a407b39abb960b2eb47a971197e0675357f13d94f6aa72fa",
+      "crates/ndabi-protocol/src/dynamic.rs": "ac6d4fcea5f6c7eb6c75a36b5ab2d3137ee89fff5fb4f76baa9bcd39460844b2",
+      "crates/ndabi-protocol/src/dynamic_cache.rs": "296b4e3f91fa91184f62e0a6d8ffa6b862fd2c9388b2027b6bb08e45eb72d89d",
+      "crates/ndabi-protocol/src/lib.rs": "0b726ae7f25e1388c5c89777f0d53f29ffda2ce6a09b359427198b02028a1629",
+      "crates/ndabi-supabase-v1/Cargo.toml": "b9ee2b26ac3d63c7b23523dc36a1a8c87fac9253c9d0e89504fd7aa5fb870fb1",
+      "crates/ndabi-supabase-v1/examples/dynamic_rls_probe.rs": "362dd24a868c6c8d3aac1d38d7523d4b80132f66512bcdefc015b5a0bf1ba1c3",
+      "crates/ndabi-supabase-v1/src/dynamic_isa.rs": "ea59547b4c85563a49d2f94a22478ea090bfb914c720bd6373d6404a555d5d63",
+      "crates/ndabi-supabase-v1/src/lib.rs": "bf72a08dd8e37a8628df64bba4e4ba606a62958d84f01fad552f330f0021ef6e",
+      "crates/ndabi-supabase-v1/src/postgres_graph.rs": "4abf3fb5f50cbdcdb59d96d39eea354d440823cb5388e83c45831f20da075959",
+      "rust-toolchain.toml": "1d76a06616a42a984bad672eeb24ca39a0496e95a8b624e21df0d420d1557734",
+      "specs/ndabi_dynamic_isa_candidate_v0_1.md": "7ab7533a40c1b2e1d45517a7f073b7e66e18a60ce433a36b580faaf0e21539b8",
+      "specs/ndabi_dynamic_supabase_rls_campaign_v0_1.md": "e3c21c1e2c1074316766b7a10300f1a0219a0812698b83cc9dfb78efb6b479fc"
+    },
+    "sha256": "0db8b6c614a5d5dcb6941b86f732473f89472fe585b5394e56afe7c161223e99"
+  }
+}

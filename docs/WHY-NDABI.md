@@ -55,6 +55,7 @@ NDABI removes avoidable application and network repetition around that work.
 | Supavisor query reduction | 93.75% | Sixteen operations become one query |
 | Supavisor application-frame reduction | At least 94.39% | Not measured TCP or TLS bytes |
 | Dynamic cached frame | 72.48% below the full frame | Deterministic wire measurement only |
+| Dynamic Supabase-compatible RLS smoke | 72.73% below the full frame | Local Docker correctness, not performance |
 
 The large speed-ups come mainly from collapsing repeated work into one database operation.
 Binary encoding makes that operation compact, deterministic, authenticated, and reusable.
@@ -70,6 +71,7 @@ Refer to the following formal evidence:
 - [`../research/showdown/results/v76/README.md`](../research/showdown/results/v76/README.md) for the Supavisor concurrency campaign.
 - [`../specs/ndabi_dynamic_isa_candidate_v0_1.md`](../specs/ndabi_dynamic_isa_candidate_v0_1.md) for the dynamic frame contract.
 - [`../specs/ndabi_dynamic_postgres_campaign_v0_1.md`](../specs/ndabi_dynamic_postgres_campaign_v0_1.md) for the frozen dynamic campaign.
+- [`../specs/ndabi_dynamic_supabase_rls_campaign_v0_1.md`](../specs/ndabi_dynamic_supabase_rls_campaign_v0_1.md) for the two-user RLS campaign.
 
 ## Strong use cases
 

@@ -26,6 +26,7 @@ The protocol authenticates complete dynamic programs and operands before it veri
 The PostgreSQL executor resolves identifiers through a trusted numeric catalogue and returns canonical binary results with exact receipts.
 One focused Docker test proves an unregistered filter, projection, sort, and limit program against native PostgreSQL results.
 One focused Docker test proves compact dynamic execution through an admitted Supabase JWT session and forced row-level security.
+One repository-contained smoke proves distinct exact results for two admitted users through the same dynamic numeric program.
 Repeated full programs reuse one bounded prepared-statement cache entry.
 An authenticated promotion receipt converts a verified program into an authority-scoped compact handle.
 Later requests send the handle and compact changing operands without resending the program or duplicated metadata.
@@ -100,6 +101,15 @@ cargo run --release -p ndabi-postgres --example dynamic_isa_smoke
 
 This diagnostic measures verification, PostgreSQL lowering, and cached lookup separately.
 It does not measure database execution or complete workflow performance.
+
+Run the dynamic Supabase-compatible RLS smoke with this command:
+
+```sh
+python3 campaigns/dynamic_supabase_rls_v01.py --smoke
+```
+
+The smoke uses a non-superuser authenticator, forced RLS, two JWT subjects, exact receipts, and refusal checks.
+It proves a local Supabase-compatible database boundary, not the complete Supabase platform or performance.
 
 The latest non-formal bundle smoke reduced 1,024-item requests by 74.23%.
 Bundle p95 was 0.47% slower than fused native and 1.39% faster than registered graph execution.
