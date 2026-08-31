@@ -1,0 +1,53 @@
+{
+  "schema": "ndabi-transport-state-conformance-v0.2",
+  "cases": [
+    {
+      "id": "base-negotiation",
+      "features": 0,
+      "action": "negotiate",
+      "expected": "Accepted"
+    },
+    {
+      "id": "all-feature-negotiation",
+      "features": 7,
+      "action": "negotiate",
+      "expected": "Accepted"
+    },
+    {
+      "id": "accept-feature-escalation",
+      "features": 1,
+      "action": "accept-feature-escalation",
+      "expected": "ConnectionState"
+    },
+    {
+      "id": "result-before-registration",
+      "features": 0,
+      "action": "result-before-registration",
+      "expected": "UnknownCorrelation"
+    },
+    {
+      "id": "cancel-feature-disabled",
+      "features": 0,
+      "action": "cancel-feature-disabled",
+      "expected": "FeatureNotNegotiated"
+    },
+    {
+      "id": "bundle-acknowledgement-before-control",
+      "features": 4,
+      "action": "bundle-before-control",
+      "expected": "UnknownCorrelation"
+    },
+    {
+      "id": "result-in-client-direction",
+      "features": 0,
+      "action": "result-wrong-direction",
+      "expected": "ConnectionState"
+    },
+    {
+      "id": "hello-after-ready",
+      "features": 0,
+      "action": "hello-after-ready",
+      "expected": "ConnectionState"
+    }
+  ]
+}

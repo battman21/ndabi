@@ -244,12 +244,13 @@ Its request registration accepts only authenticated `Pending` values from the Go
 The independent TypeScript sequence enforces the same paths and accepts only verifier-issued pending requests.
 Both independent bundle-control decoders authenticate registration and removal through shared v0.1 vectors.
 Their state machines bind decoder-issued metadata to the same authority session and context.
+Both independent state machines pass the shared v0.2 negotiation and state-refusal vectors.
 The v6.4 local Docker campaign connected complete results to the canonical PostgreSQL adapter.
 The v8.4 candidate connected separate client and server processes through TLS 1.3 mutual authentication.
 Its exact results, receipts, trust refusals, and same-CA certificate rotation passed in one diagnostic run.
 The host-qualified performance result failed and retained no source or binary digest.
 Treat every v8.4 transport measurement as unattributed diagnostics.
-Shared state-sequence vectors remain the next portable conformance gate.
+The portable codec and state conformance gate is implemented.
 
 ## 13. Security boundaries
 

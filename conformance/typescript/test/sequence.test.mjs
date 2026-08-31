@@ -11,6 +11,7 @@ import {
 } from "../dist/sequence.js";
 
 const manifest = JSON.parse(readFileSync(new URL("../../v0.1/vectors.json", import.meta.url), "utf8"));
+const stateManifest = JSON.parse(readFileSync(new URL("../../v0.2/state-vectors.json", import.meta.url), "utf8"));
 const authority = {
   rootKey: fromHex(manifest.authority.root_key_hex),
   generation: BigInt(manifest.authority.generation),
@@ -151,6 +152,19 @@ test("the TypeScript sequence refuses changed decoder-issued bundle controls", (
   );
 });
 
+test("the TypeScript sequence passes every shared state vector", async (suite) => {
+  assert.equal(stateManifest.schema, "ndabi-transport-state-conformance-v0.2");
+  for (const vector of stateManifest.cases) {
+    await suite.test(vector.id, () => {
+      if (vector.expected === "Accepted") {
+        assert.doesNotThrow(() => applyStateVector(vector));
+      } else {
+        assert.throws(() => applyStateVector(vector), errorNamed(vector.expected));
+      }
+    });
+  }
+});
+
 function readyRequest(features = FEATURE_STREAMING | FEATURE_CANCELLATION | FEATURE_OPERAND_BUNDLES) {
   const sequence = readySequence(features);
   const vector = manifest.valid[0];
@@ -166,16 +180,47 @@ function readyRequest(features = FEATURE_STREAMING | FEATURE_CANCELLATION | FEAT
   return { sequence, requestFrame, pending };
 }
 
+function applyStateVector(vector) {
+  if (vector.action === "negotiate") {
+    readySequence(vector.features);
+    return;
+  }
+  if (vector.action === "accept-feature-escalation") {
+    const sequence = provisionedSequence(vector.features);
+    sequence.apply(negotiationFrame(1, vector.features, 2, 2), 1);
+    sequence.apply(negotiationFrame(2, FEATURE_CANCELLATION, 2, 0), 2);
+    return;
+  }
+  const sequence = readySequence(vector.features);
+  if (vector.action === "result-before-registration") {
+    sequence.apply(transportFrame(3, 1n), 2);
+  } else if (vector.action === "cancel-feature-disabled") {
+    sequence.apply(transportFrame(5, 1n), 1);
+  } else if (vector.action === "bundle-before-control") {
+    sequence.apply(transportFrame(9, 1n, {}, new Uint8Array(48)), 2);
+  } else if (vector.action === "result-wrong-direction") {
+    sequence.apply(transportFrame(3, 1n), 1);
+  } else if (vector.action === "hello-after-ready") {
+    sequence.apply(negotiationFrame(1, vector.features, 2, 2), 1);
+  } else {
+    throw new Error("UnknownStateVectorAction");
+  }
+}
+
 function readySequence(features = FEATURE_STREAMING | FEATURE_CANCELLATION | FEATURE_OPERAND_BUNDLES) {
-  const sequence = new TransportSequence(transportAuthority, {
+  const sequence = provisionedSequence(features);
+  sequence.apply(negotiationFrame(1, features, 2, 2), 1);
+  sequence.apply(negotiationFrame(2, features, 2, 0), 2);
+  return sequence;
+}
+
+function provisionedSequence(features) {
+  return new TransportSequence(transportAuthority, {
     features,
     maximumFrameBytes: 4096,
     maximumChunkBytes: 1024,
     maximumInFlight: 4,
   });
-  sequence.apply(negotiationFrame(1, features, 2, 2), 1);
-  sequence.apply(negotiationFrame(2, features, 2, 0), 2);
-  return sequence;
 }
 
 function negotiationFrame(kind, features, first, second) {

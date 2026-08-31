@@ -33,6 +33,7 @@ Independent Go and TypeScript decoders pass its shared message and mutation vect
 The independent Go sequence enforces negotiation, correlation, cancellation, streaming, budgets, receipts, and bundle acknowledgements.
 The independent TypeScript sequence enforces the same state and rejects pending requests that bypass its authenticated verifier.
 Independent Go and TypeScript decoders authenticate bundle registration and removal before their state machines accept control metadata.
+Both state machines pass the shared negotiation and state-refusal vectors.
 The reusable Rustls profile requires TLS 1.3, mutual certificates, NDABI ALPN, and no early data.
 Its resolver API supports externally managed certificate signers without weakening the fixed transport policy.
 The sealed registry binds handles to reviewed implementations, schemas, policies, capabilities, and budgets.
