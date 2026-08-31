@@ -1,7 +1,9 @@
 import { blake3 } from "@noble/hashes/blake3.js";
 
 import {
+  assertVerifiedBundleControl,
   assertVerifiedPending,
+  type BundleControl,
   type Pending,
   type TransportAuthority,
   type TransportDirection,
@@ -24,9 +26,8 @@ export interface TransportSequenceConfig {
   readonly maximumInFlight: number;
 }
 
-export interface BundleControl {
+interface BundleExpectation {
   readonly acknowledgement: 9 | 10;
-  readonly nonce: bigint;
   readonly graphHandle: number;
   readonly resultShape: number;
   readonly bundleHandle: number;
@@ -67,7 +68,7 @@ export class TransportSequence {
   #negotiatedFrameBytes = 0;
   #negotiatedChunkBytes = 0;
   readonly #requests = new Map<bigint, RequestState>();
-  readonly #bundles = new Map<bigint, BundleControl>();
+  readonly #bundles = new Map<bigint, BundleExpectation>();
   #lastRegisteredNonce = 0n;
 
   constructor(authority: TransportAuthority, config: TransportSequenceConfig) {
@@ -102,20 +103,26 @@ export class TransportSequence {
     this.#lastRegisteredNonce = pending.nonce;
   }
 
-  registerBundleControl(control: BundleControl): void {
+  registerBundleControl(control: BundleControl, bundleDigest: Uint8Array): void {
+    assertVerifiedBundleControl(control, this.#authority);
     if (this.#phase !== "ready") refuse("ConnectionState");
     this.#requireFeature(FEATURE_OPERAND_BUNDLES);
-    const digestIsZero = allZero(control.bundleDigest);
+    const acknowledgement = control.kind === 5 ? 9 : 10;
+    const digestIsZero = allZero(bundleDigest);
     if (
       control.nonce === 0n || control.nonce <= this.#lastRegisteredNonce ||
       control.graphHandle === 0 || control.resultShape === 0 || control.bundleHandle === 0 ||
-      (control.acknowledgement === 9 && (control.expiryUnixUS === 0n || digestIsZero)) ||
-      (control.acknowledgement === 10 && (control.expiryUnixUS !== 0n || !digestIsZero))
+      (acknowledgement === 9 && (control.deadlineUnixUS === 0n || digestIsZero)) ||
+      (acknowledgement === 10 && !digestIsZero)
     ) refuse("NonCanonicalFrame");
     this.#requireCapacity();
     this.#bundles.set(control.nonce, Object.freeze({
-      ...control,
-      bundleDigest: control.bundleDigest.slice(),
+      acknowledgement,
+      graphHandle: control.graphHandle,
+      resultShape: control.resultShape,
+      bundleHandle: control.bundleHandle,
+      expiryUnixUS: control.deadlineUnixUS,
+      bundleDigest: bundleDigest.slice(),
     }));
     this.#lastRegisteredNonce = control.nonce;
   }

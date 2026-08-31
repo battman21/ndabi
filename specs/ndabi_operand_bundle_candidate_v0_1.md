@@ -1,8 +1,9 @@
 # NDABI prepared operand and bundle candidate v0.1
 
-**Status:** Partially implemented research slice.
+**Status:** Implemented research candidate.
 
 The protocol crate implements layouts, three request frames, a session store, bundled receipts, and transport acknowledgements.
+Independent Go and TypeScript decoders authenticate registration and removal through shared vectors.
 PostgreSQL and Supabase implement one review-batch bundle profile with focused Docker proof.
 MongoDB and White Tree adapters and comparative performance evidence do not exist.
 

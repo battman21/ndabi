@@ -102,17 +102,39 @@ func TestSequenceRequiresCancellationBeforeCodeSeven(t *testing.T) {
 }
 
 func TestSequenceMatchesBundleAcknowledgements(t *testing.T) {
-	sequence := readySequence(t, FeatureOperandBundles)
+	manifest := loadBundleControlManifest(t)
+	authority := bundleControlAuthority(t, manifest)
+	control, err := DecodeBundleControl(
+		decodeHex(t, manifest.BundleControls.Valid[0].FrameHex),
+		authority,
+		1<<20,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sequence := readySequenceForAuthority(t, FeatureOperandBundles, TransportAuthority{
+		RootKey:       authority.RootKey,
+		Generation:    authority.Generation,
+		Session:       authority.Session,
+		ExpiresUnixUS: authority.ExpiresUnixUS,
+		ContextDigest: ContextDigest(authority),
+	})
 	digest := [32]byte{9}
-	if err := sequence.RegisterBundleControl(9, 1, 11, 17, 13, 2_000_000, digest); err != nil {
+	changedControl := control
+	changedControl.Values = append([]byte(nil), control.Values...)
+	changedControl.Values[0] ^= 1
+	if err := sequence.RegisterBundleControl(changedControl, digest); err != ErrNonCanonicalFrame {
+		t.Fatalf("changed control returned %v", err)
+	}
+	if err := sequence.RegisterBundleControl(control, digest); err != nil {
 		t.Fatal(err)
 	}
 	payload := make([]byte, 48)
-	binary.LittleEndian.PutUint32(payload[0:4], 13)
-	binary.LittleEndian.PutUint32(payload[4:8], 11)
-	binary.LittleEndian.PutUint64(payload[8:16], 2_000_000)
+	binary.LittleEndian.PutUint32(payload[0:4], control.BundleHandle)
+	binary.LittleEndian.PutUint32(payload[4:8], control.GraphHandle)
+	binary.LittleEndian.PutUint64(payload[8:16], control.DeadlineUnixUS)
 	copy(payload[16:48], digest[:])
-	frame := TransportFrame{Kind: 9, Fields: TransportFields{CorrelationNonce: 1, ResultShape: 17}, Payload: payload}
+	frame := TransportFrame{Kind: 9, Fields: TransportFields{CorrelationNonce: control.Nonce, ResultShape: control.ResultShape}, Payload: payload}
 	changed := frame
 	changed.Payload = append([]byte(nil), payload...)
 	changed.Payload[16] ^= 1
@@ -163,6 +185,25 @@ func provisionedSequence(t *testing.T, features uint32) *TransportSequence {
 func readySequence(t *testing.T, features uint32) *TransportSequence {
 	t.Helper()
 	sequence := provisionedSequence(t, features)
+	return negotiateSequence(t, sequence, features)
+}
+
+func readySequenceForAuthority(t *testing.T, features uint32, authority TransportAuthority) *TransportSequence {
+	t.Helper()
+	sequence, err := NewTransportSequence(authority, TransportSequenceConfig{
+		Features:          features,
+		MaximumFrameBytes: 4096,
+		MaximumChunkBytes: 1024,
+		MaximumInFlight:   4,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return negotiateSequence(t, sequence, features)
+}
+
+func negotiateSequence(t *testing.T, sequence *TransportSequence, features uint32) *TransportSequence {
+	t.Helper()
 	if err := sequence.Apply(negotiationFrame(1, features, 2, 2, 1024), 1); err != nil {
 		t.Fatal(err)
 	}

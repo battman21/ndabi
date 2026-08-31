@@ -9,7 +9,7 @@ It must not claim arbitrary query support or production key custody.
 
 | Area | Beta gate | Current state |
 |---|---|---|
-| protocol | conformance, replay, limits, exact receipts, and malformed-frame refusal pass | Rust, Go, and TypeScript pass shared vectors and sequence enforcement; independent bundle-control decoding remains open |
+| protocol | conformance, replay, limits, exact receipts, and malformed-frame refusal pass | Rust, Go, and TypeScript pass shared frame, bundle-control, and sequence enforcement tests |
 | PostgreSQL | one registered bundle profile passes five formal repetitions | v0.2 campaign not executed |
 | Supabase | local Auth, forced RLS, exact results, and receipts pass | proven locally |
 | MongoDB | real database execution reuses one static bundle decode | proven locally with MongoDB 8.0.4 |

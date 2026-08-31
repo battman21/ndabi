@@ -19,6 +19,8 @@ const BATCH_FRAME_DOMAIN = textEncoder.encode("ndabi/wire/v1/batch-frame");
 const RECEIPT_DOMAIN = textEncoder.encode("ndabi/wire/v1/receipt");
 const TRANSPORT_KEY_DOMAIN = textEncoder.encode("ndabi/wire/v2/transport-key");
 const TRANSPORT_FRAME_DOMAIN = textEncoder.encode("ndabi/wire/v2/transport-frame");
+const REGISTER_BUNDLE_DOMAIN = textEncoder.encode("ndabi/wire/v1/register-operand-bundle");
+const REMOVE_BUNDLE_DOMAIN = textEncoder.encode("ndabi/wire/v1/drop-operand-bundle");
 
 export interface Authority {
   rootKey: Uint8Array;
@@ -89,6 +91,18 @@ export interface TransportFrame {
   readonly payload: Uint8Array;
 }
 
+export interface BundleControl {
+  readonly kind: 5 | 7;
+  readonly nonce: bigint;
+  readonly deadlineUnixUS: bigint;
+  readonly opcode: number;
+  readonly graphHandle: number;
+  readonly resultShape: number;
+  readonly bundleHandle: number;
+  readonly bundleSlotCount: number;
+  readonly values: Uint8Array;
+}
+
 interface Admission {
   replayKey: string;
   previousNonce: bigint;
@@ -97,8 +111,30 @@ interface Admission {
 
 const admissions = new WeakMap<Pending, Admission>();
 
+interface BundleAdmission {
+  readonly generation: bigint;
+  readonly session: bigint;
+  readonly contextDigest: Uint8Array;
+  readonly valuesDigest: Uint8Array;
+}
+
+const bundleAdmissions = new WeakMap<BundleControl, BundleAdmission>();
+
 export function assertVerifiedPending(pending: Pending): void {
   if (!admissions.has(pending)) refuse("InvalidPending");
+}
+
+export function assertVerifiedBundleControl(
+  control: BundleControl,
+  authority: TransportAuthority,
+): void {
+  const admission = bundleAdmissions.get(control);
+  if (
+    admission === undefined || admission.generation !== authority.generation ||
+    admission.session !== authority.session ||
+    !constantTimeEqual(admission.contextDigest, authority.contextDigest) ||
+    !constantTimeEqual(admission.valuesDigest, blake3(control.values))
+  ) refuse("InvalidBundleControl");
 }
 
 export class ReplayStore {
@@ -280,6 +316,76 @@ export function receipt(
   );
   receiptKey.fill(0);
   return output;
+}
+
+export function decodeBundleControl(
+  frame: Uint8Array,
+  authority: Authority,
+  maximumValueBytes: number,
+): BundleControl {
+  validateAuthority(authority);
+  if (!Number.isInteger(maximumValueBytes) || maximumValueBytes < 0) refuse("LengthMismatch");
+  if (maximumValueBytes > MAXIMUM_U32 - SINGLE_FRAME_BYTES) refuse("TransportPayloadTooLarge");
+  if (frame.length < SINGLE_FRAME_BYTES || frame.length > SINGLE_FRAME_BYTES + maximumValueBytes) {
+    refuse("LengthMismatch");
+  }
+  const kind: 5 | 7 = frame[6] === 5 ? 5 : frame[6] === 7 ? 7 : refuse("UnsupportedFrame");
+  const domain = kind === 5 ? REGISTER_BUNDLE_DOMAIN : REMOVE_BUNDLE_DOMAIN;
+  const context = contextDigest(authority);
+  const frameKey = deriveKey(authority.rootKey, FRAME_KEY_DOMAIN, authority, context);
+  const tagOffset = frame.length - TAG_BYTES;
+  const expectedTag = blake3(concatenate(domain, frame.subarray(0, tagOffset)), { key: frameKey });
+  const authenticated = constantTimeEqual(expectedTag, frame.subarray(tagOffset));
+  frameKey.fill(0);
+  expectedTag.fill(0);
+  if (!authenticated) refuse("AuthenticationFailed");
+  if (
+    frame[0] !== 0x4e || frame[1] !== 0x44 || frame[2] !== 0x42 || frame[3] !== 0x49 ||
+    frame[4] !== 1 || frame[5] !== 0 || frame[7] !== 1
+  ) refuse("UnsupportedFrame");
+  const view = dataView(frame);
+  if (view.getUint16(8, true) !== 0 || view.getUint32(12, true) !== frame.length) {
+    refuse("NonCanonicalFrame");
+  }
+  if (
+    view.getBigUint64(16, true) !== authority.session ||
+    view.getBigUint64(24, true) !== authority.generation ||
+    !constantTimeEqual(frame.subarray(96, 128), context)
+  ) refuse("AuthorityMismatch");
+  const control: BundleControl = {
+    kind,
+    nonce: view.getBigUint64(32, true),
+    deadlineUnixUS: view.getBigUint64(40, true),
+    opcode: view.getUint16(10, true),
+    graphHandle: view.getUint32(56, true),
+    resultShape: view.getUint32(60, true),
+    bundleHandle: view.getUint32(64, true),
+    bundleSlotCount: kind === 5 ? view.getUint32(52, true) : 0,
+    values: kind === 5 ? frame.slice(128, tagOffset) : new Uint8Array(),
+  };
+  if (
+    control.nonce === 0n || control.opcode === 0 || control.graphHandle === 0 ||
+    control.resultShape === 0 || control.bundleHandle === 0
+  ) refuse("ZeroOperationField");
+  if (control.deadlineUnixUS === 0n || control.deadlineUnixUS > authority.expiresUnixUS) {
+    refuse("DeadlineBeyondAuthority");
+  }
+  if (kind === 5) {
+    if (!allZero(frame.subarray(68, 96)) || view.getUint32(48, true) !== tagOffset - 128) {
+      refuse("NonCanonicalFrame");
+    }
+  } else if (
+    frame.length !== SINGLE_FRAME_BYTES || !allZero(frame.subarray(48, 56)) ||
+    !allZero(frame.subarray(68, 96))
+  ) refuse("NonCanonicalFrame");
+  const verified = Object.freeze(control);
+  bundleAdmissions.set(verified, {
+    generation: authority.generation,
+    session: authority.session,
+    contextDigest: context.slice(),
+    valuesDigest: blake3(control.values),
+  });
+  return verified;
 }
 
 export function decodeTransport(

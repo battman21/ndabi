@@ -27,6 +27,7 @@ var (
 	ErrBatchLimitExceeded       = errors.New("BatchLimitExceeded")
 	ErrBatchTooSmall            = errors.New("BatchTooSmall")
 	ErrBudgetExceeded           = errors.New("BudgetExceeded")
+	ErrDeadlineBeyondAuthority  = errors.New("DeadlineBeyondAuthority")
 	ErrExpired                  = errors.New("Expired")
 	ErrLengthMismatch           = errors.New("LengthMismatch")
 	ErrNonCanonicalFrame        = errors.New("NonCanonicalFrame")
@@ -51,6 +52,8 @@ var (
 	receiptDomain        = []byte("ndabi/wire/v1/receipt")
 	transportKeyDomain   = []byte("ndabi/wire/v2/transport-key")
 	transportFrameDomain = []byte("ndabi/wire/v2/transport-frame")
+	registerBundleDomain = []byte("ndabi/wire/v1/register-operand-bundle")
+	removeBundleDomain   = []byte("ndabi/wire/v1/drop-operand-bundle")
 )
 
 // Authority contains the public context and the shared test authority.
@@ -130,6 +133,127 @@ type TransportFrame struct {
 	Kind    uint8
 	Fields  TransportFields
 	Payload []byte
+}
+
+// BundleControl contains authenticated registration or removal metadata.
+type BundleControl struct {
+	Kind            uint8
+	Nonce           uint64
+	DeadlineUnixUS  uint64
+	Opcode          uint16
+	GraphHandle     uint32
+	ResultShape     uint32
+	BundleHandle    uint32
+	BundleSlotCount uint32
+	Values          []byte
+	authenticated   bool
+	contextDigest   [32]byte
+	session         uint64
+	generation      uint64
+	controlBinding  [32]byte
+}
+
+// DecodeBundleControl authenticates one complete bundle registration or removal frame.
+func DecodeBundleControl(frame []byte, authority Authority, maximumValueBytes uint32) (BundleControl, error) {
+	if isZero(authority.RootKey[:]) {
+		return BundleControl{}, ErrZeroKey
+	}
+	if authority.Generation == 0 || authority.Session == 0 || authority.ExpiresUnixUS == 0 ||
+		isZero(authority.Tenant[:]) || isZero(authority.Principal[:]) || authority.Purpose == 0 ||
+		authority.Engine == 0 || authority.Profile == 0 {
+		return BundleControl{}, ErrZeroIdentity
+	}
+	if isZero(authority.CapabilityDigest[:]) || isZero(authority.SchemaDigest[:]) ||
+		isZero(authority.PolicyDigest[:]) || isZero(authority.PlanDigest[:]) {
+		return BundleControl{}, ErrZeroDigest
+	}
+	if maximumValueBytes > ^uint32(0)-singleFrameBytes {
+		return BundleControl{}, ErrTransportPayloadTooLarge
+	}
+	if len(frame) < singleFrameBytes || uint64(len(frame)) > uint64(singleFrameBytes)+uint64(maximumValueBytes) {
+		return BundleControl{}, ErrLengthMismatch
+	}
+	var domain []byte
+	switch frame[6] {
+	case 5:
+		domain = registerBundleDomain
+	case 7:
+		domain = removeBundleDomain
+	default:
+		return BundleControl{}, ErrUnsupportedFrame
+	}
+	context := ContextDigest(authority)
+	frameKey := deriveKey(authority.RootKey, frameKeyDomain, authority, context)
+	tagOffset := len(frame) - tagBytes
+	expectedTag := keyedDigest(frameKey, domain, frame[:tagOffset])
+	authenticated := subtle.ConstantTimeCompare(expectedTag[:], frame[tagOffset:]) == 1
+	clear(frameKey[:])
+	clear(expectedTag[:])
+	if !authenticated {
+		return BundleControl{}, ErrAuthenticationFailed
+	}
+	if string(frame[0:4]) != string(magic[:]) || frame[4] != 1 || frame[5] != 0 || frame[7] != 1 {
+		return BundleControl{}, ErrUnsupportedFrame
+	}
+	if binary.LittleEndian.Uint16(frame[8:10]) != 0 ||
+		binary.LittleEndian.Uint32(frame[12:16]) != uint32(len(frame)) {
+		return BundleControl{}, ErrNonCanonicalFrame
+	}
+	if binary.LittleEndian.Uint64(frame[16:24]) != authority.Session ||
+		binary.LittleEndian.Uint64(frame[24:32]) != authority.Generation ||
+		subtle.ConstantTimeCompare(frame[96:128], context[:]) != 1 {
+		return BundleControl{}, ErrAuthorityMismatch
+	}
+	control := BundleControl{
+		Kind:           frame[6],
+		Nonce:          binary.LittleEndian.Uint64(frame[32:40]),
+		DeadlineUnixUS: binary.LittleEndian.Uint64(frame[40:48]),
+		Opcode:         binary.LittleEndian.Uint16(frame[10:12]),
+		GraphHandle:    binary.LittleEndian.Uint32(frame[56:60]),
+		ResultShape:    binary.LittleEndian.Uint32(frame[60:64]),
+		BundleHandle:   binary.LittleEndian.Uint32(frame[64:68]),
+		authenticated:  true,
+		contextDigest:  context,
+		session:        authority.Session,
+		generation:     authority.Generation,
+	}
+	if control.Nonce == 0 || control.Opcode == 0 || control.GraphHandle == 0 ||
+		control.ResultShape == 0 || control.BundleHandle == 0 {
+		return BundleControl{}, ErrZeroOperationField
+	}
+	if control.DeadlineUnixUS == 0 || control.DeadlineUnixUS > authority.ExpiresUnixUS {
+		return BundleControl{}, ErrDeadlineBeyondAuthority
+	}
+	if control.Kind == 5 {
+		if !allZero(frame[68:96]) || binary.LittleEndian.Uint32(frame[48:52]) != uint32(tagOffset-128) {
+			return BundleControl{}, ErrNonCanonicalFrame
+		}
+		control.BundleSlotCount = binary.LittleEndian.Uint32(frame[52:56])
+		control.Values = append([]byte(nil), frame[128:tagOffset]...)
+		control.controlBinding = bundleControlBinding(control)
+		return control, nil
+	}
+	if len(frame) != singleFrameBytes || !allZero(frame[48:56]) || !allZero(frame[68:96]) {
+		return BundleControl{}, ErrNonCanonicalFrame
+	}
+	control.controlBinding = bundleControlBinding(control)
+	return control, nil
+}
+
+func bundleControlBinding(control BundleControl) [32]byte {
+	hasher := blake3.New()
+	write(hasher, []byte{control.Kind})
+	writeU64(hasher, control.Nonce)
+	writeU64(hasher, control.DeadlineUnixUS)
+	var opcode [2]byte
+	binary.LittleEndian.PutUint16(opcode[:], control.Opcode)
+	write(hasher, opcode[:])
+	writeU32(hasher, control.GraphHandle)
+	writeU32(hasher, control.ResultShape)
+	writeU32(hasher, control.BundleHandle)
+	writeU32(hasher, control.BundleSlotCount)
+	write(hasher, control.Values)
+	return digest(hasher)
 }
 
 // Nonce returns the authenticated replay nonce.

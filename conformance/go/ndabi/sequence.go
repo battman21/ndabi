@@ -146,12 +146,7 @@ func (sequence *TransportSequence) RegisterRequest(
 
 // RegisterBundleControl records an authenticated bundle control before its acknowledgement.
 func (sequence *TransportSequence) RegisterBundleControl(
-	acknowledgement uint8,
-	nonce uint64,
-	graphHandle uint32,
-	resultShape uint32,
-	bundleHandle uint32,
-	expiryUnixUS uint64,
+	control BundleControl,
 	bundleDigest [32]byte,
 ) error {
 	if sequence.phase != phaseReady {
@@ -160,9 +155,16 @@ func (sequence *TransportSequence) RegisterBundleControl(
 	if sequence.negotiatedFeatures&FeatureOperandBundles == 0 {
 		return ErrFeatureNotNegotiated
 	}
-	if (acknowledgement != 9 && acknowledgement != 10) || nonce == 0 ||
-		nonce <= sequence.lastRegisteredNonce || graphHandle == 0 || resultShape == 0 ||
-		bundleHandle == 0 || (acknowledgement == 9 && expiryUnixUS == 0) {
+	acknowledgement := uint8(9)
+	if control.Kind == 7 {
+		acknowledgement = 10
+	}
+	if !control.authenticated || control.controlBinding != bundleControlBinding(control) ||
+		control.contextDigest != sequence.authority.ContextDigest ||
+		control.session != sequence.authority.Session || control.generation != sequence.authority.Generation ||
+		(control.Kind != 5 && control.Kind != 7) || control.Nonce == 0 ||
+		control.Nonce <= sequence.lastRegisteredNonce || control.GraphHandle == 0 || control.ResultShape == 0 ||
+		control.BundleHandle == 0 || (acknowledgement == 9 && control.DeadlineUnixUS == 0) {
 		return ErrNonCanonicalFrame
 	}
 	if (acknowledgement == 9 && isZero(bundleDigest[:])) ||
@@ -172,15 +174,15 @@ func (sequence *TransportSequence) RegisterBundleControl(
 	if len(sequence.requests)+len(sequence.bundles) >= int(sequence.config.MaximumInFlight) {
 		return ErrRequestLimitExceeded
 	}
-	sequence.bundles[nonce] = sequenceBundle{
+	sequence.bundles[control.Nonce] = sequenceBundle{
 		acknowledgement: acknowledgement,
-		graphHandle:     graphHandle,
-		resultShape:     resultShape,
-		bundleHandle:    bundleHandle,
-		expiryUnixUS:    expiryUnixUS,
+		graphHandle:     control.GraphHandle,
+		resultShape:     control.ResultShape,
+		bundleHandle:    control.BundleHandle,
+		expiryUnixUS:    control.DeadlineUnixUS,
 		bundleDigest:    bundleDigest,
 	}
-	sequence.lastRegisteredNonce = nonce
+	sequence.lastRegisteredNonce = control.Nonce
 	return nil
 }
 

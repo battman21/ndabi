@@ -242,13 +242,14 @@ The Rust connection enforces direction, negotiation, authenticated request regis
 The independent Go sequence enforces negotiation, correlation, cancellation, streaming, budgets, receipts, and bundle acknowledgements.
 Its request registration accepts only authenticated `Pending` values from the Go verifier.
 The independent TypeScript sequence enforces the same paths and accepts only verifier-issued pending requests.
-Both bundle registration paths consume authenticated control metadata because their bundle-control decoders remain open.
+Both independent bundle-control decoders authenticate registration and removal through shared v0.1 vectors.
+Their state machines bind decoder-issued metadata to the same authority session and context.
 The v6.4 local Docker campaign connected complete results to the canonical PostgreSQL adapter.
 The v8.4 candidate connected separate client and server processes through TLS 1.3 mutual authentication.
 Its exact results, receipts, trust refusals, and same-CA certificate rotation passed in one diagnostic run.
 The host-qualified performance result failed and retained no source or binary digest.
 Treat every v8.4 transport measurement as unattributed diagnostics.
-The independent Go and TypeScript bundle-control decoders remain the next implementation gate.
+Shared state-sequence vectors remain the next portable conformance gate.
 
 ## 13. Security boundaries
 

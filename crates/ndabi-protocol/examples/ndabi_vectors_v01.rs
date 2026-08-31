@@ -7,7 +7,8 @@ use std::cell::Cell;
 use ndabi_protocol::{
     batch_frame_bytes, Authority, AuthorityContext, Backend, BackendIdentity, BatchBackend,
     BatchItem, BatchItems, BatchOperation, BoundedOutput, ClientSession, Clock, ExecutionLimits,
-    MemoryReplayStore, Operation, ProtocolError, ServerSession,
+    GraphOperation, MemoryReplayStore, OperandLayout, OperandSlot, OperandStorage, OperandType,
+    OperandValue, Operation, ProtocolError, ServerSession,
 };
 use serde_json::{json, Value};
 use zeroize::Zeroize;
@@ -32,6 +33,8 @@ const ROW_BUDGET: u32 = 16;
 const FRAME_KEY_DOMAIN: &[u8] = b"ndabi/wire/v1/session-key";
 const SINGLE_FRAME_DOMAIN: &[u8] = b"ndabi/wire/v1/frame";
 const BATCH_FRAME_DOMAIN: &[u8] = b"ndabi/wire/v1/batch-frame";
+const REGISTER_FRAME_DOMAIN: &[u8] = b"ndabi/wire/v1/register-operand-bundle";
+const REMOVE_FRAME_DOMAIN: &[u8] = b"ndabi/wire/v1/drop-operand-bundle";
 
 const fn sequence<const N: usize>(start: u8) -> [u8; N] {
     let mut output = [0_u8; N];
@@ -92,6 +95,33 @@ fn run() -> Result<(), String> {
             &mut batch_frame,
         )
         .map_err(|error| error.to_string())?;
+    let graph_operation =
+        GraphOperation::new(0x3132, 0x3334_3536, 0x3738_393a).map_err(|error| error.to_string())?;
+    let bundle_layout = OperandLayout::new([OperandSlot::new(
+        1,
+        OperandStorage::Bundle,
+        OperandType::Bytes,
+        false,
+        32,
+    )
+    .map_err(|error| error.to_string())?])
+    .map_err(|error| error.to_string())?;
+    let mut bundle_client = ClientSession::new(authority.clone());
+    let registration_frame = bundle_client
+        .encode_operand_bundle_registration(
+            graph_operation,
+            &bundle_layout,
+            0x4142_4344,
+            DEADLINE,
+            &[OperandValue {
+                slot_id: 1,
+                value: Some(b"static-value"),
+            }],
+        )
+        .map_err(|error| error.to_string())?;
+    let removal_frame = bundle_client
+        .encode_operand_bundle_removal(graph_operation, 0x4142_4344, DEADLINE)
+        .map_err(|error| error.to_string())?;
 
     let server = ServerSession::new(authority.clone(), RESULT_BUDGET, ROW_BUDGET)
         .map_err(|error| error.to_string())?;
@@ -134,6 +164,30 @@ fn run() -> Result<(), String> {
     let mut expired = single_frame.to_vec();
     expired[40..48].copy_from_slice(&NOW.to_le_bytes());
     retag(&mut expired, SINGLE_FRAME_DOMAIN, &context_digest)?;
+    let mut registration_tag_changed = registration_frame.clone();
+    let registration_last = registration_tag_changed.len() - 1;
+    registration_tag_changed[registration_last] ^= 1;
+    let mut registration_reserved = registration_frame.clone();
+    registration_reserved[68] = 1;
+    retag(
+        &mut registration_reserved,
+        REGISTER_FRAME_DOMAIN,
+        &context_digest,
+    )?;
+    let mut removal_context_changed = removal_frame.to_vec();
+    removal_context_changed[96] ^= 1;
+    retag(
+        &mut removal_context_changed,
+        REMOVE_FRAME_DOMAIN,
+        &context_digest,
+    )?;
+    let mut removal_beyond_authority = removal_frame.to_vec();
+    removal_beyond_authority[40..48].copy_from_slice(&(EXPIRY + 1).to_le_bytes());
+    retag(
+        &mut removal_beyond_authority,
+        REMOVE_FRAME_DOMAIN,
+        &context_digest,
+    )?;
 
     verify_manifest_cases(
         &server,
@@ -265,6 +319,60 @@ fn run() -> Result<(), String> {
                 "expected_error": "Expired"
             }
         ],
+        "bundle_controls": {
+            "valid": [
+                {
+                    "id": "register-operand-bundle",
+                    "kind": "registration",
+                    "frame_hex": hex(&registration_frame),
+                    "decoded": {
+                        "nonce": "1",
+                        "expiry_unix_us": DEADLINE.to_string(),
+                        "opcode": graph_operation.opcode,
+                        "graph_handle": graph_operation.graph_handle,
+                        "result_shape": graph_operation.result_shape,
+                        "bundle_handle": 0x4142_4344_u32,
+                        "bundle_slot_count": 1,
+                        "values_hex": hex(&registration_frame[128..registration_frame.len() - 32])
+                    }
+                },
+                {
+                    "id": "remove-operand-bundle",
+                    "kind": "removal",
+                    "frame_hex": hex(&removal_frame),
+                    "decoded": {
+                        "nonce": "2",
+                        "deadline_unix_us": DEADLINE.to_string(),
+                        "opcode": graph_operation.opcode,
+                        "graph_handle": graph_operation.graph_handle,
+                        "result_shape": graph_operation.result_shape,
+                        "bundle_handle": 0x4142_4344_u32
+                    }
+                }
+            ],
+            "invalid": [
+                {
+                    "id": "registration-tag-changed",
+                    "frame_hex": hex(&registration_tag_changed),
+                    "expected_error": "AuthenticationFailed"
+                },
+                {
+                    "id": "registration-reserved-set",
+                    "frame_hex": hex(&registration_reserved),
+                    "expected_error": "NonCanonicalFrame"
+                },
+                {
+                    "id": "removal-context-changed",
+                    "frame_hex": hex(&removal_context_changed),
+                    "expected_error": "AuthorityMismatch"
+                },
+                {
+                    "id": "removal-beyond-authority",
+                    "frame_hex": hex(&removal_beyond_authority),
+                    "expected_error": "DeadlineBeyondAuthority"
+                }
+            ]
+        },
         "sequences": [
             {
                 "id": "single-replay",
@@ -278,10 +386,12 @@ fn run() -> Result<(), String> {
             }
         ]
     });
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&manifest).map_err(|error| error.to_string())?
-    );
+    let rendered = serde_json::to_string_pretty(&manifest).map_err(|error| error.to_string())?;
+    if let Some(path) = std::env::args_os().nth(1) {
+        std::fs::write(path, format!("{rendered}\n")).map_err(|error| error.to_string())?;
+    } else {
+        println!("{rendered}");
+    }
     Ok(())
 }
 

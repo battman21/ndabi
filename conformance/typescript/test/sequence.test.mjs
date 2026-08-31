@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { ReplayStore, verify } from "../dist/decoder.js";
+import { ReplayStore, decodeBundleControl, verify } from "../dist/decoder.js";
 import {
   FEATURE_CANCELLATION,
   FEATURE_OPERAND_BUNDLES,
@@ -100,24 +100,21 @@ test("the TypeScript sequence requires cancellation before error seven", () => {
 
 test("the TypeScript sequence binds bundle acknowledgements to their digest", () => {
   const sequence = readySequence(FEATURE_OPERAND_BUNDLES);
+  const control = decodeBundleControl(
+    fromHex(manifest.bundle_controls.valid[0].frame_hex),
+    authority,
+    1 << 20,
+  );
   const digest = new Uint8Array(32).fill(9);
-  sequence.registerBundleControl({
-    acknowledgement: 9,
-    nonce: 1n,
-    graphHandle: 11,
-    resultShape: 17,
-    bundleHandle: 13,
-    expiryUnixUS: 2_000_000n,
-    bundleDigest: digest,
-  });
+  sequence.registerBundleControl(control, digest);
   const payload = new Uint8Array(48);
   const view = new DataView(payload.buffer);
-  view.setUint32(0, 13, true);
-  view.setUint32(4, 11, true);
-  view.setBigUint64(8, 2_000_000n, true);
+  view.setUint32(0, control.bundleHandle, true);
+  view.setUint32(4, control.graphHandle, true);
+  view.setBigUint64(8, control.deadlineUnixUS, true);
   payload.set(digest, 16);
-  const frame = transportFrame(9, 1n, { resultShape: 17 }, payload);
-  const changed = transportFrame(9, 1n, { resultShape: 17 }, payload.slice());
+  const frame = transportFrame(9, control.nonce, { resultShape: control.resultShape }, payload);
+  const changed = transportFrame(9, control.nonce, { resultShape: control.resultShape }, payload.slice());
   changed.payload[16] ^= 1;
   assert.throws(() => sequence.apply(changed, 2), errorNamed("OutputShape"));
   sequence.apply(frame, 2);
@@ -137,6 +134,20 @@ test("the TypeScript sequence refuses pending values that bypass verification", 
   assert.throws(
     () => sequence.registerRequest(new Uint8Array([1]), forged),
     errorNamed("InvalidPending"),
+  );
+});
+
+test("the TypeScript sequence refuses changed decoder-issued bundle controls", () => {
+  const sequence = readySequence(FEATURE_OPERAND_BUNDLES);
+  const control = decodeBundleControl(
+    fromHex(manifest.bundle_controls.valid[0].frame_hex),
+    authority,
+    1 << 20,
+  );
+  control.values[0] ^= 1;
+  assert.throws(
+    () => sequence.registerBundleControl(control, new Uint8Array(32).fill(9)),
+    errorNamed("InvalidBundleControl"),
   );
 });
 
