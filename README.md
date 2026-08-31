@@ -59,6 +59,7 @@ Refer to [`specs/ndabi_operand_bundle_campaign_v0_1.md`](specs/ndabi_operand_bun
 Refer to [`specs/ndabi_operand_bundle_campaign_v0_2.md`](specs/ndabi_operand_bundle_campaign_v0_2.md) for the corrected beta performance gates.
 Refer to [`specs/ndabi_semantic_batch_diagnostic_v0_1.md`](specs/ndabi_semantic_batch_diagnostic_v0_1.md) for the complete diagnostic limits.
 Refer to [`specs/ndabi_semantic_batch_campaign_v0_2.md`](specs/ndabi_semantic_batch_campaign_v0_2.md) for the frozen qualification gates.
+Refer to [`docs/BETA-OPERATIONS.md`](docs/BETA-OPERATIONS.md) for release, installation, upgrade, rollback, and removal procedures.
 
 Run the repository-contained campaign smoke with this command:
 
