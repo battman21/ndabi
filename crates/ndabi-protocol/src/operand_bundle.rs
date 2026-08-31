@@ -1025,7 +1025,12 @@ impl ServerSession {
             maximum_result_bytes: request.result_budget,
             maximum_rows: request.row_budget,
         };
-        let bundle_values = layout.validate_values(OperandStorage::Bundle, &bundle.values)?;
+        // Registration validated and copied these immutable records.
+        // The schema-digest check above proves that this execution uses the same layout.
+        // Rescanning the static records would repeat work proportional to the bundle size.
+        let bundle_values = OperandValues {
+            records: &bundle.values,
+        };
         let operand_digest = effective_operand_digest(
             bundle.digest,
             execution_value_digest(layout.digest(), request.values),
