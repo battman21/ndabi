@@ -67,6 +67,16 @@ def write_expected(path: Path, data: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def write_release_set(output_directory: Path, artefacts: dict[str, bytes]) -> None:
+    output_directory.mkdir(parents=True, exist_ok=True)
+    for name, data in artefacts.items():
+        path = output_directory / name
+        if path.exists() and (not path.is_file() or path.read_bytes() != data):
+            raise ReleaseError(f"the existing release artefact differs: {path}")
+    for name, data in artefacts.items():
+        write_expected(output_directory / name, data)
+
+
 def create_release_bundle(
     repository: Path,
     output_directory: Path,
@@ -141,10 +151,14 @@ def create_release_bundle(
         f"{sha256(manifest_bytes)}  {manifest_name}\n"
     ).encode()
 
-    output_directory.mkdir(parents=True, exist_ok=True)
-    write_expected(output_directory / archive_name, archive_bytes)
-    write_expected(output_directory / manifest_name, manifest_bytes)
-    write_expected(output_directory / checksum_name, checksum_bytes)
+    write_release_set(
+        output_directory,
+        {
+            archive_name: archive_bytes,
+            manifest_name: manifest_bytes,
+            checksum_name: checksum_bytes,
+        },
+    )
     return manifest
 
 

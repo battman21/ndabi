@@ -120,6 +120,16 @@ class ReleaseBundleTests(unittest.TestCase):
         with self.assertRaisesRegex(MODULE.ReleaseError, "artefact differs"):
             self.create(output)
 
+    def test_preflight_refusal_does_not_write_a_partial_release_set(self) -> None:
+        output = self.root / "output"
+        output.mkdir()
+        manifest = output / "ndabi-v0.2.0-beta.1.manifest.json"
+        manifest.write_bytes(b"changed")
+        with self.assertRaisesRegex(MODULE.ReleaseError, "artefact differs"):
+            self.create(output)
+        self.assertFalse((output / "ndabi-v0.2.0-beta.1.tar.gz").exists())
+        self.assertFalse((output / "ndabi-v0.2.0-beta.1.sha256").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
