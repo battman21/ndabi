@@ -60,6 +60,8 @@ The large speed-ups come mainly from collapsing repeated work into one database 
 Binary encoding makes that operation compact, deterministic, authenticated, and reusable.
 
 The dynamic ISA has focused correctness proofs but no accepted performance campaign.
+Corrected development smokes passed exact-result and compression gates, but failed the CPU gate.
+The smoke host was not qualified, so these runs do not support a performance claim.
 Do not claim dynamic latency, CPU, memory, token, energy, WAN, or hosted-service savings yet.
 
 Refer to the following formal evidence:
@@ -67,6 +69,7 @@ Refer to the following formal evidence:
 - [`../research/showdown/results/v63/README.md`](../research/showdown/results/v63/README.md) for the PostgreSQL batch campaign.
 - [`../research/showdown/results/v76/README.md`](../research/showdown/results/v76/README.md) for the Supavisor concurrency campaign.
 - [`../specs/ndabi_dynamic_isa_candidate_v0_1.md`](../specs/ndabi_dynamic_isa_candidate_v0_1.md) for the dynamic frame contract.
+- [`../specs/ndabi_dynamic_postgres_campaign_v0_1.md`](../specs/ndabi_dynamic_postgres_campaign_v0_1.md) for the frozen dynamic campaign.
 
 ## Strong use cases
 

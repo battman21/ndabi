@@ -10,6 +10,8 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 
+use smallvec::SmallVec;
+
 const MAGIC: [u8; 4] = *b"NDIP";
 const VERSION_MAJOR: u8 = 1;
 const VERSION_MINOR: u8 = 0;
@@ -1447,8 +1449,8 @@ pub struct VerifiedOperands<'a> {
     values_offset: usize,
     digest: [u8; 32],
     program_digest: [u8; 32],
-    spans: Vec<(usize, usize)>,
-    descriptors: Vec<ParameterDescriptor>,
+    spans: SmallVec<[(usize, usize); 8]>,
+    descriptors: SmallVec<[ParameterDescriptor; 8]>,
 }
 
 impl VerifiedOperands<'_> {
@@ -1539,8 +1541,8 @@ fn verify_operand_values<'a>(
     digest_domain: &[u8],
 ) -> Result<VerifiedOperands<'a>, IsaError> {
     let mut offset = values_offset;
-    let mut spans = Vec::with_capacity(usize::from(program.parameter_count()));
-    let mut descriptors = Vec::with_capacity(usize::from(program.parameter_count()));
+    let mut spans = SmallVec::with_capacity(usize::from(program.parameter_count()));
+    let mut descriptors = SmallVec::with_capacity(usize::from(program.parameter_count()));
     for index in 0..program.parameter_count() {
         let descriptor = program.parameter(index)?;
         let length =
@@ -2001,6 +2003,8 @@ mod tests {
         assert_eq!(compact.value(0), Ok(ParameterValue::I64(41)));
         assert_eq!(compact.value(1), Ok(ParameterValue::U64(10)));
         assert_eq!(compact.program_digest(), verified.digest());
+        assert!(!compact.spans.spilled());
+        assert!(!compact.descriptors.spilled());
         let owned = OwnedVerifiedProgram::from_verified(&verified).expect("owned program");
         let reopened = owned.as_verified();
         assert_eq!(reopened.bytes(), verified.bytes());

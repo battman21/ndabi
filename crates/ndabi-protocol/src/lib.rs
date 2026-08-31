@@ -40,6 +40,8 @@ pub use connection::{
     FEATURE_OPERAND_BUNDLES, FEATURE_STREAMING, KNOWN_TRANSPORT_FEATURES,
 };
 pub use dynamic::{dynamic_frame_bytes, DynamicBackend, DynamicExecution, MAX_DYNAMIC_FRAME_BYTES};
+#[cfg(feature = "benchmark-governed-native")]
+pub use dynamic::{GovernedDynamicClientSession, GovernedDynamicRequest};
 pub use dynamic_cache::{
     cached_dynamic_frame_bytes, dynamic_program_registration_bytes, CachedDynamicExecution,
     DynamicProgramAccepted, DynamicProgramStore, VerifiedDynamicProgramHandle,

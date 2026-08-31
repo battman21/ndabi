@@ -4,7 +4,12 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[features]
+allocation-counting = []
+benchmark-governed-native = ["ndabi-protocol/benchmark-governed-native"]
+
 [dependencies]
+libc = "0.2"
 ndabi-isa = { path = "../ndabi-isa" }
 ndabi-protocol = { path = "../ndabi-protocol" }
 ndabi-session = { path = "../ndabi-session" }

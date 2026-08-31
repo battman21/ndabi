@@ -123,6 +123,91 @@ pub trait DynamicBackend {
     ) -> Result<(), ProtocolError>;
 }
 
+/// Hold one verified typed request for the equal-security benchmark control.
+///
+/// This type is not a wire admission surface. The feature exists only for benchmark binaries.
+#[cfg(feature = "benchmark-governed-native")]
+pub struct GovernedDynamicRequest<'a> {
+    generation: u64,
+    session: u64,
+    context_digest: [u8; 32],
+    nonce: u64,
+    deadline_unix_us: u64,
+    result_budget: u32,
+    row_budget: u32,
+    program: &'a VerifiedProgram<'a>,
+    operands: &'a VerifiedOperands<'a>,
+}
+
+/// Prepare trusted typed requests for the equal-security benchmark control.
+#[cfg(feature = "benchmark-governed-native")]
+pub struct GovernedDynamicClientSession {
+    authority: Authority,
+    next_nonce: u64,
+}
+
+#[cfg(feature = "benchmark-governed-native")]
+impl GovernedDynamicClientSession {
+    pub fn new(authority: Authority) -> Self {
+        Self {
+            authority,
+            next_nonce: 1,
+        }
+    }
+
+    pub fn prepare<'a>(
+        &mut self,
+        program: &'a VerifiedProgram<'a>,
+        operands: &'a VerifiedOperands<'a>,
+        result_budget: u32,
+        row_budget: u32,
+        deadline_unix_us: u64,
+    ) -> Result<GovernedDynamicRequest<'a>, ProtocolError> {
+        if operands.program_digest() != program.digest() {
+            return Err(ProtocolError::DynamicOperandsInvalid);
+        }
+        if result_budget == 0 || row_budget == 0 {
+            return Err(ProtocolError::ZeroBudget);
+        }
+        if deadline_unix_us == 0 || deadline_unix_us > self.authority.expires_unix_us {
+            return Err(ProtocolError::DeadlineBeyondAuthority);
+        }
+        let nonce = self.next_nonce;
+        self.next_nonce = nonce.checked_add(1).ok_or(ProtocolError::NonceEnded)?;
+        Ok(GovernedDynamicRequest {
+            generation: self.authority.generation,
+            session: self.authority.session,
+            context_digest: self.authority.context_digest,
+            nonce,
+            deadline_unix_us,
+            result_budget,
+            row_budget,
+            program,
+            operands,
+        })
+    }
+
+    pub fn verify_receipt(
+        &self,
+        request: &GovernedDynamicRequest<'_>,
+        rows: u32,
+        bytes: &[u8],
+        candidate: &[u8; 32],
+    ) -> Result<(), ProtocolError> {
+        let expected = receipt(
+            &self.authority,
+            governed_dynamic_request_digest(request),
+            request.nonce,
+            rows,
+            bytes,
+        );
+        if expected.ct_eq(candidate).unwrap_u8() != 1 {
+            return Err(ProtocolError::ReceiptMismatch);
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 pub struct DynamicExecution {
     pub program_digest: [u8; 32],
@@ -142,6 +227,73 @@ struct AuthenticatedDynamic<'a> {
 }
 
 impl ServerSession {
+    /// Execute the equal-security benchmark control without a wire frame.
+    ///
+    /// Compile this method only into benchmark binaries. Do not expose it to an untrusted caller.
+    #[cfg(feature = "benchmark-governed-native")]
+    pub fn execute_governed_dynamic<B: DynamicBackend, R: ReplayStore, C: Clock>(
+        &self,
+        request: &GovernedDynamicRequest<'_>,
+        backend: &mut B,
+        replay: &mut R,
+        clock: &C,
+    ) -> Result<DynamicExecution, ProtocolError> {
+        let admitted_unix_us = clock.now_unix_us()?;
+        if request.generation != self.authority.generation
+            || request.session != self.authority.session
+            || request.context_digest != self.authority.context_digest
+        {
+            return Err(ProtocolError::AuthorityMismatch);
+        }
+        if request.deadline_unix_us <= admitted_unix_us
+            || request.deadline_unix_us > self.authority.expires_unix_us
+        {
+            return Err(ProtocolError::Expired);
+        }
+        if request.result_budget == 0
+            || request.result_budget > self.maximum_result_bytes
+            || request.row_budget == 0
+            || request.row_budget > self.maximum_rows
+        {
+            return Err(ProtocolError::BudgetExceeded);
+        }
+        validate_dynamic_backend(&self.authority, backend, request.deadline_unix_us)?;
+        let previous_nonce = replay.last_nonce(self.authority.replay_key())?;
+        if request.nonce
+            != previous_nonce
+                .checked_add(1)
+                .ok_or(ProtocolError::NonceEnded)?
+        {
+            return Err(ProtocolError::Replay);
+        }
+        let limits = ExecutionLimits {
+            admitted_unix_us,
+            deadline_unix_us: request.deadline_unix_us,
+            maximum_result_bytes: request.result_budget,
+            maximum_rows: request.row_budget,
+        };
+        let mut output = BoundedOutput::new_deferred(request.result_budget, request.row_budget);
+        backend.execute_dynamic(request.program, request.operands, limits, &mut output)?;
+        if clock.now_unix_us()? >= request.deadline_unix_us {
+            return Err(ProtocolError::ExpiredDuringExecution);
+        }
+        replay.commit(self.authority.replay_key(), previous_nonce, request.nonce)?;
+        let receipt = receipt(
+            &self.authority,
+            governed_dynamic_request_digest(request),
+            request.nonce,
+            output.rows,
+            &output.bytes,
+        );
+        Ok(DynamicExecution {
+            program_digest: request.program.digest(),
+            operand_digest: request.operands.digest(),
+            bytes: output.bytes,
+            rows: output.rows,
+            receipt,
+        })
+    }
+
     pub fn execute_dynamic<B: DynamicBackend, R: ReplayStore, C: Clock>(
         &self,
         frame: &[u8],
@@ -213,6 +365,22 @@ impl ServerSession {
             receipt,
         })
     }
+}
+
+#[cfg(feature = "benchmark-governed-native")]
+fn governed_dynamic_request_digest(request: &GovernedDynamicRequest<'_>) -> [u8; 32] {
+    let mut digest = blake3::Hasher::new();
+    digest.update(b"ndabi/benchmark/v1/governed-dynamic");
+    digest.update(&request.generation.to_le_bytes());
+    digest.update(&request.session.to_le_bytes());
+    digest.update(&request.context_digest);
+    digest.update(&request.nonce.to_le_bytes());
+    digest.update(&request.deadline_unix_us.to_le_bytes());
+    digest.update(&request.result_budget.to_le_bytes());
+    digest.update(&request.row_budget.to_le_bytes());
+    digest.update(&request.program.digest());
+    digest.update(&request.operands.digest());
+    *digest.finalize().as_bytes()
 }
 
 pub(super) fn validate_dynamic_backend<B: DynamicBackend>(
@@ -504,5 +672,46 @@ mod tests {
         ));
         assert_eq!(backend.calls.get(), 0);
         assert_eq!(replay.last_nonce(server.authority.replay_key()), Ok(0));
+    }
+
+    #[cfg(feature = "benchmark-governed-native")]
+    #[test]
+    fn the_governed_control_executes_verified_types_and_verifies_its_receipt() {
+        let schema = schema();
+        let program_bytes = program_bytes(&schema);
+        let program = verify_program(&program_bytes, &schema, CAPABILITY, VerifyLimits::default())
+            .expect("verified program");
+        let mut operand_builder = OperandBuilder::new(&program);
+        operand_builder
+            .push(ParameterValue::I64(17))
+            .expect("operand");
+        let operand_bytes = operand_builder.finish().expect("operands");
+        let operands = verify_operands(&operand_bytes, &program).expect("verified operands");
+        let authority = authority(&schema);
+        let mut client = GovernedDynamicClientSession::new(authority.clone());
+        let request = client
+            .prepare(&program, &operands, 128, 2, DEADLINE)
+            .expect("request");
+        let server = ServerSession::new(authority, 128, 2).expect("server");
+        let mut backend = backend(schema);
+        let execution = server
+            .execute_governed_dynamic(
+                &request,
+                &mut backend,
+                &mut MemoryReplayStore::default(),
+                &TestClock,
+            )
+            .expect("execution");
+        assert_eq!(execution.bytes, 17_i64.to_le_bytes());
+        assert_eq!(execution.rows, 1);
+        client
+            .verify_receipt(
+                &request,
+                execution.rows,
+                &execution.bytes,
+                &execution.receipt,
+            )
+            .expect("receipt");
+        assert_eq!(backend.calls.get(), 1);
     }
 }
