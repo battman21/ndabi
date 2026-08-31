@@ -5,6 +5,10 @@ const BATCH_HEADER_BYTES = 128;
 const TAG_BYTES = 32;
 const BATCH_OPERAND_BYTES = 20;
 const MAX_BATCH_OPERATIONS = 4096;
+const TRANSPORT_MIN_FRAME_BYTES = 160;
+const MAXIMUM_ERROR_CODE = 10;
+const MAXIMUM_U32 = 0xffff_ffff;
+const MAXIMUM_U64 = 0xffff_ffff_ffff_ffffn;
 const textEncoder = new TextEncoder();
 
 const CONTEXT_DOMAIN = textEncoder.encode("ndabi/wire/v1/context");
@@ -13,6 +17,8 @@ const RECEIPT_KEY_DOMAIN = textEncoder.encode("ndabi/wire/v1/receipt-key");
 const SINGLE_FRAME_DOMAIN = textEncoder.encode("ndabi/wire/v1/frame");
 const BATCH_FRAME_DOMAIN = textEncoder.encode("ndabi/wire/v1/batch-frame");
 const RECEIPT_DOMAIN = textEncoder.encode("ndabi/wire/v1/receipt");
+const TRANSPORT_KEY_DOMAIN = textEncoder.encode("ndabi/wire/v2/transport-key");
+const TRANSPORT_FRAME_DOMAIN = textEncoder.encode("ndabi/wire/v2/transport-frame");
 
 export interface Authority {
   rootKey: Uint8Array;
@@ -54,6 +60,33 @@ export interface Pending {
   readonly rowBudget: number;
   readonly operation: Operation;
   readonly items: readonly Item[];
+}
+
+export interface TransportAuthority {
+  rootKey: Uint8Array;
+  generation: bigint;
+  session: bigint;
+  expiresUnixUS: bigint;
+  contextDigest: Uint8Array;
+}
+
+export type TransportDirection = 1 | 2;
+
+export interface TransportFields {
+  readonly errorCode: number;
+  readonly correlationNonce: bigint;
+  readonly sequence: number;
+  readonly rows: number;
+  readonly resultShape: number;
+  readonly features: number;
+  readonly auxiliary: number;
+  readonly executionReceipt: Uint8Array;
+}
+
+export interface TransportFrame {
+  readonly kind: number;
+  readonly fields: TransportFields;
+  readonly payload: Uint8Array;
 }
 
 interface Admission {
@@ -243,6 +276,204 @@ export function receipt(
   );
   receiptKey.fill(0);
   return output;
+}
+
+export function decodeTransport(
+  frame: Uint8Array,
+  authority: TransportAuthority,
+  direction: TransportDirection,
+  maximumPayloadBytes: number,
+  nowUnixUS: bigint,
+): TransportFrame {
+  validateTransportAuthority(authority);
+  if (direction !== 1 && direction !== 2) refuse("UnsupportedFrame");
+  if (!Number.isInteger(maximumPayloadBytes) || maximumPayloadBytes < 0) refuse("LengthMismatch");
+  if (maximumPayloadBytes > MAXIMUM_U32 - TRANSPORT_MIN_FRAME_BYTES) refuse("TransportPayloadTooLarge");
+  if (nowUnixUS < 0n || nowUnixUS > MAXIMUM_U64) refuse("InvalidAuthorityWidth");
+  if (frame.length < TRANSPORT_MIN_FRAME_BYTES || frame.length > TRANSPORT_MIN_FRAME_BYTES + maximumPayloadBytes) {
+    refuse("LengthMismatch");
+  }
+
+  const tagOffset = frame.length - TAG_BYTES;
+  const transportKey = blake3(
+    concatenate(
+      TRANSPORT_KEY_DOMAIN,
+      encodeU64(authority.generation),
+      encodeU64(authority.session),
+      encodeU64(authority.expiresUnixUS),
+      authority.contextDigest,
+    ),
+    { key: authority.rootKey },
+  );
+  const expectedTag = blake3(
+    concatenate(TRANSPORT_FRAME_DOMAIN, Uint8Array.of(direction), frame.subarray(0, tagOffset)),
+    { key: transportKey },
+  );
+  const authenticated = constantTimeEqual(expectedTag, frame.subarray(tagOffset));
+  transportKey.fill(0);
+  expectedTag.fill(0);
+  if (!authenticated) refuse("AuthenticationFailed");
+
+  if (
+    frame[0] !== 0x4e ||
+    frame[1] !== 0x44 ||
+    frame[2] !== 0x42 ||
+    frame[3] !== 0x54 ||
+    frame[4] !== 2 ||
+    frame[5] !== 0 ||
+    frame[7] !== 0
+  ) {
+    refuse("UnsupportedFrame");
+  }
+  const kind = frame[6];
+  if (kind < 1 || kind > 10) refuse("UnsupportedFrame");
+
+  const view = dataView(frame);
+  const payloadBytes = view.getUint32(44, true);
+  if (
+    view.getUint16(10, true) !== 0 ||
+    view.getUint32(12, true) !== frame.length ||
+    TRANSPORT_MIN_FRAME_BYTES + payloadBytes !== frame.length
+  ) {
+    refuse("NonCanonicalFrame");
+  }
+  if (
+    view.getBigUint64(16, true) !== authority.session ||
+    view.getBigUint64(24, true) !== authority.generation ||
+    !constantTimeEqual(frame.subarray(64, 96), authority.contextDigest)
+  ) {
+    refuse("AuthorityMismatch");
+  }
+  if (nowUnixUS >= authority.expiresUnixUS) refuse("Expired");
+
+  const fields: TransportFields = {
+    errorCode: view.getUint16(8, true),
+    correlationNonce: view.getBigUint64(32, true),
+    sequence: view.getUint32(40, true),
+    rows: view.getUint32(48, true),
+    resultShape: view.getUint32(52, true),
+    features: view.getUint32(56, true),
+    auxiliary: view.getUint32(60, true),
+    executionReceipt: frame.slice(96, 128),
+  };
+  const payload = frame.slice(128, tagOffset);
+  validateTransportSemantics(kind, fields, payload);
+  Object.freeze(fields);
+  return Object.freeze({ kind, fields, payload });
+}
+
+function validateTransportAuthority(authority: TransportAuthority): void {
+  if (authority.rootKey.length !== 32 || authority.contextDigest.length !== 32) refuse("InvalidAuthorityWidth");
+  if (
+    authority.generation < 0n || authority.generation > MAXIMUM_U64 ||
+    authority.session < 0n || authority.session > MAXIMUM_U64 ||
+    authority.expiresUnixUS < 0n || authority.expiresUnixUS > MAXIMUM_U64
+  ) refuse("InvalidAuthorityWidth");
+  if (allZero(authority.rootKey)) refuse("ZeroKey");
+  if (
+    authority.generation === 0n ||
+    authority.session === 0n ||
+    authority.expiresUnixUS === 0n ||
+    allZero(authority.contextDigest)
+  ) {
+    refuse("ZeroIdentity");
+  }
+}
+
+function validateTransportSemantics(kind: number, fields: TransportFields, payload: Uint8Array): void {
+  const receiptIsZero = allZero(fields.executionReceipt);
+  const commonZero = fields.errorCode === 0;
+  const terminalZero = fields.features === 0 && fields.auxiliary === 0;
+  if (kind === 1) {
+    if (
+      !commonZero || fields.correlationNonce !== 0n || fields.sequence !== 0 || fields.rows !== 0 ||
+      fields.resultShape !== 0 || fields.auxiliary < TRANSPORT_MIN_FRAME_BYTES + payload.length ||
+      !receiptIsZero || payload.length !== 8
+    ) refuse("NonCanonicalFrame");
+    const view = dataView(payload);
+    const minimumMajor = view.getUint16(0, true);
+    const maximumMajor = view.getUint16(2, true);
+    const maximumChunk = view.getUint32(4, true);
+    if (
+      minimumMajor === 0 || maximumMajor < minimumMajor || maximumChunk === 0 ||
+      maximumChunk > fields.auxiliary - TRANSPORT_MIN_FRAME_BYTES
+    ) refuse("NonCanonicalFrame");
+    return;
+  }
+  if (kind === 2) {
+    if (
+      !commonZero || fields.correlationNonce !== 0n || fields.sequence !== 0 || fields.rows !== 0 ||
+      fields.resultShape !== 0 || fields.auxiliary < TRANSPORT_MIN_FRAME_BYTES + payload.length ||
+      !receiptIsZero || payload.length !== 8
+    ) refuse("NonCanonicalFrame");
+    const view = dataView(payload);
+    const maximumChunk = view.getUint32(4, true);
+    if (
+      view.getUint16(0, true) !== 2 || view.getUint16(2, true) !== 0 || maximumChunk === 0 ||
+      maximumChunk > fields.auxiliary - TRANSPORT_MIN_FRAME_BYTES
+    ) refuse("NonCanonicalFrame");
+    return;
+  }
+  if (kind === 3) {
+    if (
+      !commonZero || fields.correlationNonce === 0n || fields.sequence !== 0 || fields.resultShape === 0 ||
+      !terminalZero || receiptIsZero
+    ) refuse("NonCanonicalFrame");
+    return;
+  }
+  if (kind === 4) {
+    if (
+      fields.errorCode < 1 || fields.errorCode > MAXIMUM_ERROR_CODE || fields.sequence !== 0 ||
+      fields.rows !== 0 || fields.resultShape !== 0 || !terminalZero || !receiptIsZero || payload.length !== 0
+    ) refuse("NonCanonicalFrame");
+    return;
+  }
+  if (kind === 5) {
+    if (
+      !commonZero || fields.correlationNonce === 0n || fields.sequence !== 0 || fields.rows !== 0 ||
+      fields.resultShape !== 0 || !terminalZero || !receiptIsZero || payload.length !== 0
+    ) refuse("NonCanonicalFrame");
+    return;
+  }
+  if (kind === 6) {
+    if (
+      !commonZero || fields.correlationNonce === 0n || fields.sequence !== 0 || fields.resultShape === 0 ||
+      !terminalZero || !receiptIsZero || payload.length !== 0
+    ) refuse("NonCanonicalFrame");
+    return;
+  }
+  if (kind === 7) {
+    if (
+      !commonZero || fields.correlationNonce === 0n || fields.sequence === 0 || fields.rows !== 0 ||
+      fields.resultShape !== 0 || !terminalZero || !receiptIsZero || payload.length === 0
+    ) refuse("NonCanonicalFrame");
+    return;
+  }
+  if (kind === 8) {
+    if (
+      !commonZero || fields.correlationNonce === 0n || fields.sequence === 0 || fields.resultShape === 0 ||
+      !terminalZero || receiptIsZero || payload.length !== 0
+    ) refuse("NonCanonicalFrame");
+    return;
+  }
+  if (kind === 9) {
+    if (
+      !commonZero || fields.correlationNonce === 0n || fields.sequence !== 0 || fields.rows !== 0 ||
+      fields.resultShape === 0 || !terminalZero || !receiptIsZero || payload.length !== 48
+    ) refuse("NonCanonicalFrame");
+    const view = dataView(payload);
+    if (
+      view.getUint32(0, true) === 0 || view.getUint32(4, true) === 0 || view.getBigUint64(8, true) === 0n ||
+      allZero(payload.subarray(16, 48))
+    ) refuse("NonCanonicalFrame");
+    return;
+  }
+  if (
+    !commonZero || fields.correlationNonce === 0n || fields.sequence !== 0 || fields.rows !== 0 ||
+    fields.resultShape === 0 || !terminalZero || !receiptIsZero || payload.length !== 8
+  ) refuse("NonCanonicalFrame");
+  const view = dataView(payload);
+  if (view.getUint32(0, true) === 0 || view.getUint32(4, true) === 0) refuse("NonCanonicalFrame");
 }
 
 function validateAuthority(authority: Authority): void {

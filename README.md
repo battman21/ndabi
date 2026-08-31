@@ -29,6 +29,7 @@ The complete local Supabase stack passes Auth health, forced RLS, exact results,
 The MongoDB bundle adapter passes a real Docker execution with one retained static decode.
 The White Tree bundle adapter remains a consumer integration.
 The v0.2 transport adds negotiation, results, errors, cancellation, and streaming controls.
+Independent Go and TypeScript decoders pass its shared message and mutation vectors.
 The sealed registry binds handles to reviewed implementations, schemas, policies, capabilities, and budgets.
 The PostgreSQL adapter executes registered single and heterogeneous batch read graphs.
 The Supabase adapter executes the batch graph through one admitted forced-RLS user session.

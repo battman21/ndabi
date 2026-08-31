@@ -1,4 +1,4 @@
-// Package ndabi independently decodes the NDABI v0.1 RFC-candidate frames.
+// Package ndabi independently decodes the NDABI v0.1 request and v0.2 transport frames.
 // It does not call the Rust implementation or a database adapter.
 package ndabi
 
@@ -17,35 +17,40 @@ const (
 	tagBytes           = 32
 	batchOperandBytes  = 20
 	maxBatchOperations = 4096
+	transportMinBytes  = 160
+	maximumErrorCode   = 10
 )
 
 var (
-	ErrAuthenticationFailed   = errors.New("AuthenticationFailed")
-	ErrAuthorityMismatch      = errors.New("AuthorityMismatch")
-	ErrBatchLimitExceeded     = errors.New("BatchLimitExceeded")
-	ErrBatchTooSmall          = errors.New("BatchTooSmall")
-	ErrBudgetExceeded         = errors.New("BudgetExceeded")
-	ErrExpired                = errors.New("Expired")
-	ErrLengthMismatch         = errors.New("LengthMismatch")
-	ErrNonCanonicalFrame      = errors.New("NonCanonicalFrame")
-	ErrReplay                 = errors.New("Replay")
-	ErrReplayConflict         = errors.New("ReplayConflict")
-	ErrReplayStoreUnavailable = errors.New("ReplayStoreUnavailable")
-	ErrUnsupportedFrame       = errors.New("UnsupportedFrame")
-	ErrZeroDigest             = errors.New("ZeroDigest")
-	ErrZeroIdentity           = errors.New("ZeroIdentity")
-	ErrZeroKey                = errors.New("ZeroKey")
-	ErrZeroOperationField     = errors.New("ZeroOperationField")
+	ErrAuthenticationFailed     = errors.New("AuthenticationFailed")
+	ErrAuthorityMismatch        = errors.New("AuthorityMismatch")
+	ErrBatchLimitExceeded       = errors.New("BatchLimitExceeded")
+	ErrBatchTooSmall            = errors.New("BatchTooSmall")
+	ErrBudgetExceeded           = errors.New("BudgetExceeded")
+	ErrExpired                  = errors.New("Expired")
+	ErrLengthMismatch           = errors.New("LengthMismatch")
+	ErrNonCanonicalFrame        = errors.New("NonCanonicalFrame")
+	ErrReplay                   = errors.New("Replay")
+	ErrReplayConflict           = errors.New("ReplayConflict")
+	ErrReplayStoreUnavailable   = errors.New("ReplayStoreUnavailable")
+	ErrTransportPayloadTooLarge = errors.New("TransportPayloadTooLarge")
+	ErrUnsupportedFrame         = errors.New("UnsupportedFrame")
+	ErrZeroDigest               = errors.New("ZeroDigest")
+	ErrZeroIdentity             = errors.New("ZeroIdentity")
+	ErrZeroKey                  = errors.New("ZeroKey")
+	ErrZeroOperationField       = errors.New("ZeroOperationField")
 )
 
 var (
-	magic             = [4]byte{'N', 'D', 'B', 'I'}
-	contextDomain     = []byte("ndabi/wire/v1/context")
-	frameKeyDomain    = []byte("ndabi/wire/v1/session-key")
-	receiptKeyDomain  = []byte("ndabi/wire/v1/receipt-key")
-	singleFrameDomain = []byte("ndabi/wire/v1/frame")
-	batchFrameDomain  = []byte("ndabi/wire/v1/batch-frame")
-	receiptDomain     = []byte("ndabi/wire/v1/receipt")
+	magic                = [4]byte{'N', 'D', 'B', 'I'}
+	contextDomain        = []byte("ndabi/wire/v1/context")
+	frameKeyDomain       = []byte("ndabi/wire/v1/session-key")
+	receiptKeyDomain     = []byte("ndabi/wire/v1/receipt-key")
+	singleFrameDomain    = []byte("ndabi/wire/v1/frame")
+	batchFrameDomain     = []byte("ndabi/wire/v1/batch-frame")
+	receiptDomain        = []byte("ndabi/wire/v1/receipt")
+	transportKeyDomain   = []byte("ndabi/wire/v2/transport-key")
+	transportFrameDomain = []byte("ndabi/wire/v2/transport-frame")
 )
 
 // Authority contains the public context and the shared test authority.
@@ -97,6 +102,34 @@ type Pending struct {
 	replayKey      string
 	previousNonce  uint64
 	acceptedNonce  uint64
+}
+
+// TransportAuthority binds transport frames to one provisioned authority.
+type TransportAuthority struct {
+	RootKey       [32]byte
+	Generation    uint64
+	Session       uint64
+	ExpiresUnixUS uint64
+	ContextDigest [32]byte
+}
+
+// TransportFields contains the authenticated common transport fields.
+type TransportFields struct {
+	ErrorCode        uint16
+	CorrelationNonce uint64
+	Sequence         uint32
+	Rows             uint32
+	ResultShape      uint32
+	Features         uint32
+	Auxiliary        uint32
+	ExecutionReceipt [32]byte
+}
+
+// TransportFrame contains one authenticated v0.2 transport message.
+type TransportFrame struct {
+	Kind    uint8
+	Fields  TransportFields
+	Payload []byte
 }
 
 // Nonce returns the authenticated replay nonce.
@@ -311,6 +344,179 @@ func Receipt(frame []byte, authority Authority, nonce uint64, rows uint32, resul
 	output := digest(hasher)
 	clear(receiptKey[:])
 	return output
+}
+
+// DecodeTransport authenticates one complete v0.2 transport frame before semantic interpretation.
+func DecodeTransport(
+	frame []byte,
+	authority TransportAuthority,
+	direction uint8,
+	maximumPayloadBytes uint32,
+	nowUnixUS uint64,
+) (TransportFrame, error) {
+	if isZero(authority.RootKey[:]) {
+		return TransportFrame{}, ErrZeroKey
+	}
+	if authority.Generation == 0 || authority.Session == 0 || authority.ExpiresUnixUS == 0 ||
+		isZero(authority.ContextDigest[:]) {
+		return TransportFrame{}, ErrZeroIdentity
+	}
+	if direction != 1 && direction != 2 {
+		return TransportFrame{}, ErrUnsupportedFrame
+	}
+	if maximumPayloadBytes > ^uint32(0)-transportMinBytes {
+		return TransportFrame{}, ErrTransportPayloadTooLarge
+	}
+	if len(frame) < transportMinBytes || uint64(len(frame)) > uint64(transportMinBytes)+uint64(maximumPayloadBytes) {
+		return TransportFrame{}, ErrLengthMismatch
+	}
+
+	transportKey := deriveTransportKey(authority)
+	tagOffset := len(frame) - tagBytes
+	expectedTag := transportTag(transportKey, direction, frame[:tagOffset])
+	authenticated := subtle.ConstantTimeCompare(expectedTag[:], frame[tagOffset:]) == 1
+	clear(transportKey[:])
+	clear(expectedTag[:])
+	if !authenticated {
+		return TransportFrame{}, ErrAuthenticationFailed
+	}
+	if string(frame[0:4]) != "NDBT" || frame[4] != 2 || frame[5] != 0 || frame[7] != 0 {
+		return TransportFrame{}, ErrUnsupportedFrame
+	}
+	kind := frame[6]
+	if kind < 1 || kind > 10 {
+		return TransportFrame{}, ErrUnsupportedFrame
+	}
+	payloadBytes := binary.LittleEndian.Uint32(frame[44:48])
+	if binary.LittleEndian.Uint16(frame[10:12]) != 0 ||
+		binary.LittleEndian.Uint32(frame[12:16]) != uint32(len(frame)) ||
+		uint64(transportMinBytes)+uint64(payloadBytes) != uint64(len(frame)) {
+		return TransportFrame{}, ErrNonCanonicalFrame
+	}
+	if binary.LittleEndian.Uint64(frame[16:24]) != authority.Session ||
+		binary.LittleEndian.Uint64(frame[24:32]) != authority.Generation ||
+		subtle.ConstantTimeCompare(frame[64:96], authority.ContextDigest[:]) != 1 {
+		return TransportFrame{}, ErrAuthorityMismatch
+	}
+	if nowUnixUS >= authority.ExpiresUnixUS {
+		return TransportFrame{}, ErrExpired
+	}
+	fields := TransportFields{
+		ErrorCode:        binary.LittleEndian.Uint16(frame[8:10]),
+		CorrelationNonce: binary.LittleEndian.Uint64(frame[32:40]),
+		Sequence:         binary.LittleEndian.Uint32(frame[40:44]),
+		Rows:             binary.LittleEndian.Uint32(frame[48:52]),
+		ResultShape:      binary.LittleEndian.Uint32(frame[52:56]),
+		Features:         binary.LittleEndian.Uint32(frame[56:60]),
+		Auxiliary:        binary.LittleEndian.Uint32(frame[60:64]),
+	}
+	copy(fields.ExecutionReceipt[:], frame[96:128])
+	payload := append([]byte(nil), frame[128:tagOffset]...)
+	if err := validateTransportSemantics(kind, fields, payload); err != nil {
+		return TransportFrame{}, err
+	}
+	return TransportFrame{Kind: kind, Fields: fields, Payload: payload}, nil
+}
+
+func deriveTransportKey(authority TransportAuthority) [32]byte {
+	hasher, err := blake3.NewKeyed(authority.RootKey[:])
+	if err != nil {
+		panic("the fixed transport root key has an invalid length")
+	}
+	write(hasher, transportKeyDomain)
+	writeU64(hasher, authority.Generation)
+	writeU64(hasher, authority.Session)
+	writeU64(hasher, authority.ExpiresUnixUS)
+	write(hasher, authority.ContextDigest[:])
+	return digest(hasher)
+}
+
+func transportTag(key [32]byte, direction uint8, authenticated []byte) [32]byte {
+	hasher, err := blake3.NewKeyed(key[:])
+	if err != nil {
+		panic("the fixed transport key has an invalid length")
+	}
+	write(hasher, transportFrameDomain)
+	write(hasher, []byte{direction})
+	write(hasher, authenticated)
+	return digest(hasher)
+}
+
+func validateTransportSemantics(kind uint8, fields TransportFields, payload []byte) error {
+	receiptIsZero := isZero(fields.ExecutionReceipt[:])
+	terminalZero := fields.Features == 0 && fields.Auxiliary == 0
+	switch kind {
+	case 1:
+		if fields.ErrorCode != 0 || fields.CorrelationNonce != 0 || fields.Sequence != 0 || fields.Rows != 0 ||
+			fields.ResultShape != 0 || fields.Auxiliary < uint32(transportMinBytes+len(payload)) || !receiptIsZero || len(payload) != 8 {
+			return ErrNonCanonicalFrame
+		}
+		minimumMajor := binary.LittleEndian.Uint16(payload[0:2])
+		maximumMajor := binary.LittleEndian.Uint16(payload[2:4])
+		maximumChunk := binary.LittleEndian.Uint32(payload[4:8])
+		if minimumMajor == 0 || maximumMajor < minimumMajor || maximumChunk == 0 ||
+			maximumChunk > fields.Auxiliary-transportMinBytes {
+			return ErrNonCanonicalFrame
+		}
+	case 2:
+		if fields.ErrorCode != 0 || fields.CorrelationNonce != 0 || fields.Sequence != 0 || fields.Rows != 0 ||
+			fields.ResultShape != 0 || fields.Auxiliary < uint32(transportMinBytes+len(payload)) || !receiptIsZero || len(payload) != 8 {
+			return ErrNonCanonicalFrame
+		}
+		maximumChunk := binary.LittleEndian.Uint32(payload[4:8])
+		if binary.LittleEndian.Uint16(payload[0:2]) != 2 || binary.LittleEndian.Uint16(payload[2:4]) != 0 ||
+			maximumChunk == 0 || maximumChunk > fields.Auxiliary-transportMinBytes {
+			return ErrNonCanonicalFrame
+		}
+	case 3:
+		if fields.ErrorCode != 0 || fields.CorrelationNonce == 0 || fields.Sequence != 0 || fields.ResultShape == 0 ||
+			!terminalZero || receiptIsZero {
+			return ErrNonCanonicalFrame
+		}
+	case 4:
+		if fields.ErrorCode < 1 || fields.ErrorCode > maximumErrorCode || fields.Sequence != 0 || fields.Rows != 0 ||
+			fields.ResultShape != 0 || !terminalZero || !receiptIsZero || len(payload) != 0 {
+			return ErrNonCanonicalFrame
+		}
+	case 5:
+		if fields.ErrorCode != 0 || fields.CorrelationNonce == 0 || fields.Sequence != 0 || fields.Rows != 0 ||
+			fields.ResultShape != 0 || !terminalZero || !receiptIsZero || len(payload) != 0 {
+			return ErrNonCanonicalFrame
+		}
+	case 6:
+		if fields.ErrorCode != 0 || fields.CorrelationNonce == 0 || fields.Sequence != 0 || fields.ResultShape == 0 ||
+			!terminalZero || !receiptIsZero || len(payload) != 0 {
+			return ErrNonCanonicalFrame
+		}
+	case 7:
+		if fields.ErrorCode != 0 || fields.CorrelationNonce == 0 || fields.Sequence == 0 || fields.Rows != 0 ||
+			fields.ResultShape != 0 || !terminalZero || !receiptIsZero || len(payload) == 0 {
+			return ErrNonCanonicalFrame
+		}
+	case 8:
+		if fields.ErrorCode != 0 || fields.CorrelationNonce == 0 || fields.Sequence == 0 || fields.ResultShape == 0 ||
+			!terminalZero || receiptIsZero || len(payload) != 0 {
+			return ErrNonCanonicalFrame
+		}
+	case 9:
+		if fields.ErrorCode != 0 || fields.CorrelationNonce == 0 || fields.Sequence != 0 || fields.Rows != 0 ||
+			fields.ResultShape == 0 || !terminalZero || !receiptIsZero || len(payload) != 48 {
+			return ErrNonCanonicalFrame
+		}
+		if binary.LittleEndian.Uint32(payload[0:4]) == 0 || binary.LittleEndian.Uint32(payload[4:8]) == 0 ||
+			binary.LittleEndian.Uint64(payload[8:16]) == 0 || isZero(payload[16:48]) {
+			return ErrNonCanonicalFrame
+		}
+	case 10:
+		if fields.ErrorCode != 0 || fields.CorrelationNonce == 0 || fields.Sequence != 0 || fields.Rows != 0 ||
+			fields.ResultShape == 0 || !terminalZero || !receiptIsZero || len(payload) != 8 {
+			return ErrNonCanonicalFrame
+		}
+		if binary.LittleEndian.Uint32(payload[0:4]) == 0 || binary.LittleEndian.Uint32(payload[4:8]) == 0 {
+			return ErrNonCanonicalFrame
+		}
+	}
+	return nil
 }
 
 func deriveKey(root [32]byte, domain []byte, authority Authority, context [32]byte) [32]byte {
