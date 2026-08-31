@@ -10,8 +10,9 @@ use std::io::{self, Read, Write};
 use std::sync::Arc;
 
 use ndabi_protocol::TRANSPORT_MIN_FRAME_BYTES;
+use rustls::client::ResolvesClientCert;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
-use rustls::server::WebPkiClientVerifier;
+use rustls::server::{ResolvesServerCert, WebPkiClientVerifier};
 use rustls::{
     ClientConfig, ClientConnection, RootCertStore, ServerConfig, ServerConnection, StreamOwned,
 };
@@ -87,23 +88,35 @@ pub fn server_profile(
             "the server certificate chain is empty",
         ));
     }
+    let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+    let certified_key =
+        rustls::sign::CertifiedKey::from_der(certificate_chain, private_key, provider.as_ref())?;
+    server_profile_with_certificate_resolver(
+        client_roots,
+        Arc::new(FixedServerCertificate::new(certified_key)),
+    )
+}
+
+/// Build the fixed NDABI server profile with an externally managed certificate signer.
+///
+/// The resolver can retain its private key in an HSM, KMS, or another signing service.
+/// The resolver cannot change peer verification, TLS versions, ALPN, early data, or tickets.
+pub fn server_profile_with_certificate_resolver(
+    client_roots: impl IntoIterator<Item = CertificateDer<'static>>,
+    certificate_resolver: Arc<dyn ResolvesServerCert>,
+) -> Result<ServerTlsProfile, TransportTlsError> {
     let roots = root_store(client_roots)?;
     let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
     let verifier = WebPkiClientVerifier::builder_with_provider(Arc::new(roots), provider.clone())
         .build()
         .map_err(|error| TransportTlsError::Certificate(error.to_string()))?;
-    let mut config = ServerConfig::builder_with_provider(provider)
+    let config = ServerConfig::builder_with_provider(provider)
         .with_protocol_versions(&[&rustls::version::TLS13])
         .map_err(TransportTlsError::Tls)?
         .with_client_cert_verifier(verifier)
-        .with_single_cert(certificate_chain, private_key)
-        .map_err(TransportTlsError::Tls)?;
-    config.alpn_protocols = vec![NDABI_ALPN.to_vec()];
-    config.max_early_data_size = 0;
-    config.send_half_rtt_data = false;
-    config.send_tls13_tickets = 0;
+        .with_cert_resolver(certificate_resolver);
     Ok(ServerTlsProfile {
-        config: Arc::new(config),
+        config: Arc::new(lock_server_profile(config)),
     })
 }
 
@@ -117,18 +130,32 @@ pub fn client_profile(
             "the client certificate chain is empty",
         ));
     }
+    let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+    let certified_key =
+        rustls::sign::CertifiedKey::from_der(certificate_chain, private_key, provider.as_ref())?;
+    client_profile_with_certificate_resolver(
+        server_roots,
+        Arc::new(FixedClientCertificate::new(certified_key)),
+    )
+}
+
+/// Build the fixed NDABI client profile with an externally managed certificate signer.
+///
+/// The resolver can retain its private key in an HSM, KMS, or another signing service.
+/// The resolver cannot change server verification, TLS versions, ALPN, or early data.
+pub fn client_profile_with_certificate_resolver(
+    server_roots: impl IntoIterator<Item = CertificateDer<'static>>,
+    certificate_resolver: Arc<dyn ResolvesClientCert>,
+) -> Result<ClientTlsProfile, TransportTlsError> {
     let roots = root_store(server_roots)?;
     let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
-    let mut config = ClientConfig::builder_with_provider(provider)
+    let config = ClientConfig::builder_with_provider(provider)
         .with_protocol_versions(&[&rustls::version::TLS13])
         .map_err(TransportTlsError::Tls)?
         .with_root_certificates(roots)
-        .with_client_auth_cert(certificate_chain, private_key)
-        .map_err(TransportTlsError::Tls)?;
-    config.alpn_protocols = vec![NDABI_ALPN.to_vec()];
-    config.enable_early_data = false;
+        .with_client_cert_resolver(certificate_resolver);
     Ok(ClientTlsProfile {
-        config: Arc::new(config),
+        config: Arc::new(lock_client_profile(config)),
     })
 }
 
@@ -252,6 +279,69 @@ fn root_store(
         ));
     }
     Ok(roots)
+}
+
+fn lock_server_profile(mut config: ServerConfig) -> ServerConfig {
+    config.alpn_protocols = vec![NDABI_ALPN.to_vec()];
+    config.max_early_data_size = 0;
+    config.send_half_rtt_data = false;
+    config.send_tls13_tickets = 0;
+    config
+}
+
+fn lock_client_profile(mut config: ClientConfig) -> ClientConfig {
+    config.alpn_protocols = vec![NDABI_ALPN.to_vec()];
+    config.enable_early_data = false;
+    config
+}
+
+#[derive(Debug)]
+struct FixedServerCertificate {
+    certified_key: Arc<rustls::sign::CertifiedKey>,
+}
+
+impl FixedServerCertificate {
+    fn new(certified_key: rustls::sign::CertifiedKey) -> Self {
+        Self {
+            certified_key: Arc::new(certified_key),
+        }
+    }
+}
+
+impl ResolvesServerCert for FixedServerCertificate {
+    fn resolve(
+        &self,
+        _client_hello: rustls::server::ClientHello<'_>,
+    ) -> Option<Arc<rustls::sign::CertifiedKey>> {
+        Some(self.certified_key.clone())
+    }
+}
+
+#[derive(Debug)]
+struct FixedClientCertificate {
+    certified_key: Arc<rustls::sign::CertifiedKey>,
+}
+
+impl FixedClientCertificate {
+    fn new(certified_key: rustls::sign::CertifiedKey) -> Self {
+        Self {
+            certified_key: Arc::new(certified_key),
+        }
+    }
+}
+
+impl ResolvesClientCert for FixedClientCertificate {
+    fn resolve(
+        &self,
+        _root_hint_subjects: &[&[u8]],
+        _sigschemes: &[rustls::SignatureScheme],
+    ) -> Option<Arc<rustls::sign::CertifiedKey>> {
+        Some(self.certified_key.clone())
+    }
+
+    fn has_certs(&self) -> bool {
+        true
+    }
 }
 
 fn validate_established(
@@ -383,6 +473,34 @@ mod tests {
             exchange(client_profile.clone(), server_profile, "server.ndabi.test")
                 .expect("mutual TLS exchange");
         }
+    }
+
+    #[test]
+    fn resolver_profiles_complete_mutual_tls_without_der_keys_in_the_profile_api() {
+        let authority = test_authority();
+        let client = test_identity(
+            "client.ndabi.test",
+            ExtendedKeyUsagePurpose::ClientAuth,
+            &authority.issuer,
+        );
+        let server = test_identity(
+            "server.ndabi.test",
+            ExtendedKeyUsagePurpose::ServerAuth,
+            &authority.issuer,
+        );
+        let client_resolver = Arc::new(FixedClientCertificate::new(certified_key(client)));
+        let server_resolver = Arc::new(FixedServerCertificate::new(certified_key(server)));
+        let client_profile = client_profile_with_certificate_resolver(
+            [authority.certificate.clone()],
+            client_resolver,
+        )
+        .expect("client resolver profile");
+        let server_profile =
+            server_profile_with_certificate_resolver([authority.certificate], server_resolver)
+                .expect("server resolver profile");
+
+        exchange(client_profile, server_profile, "server.ndabi.test")
+            .expect("resolver mutual TLS exchange");
     }
 
     #[test]
@@ -604,6 +722,12 @@ mod tests {
             certificate: certificate.der().clone(),
             key: PrivatePkcs8KeyDer::from(key.serialize_der()).into(),
         }
+    }
+
+    fn certified_key(identity: TestIdentity) -> rustls::sign::CertifiedKey {
+        let provider = rustls::crypto::aws_lc_rs::default_provider();
+        rustls::sign::CertifiedKey::from_der(vec![identity.certificate], identity.key, &provider)
+            .expect("certified key")
     }
 
     fn hello_frame() -> Vec<u8> {

@@ -23,6 +23,9 @@ Use the explicit AWS-LC Rustls provider.
 
 The API returns opaque profiles.
 The caller cannot weaken the profile through the returned public type.
+The profile accepts Rustls client and server certificate resolvers.
+The resolver can keep the signing key in an HSM, KMS, or another signing service.
+The profile does not accept a resolver for peer verification or protocol policy.
 
 ## 3. Stream framing
 
@@ -35,12 +38,13 @@ Pass every complete frame to the authenticated NDABI decoder.
 ## 4. Proven behaviour
 
 Focused tests prove valid mutual authentication and same-authority certificate rotation.
+They prove the client and server resolver paths through a complete mutual TLS exchange.
 They refuse wrong server names, unknown client authorities, expired certificates, and missing ALPN.
 They prove exact frame transfer without an added prefix.
 They refuse oversized and truncated frames without returning partial output.
 
 ## 5. Boundaries
 
-The caller owns certificate issuance, private-key custody, revocation delivery, socket timeouts, and network policy.
+The caller owns certificate issuance, resolver implementation, private-key custody, revocation delivery, socket timeouts, and network policy.
 The profile does not prove production custody, certificate revocation, controlled WAN behaviour, or remote performance.
 The v8.6 campaign must test those implemented boundaries that it can control.
