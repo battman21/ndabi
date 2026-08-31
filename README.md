@@ -34,7 +34,8 @@ The PostgreSQL adapter executes registered single and heterogeneous batch read g
 The Supabase adapter executes the batch graph through one admitted forced-RLS user session.
 Both adapters support one registered bundle graph with immutable ranges and dynamic thresholds.
 MongoDB executes one registered identifier-set bundle with a changing score threshold.
-White Tree does not execute registered operand bundles yet.
+The external White Tree consumer adapter executes one governed bitemporal operand bundle.
+Its consumer commit remains outside this repository and is not remotely published yet.
 
 The reusable workspace contains these main components:
 
@@ -50,7 +51,8 @@ Refer to [`specs/ndabi_rfc_candidate_v0_1.md`](specs/ndabi_rfc_candidate_v0_1.md
 Refer to [`specs/ndabi_plan_registry_candidate_v0_1.md`](specs/ndabi_plan_registry_candidate_v0_1.md) for the registry contract.
 Refer to [`specs/ndabi_registered_graph_candidate_v0_1.md`](specs/ndabi_registered_graph_candidate_v0_1.md) for the graph extension.
 Refer to [`specs/ndabi_operand_bundle_candidate_v0_1.md`](specs/ndabi_operand_bundle_candidate_v0_1.md) for the designed operand-reuse extension.
-Refer to [`specs/ndabi_operand_bundle_campaign_v0_1.md`](specs/ndabi_operand_bundle_campaign_v0_1.md) for the frozen comparative campaign.
+Refer to [`specs/ndabi_operand_bundle_campaign_v0_1.md`](specs/ndabi_operand_bundle_campaign_v0_1.md) for the original comparative campaign.
+Refer to [`specs/ndabi_operand_bundle_campaign_v0_2.md`](specs/ndabi_operand_bundle_campaign_v0_2.md) for the corrected beta performance gates.
 Refer to [`specs/ndabi_semantic_batch_diagnostic_v0_1.md`](specs/ndabi_semantic_batch_diagnostic_v0_1.md) for the complete diagnostic limits.
 Refer to [`specs/ndabi_semantic_batch_campaign_v0_2.md`](specs/ndabi_semantic_batch_campaign_v0_2.md) for the frozen qualification gates.
 
@@ -63,16 +65,18 @@ python3 campaigns/semantic_batch_v02.py --smoke
 Run the operand-bundle campaign smoke with this command:
 
 ```sh
-python3 campaigns/operand_bundle_v01.py --smoke
+python3 campaigns/operand_bundle_v02.py --smoke
 ```
 
 The latest non-formal bundle smoke reduced 1,024-item requests by 74.23%.
 Bundle p95 was 0.47% slower than fused native and 1.39% faster than registered graph execution.
 Bundle client CPU was 7.26% lower than graph execution, but allocated bytes were equal.
-The formal campaign remains unaccepted because the host was not quiet and two efficiency gates failed.
+The old total-CPU gate was impossible because it required savings below the fused database-driver floor.
+The v0.2 campaign retains complete CPU and latency limits and measures protocol excess above that floor.
+The v0.2 formal campaign remains unexecuted.
 
 The runner creates a pinned one-million-row PostgreSQL fixture and controlled Toxiproxy connection.
-It coordinates isolated arms and captures raw latency, client CPU, container CPU, RSS, allocations, source hashes, and binary hashes.
+It captures raw latency, client CPU, allocations, source identity, binary identity, image identity, and host state.
 It removes its exact containers, network, and proxy image after each run.
 Formal mode refuses a dirty checkout or a host below the frozen quiet-host threshold.
 
