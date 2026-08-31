@@ -97,6 +97,10 @@ interface Admission {
 
 const admissions = new WeakMap<Pending, Admission>();
 
+export function assertVerifiedPending(pending: Pending): void {
+  if (!admissions.has(pending)) refuse("InvalidPending");
+}
+
 export class ReplayStore {
   readonly #nonces = new Map<string, bigint>();
 
