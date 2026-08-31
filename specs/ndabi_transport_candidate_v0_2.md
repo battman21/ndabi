@@ -239,12 +239,15 @@ It MUST enforce maximum payload and authority expiry before returning decoded da
 
 The Rust, Go, and TypeScript codecs implement frame-level conformance.
 The Rust connection enforces direction, negotiation, authenticated request registration, correlation, cancellation, sequencing, budgets, and receipts.
+The independent Go sequence enforces negotiation, correlation, cancellation, streaming, budgets, receipts, and bundle acknowledgements.
+Its request registration accepts only authenticated `Pending` values from the Go verifier.
+Its bundle registration consumes authenticated control metadata because the Go bundle-control decoder remains open.
 The v6.4 local Docker campaign connected complete results to the canonical PostgreSQL adapter.
 The v8.4 candidate connected separate client and server processes through TLS 1.3 mutual authentication.
 Its exact results, receipts, trust refusals, and same-CA certificate rotation passed in one diagnostic run.
 The host-qualified performance result failed and retained no source or binary digest.
 Treat every v8.4 transport measurement as unattributed diagnostics.
-Independent v0.2 connection state machines remain the next implementation gate.
+The TypeScript connection state machine and the independent bundle-control decoder remain the next implementation gates.
 
 ## 13. Security boundaries
 
