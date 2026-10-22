@@ -41,6 +41,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24.x
+          check-latest: true
           cache: npm
           cache-dependency-path: conformance/typescript/package-lock.json
       - name: Require a supported Node.js floor
@@ -51,6 +52,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
+          check-latest: true
       - name: Require Python 3.13.17 or newer and current pip trust roots
         run: |
           python3 - <<'PY'
