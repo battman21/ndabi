@@ -1,9 +1,11 @@
-FROM rust:1.92-bookworm@sha256:e90e846de4124376164ddfbaab4b0774c7bdeef5e738866295e5a90a34a307a2 AS builder
+FROM rust:1.99-trixie AS builder
 
-# CVE-2026-111943: install the current Debian trust store, then require the bookworm-security fix or newer.
+# Debian 13 trixie. Upgrade the image, then require the rustc and CA floors.
 RUN apt-get update \
+    && apt-get upgrade --yes \
     && apt-get install --yes --no-install-recommends ca-certificates \
-    && dpkg --compare-versions "$(dpkg-query -W -f '$${Version}' ca-certificates)" ge "20250419~deb12u2" \
+    && dpkg --compare-versions "$(rustc --version | awk '{print $2}')" ge "1.96.1" \
+    && dpkg --compare-versions "$(dpkg-query -W -f '$${Version}' ca-certificates)" ge "20250419+deb13u1" \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace/campaign
@@ -16,13 +18,20 @@ COPY research/showdown/src/v41/mod.rs ./src/v41/mod.rs
 
 RUN RUSTFLAGS="-D warnings" cargo build --release --locked --bin ndabi_v41
 
-FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 AS runtime
+FROM debian:trixie-slim AS runtime
+
+RUN apt-get update \
+    && apt-get upgrade --yes \
+    && apt-get install --yes --no-install-recommends ca-certificates curl \
+    && dpkg --compare-versions "$(dpkg-query -W -f '$${Version}' ca-certificates)" ge "20250419+deb13u1" \
+    && curl --fail --silent --show-error https://example.com --output /dev/null \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /workspace/campaign/target/release/ndabi_v41 /usr/local/bin/ndabi_v41
 
 LABEL org.opencontainers.image.title="NDABI PostgreSQL embedded client v4.1"
 LABEL org.whitetree.ndabi.campaign="v4.1"
-LABEL org.whitetree.ndabi.rust="1.92"
+LABEL org.whitetree.ndabi.rust="1.99"
 
 USER 65532:65532
 ENTRYPOINT ["/usr/local/bin/ndabi_v41"]

@@ -1,9 +1,11 @@
-FROM rust:1.92-bookworm AS builder
+FROM rust:1.99-trixie AS builder
 
-# CVE-2026-111943: install the current Debian trust store, then require the bookworm-security fix or newer.
+# Debian 13 trixie. Upgrade the image, then require the rustc and CA floors.
 RUN apt-get update \
+    && apt-get upgrade --yes \
     && apt-get install --yes --no-install-recommends ca-certificates \
-    && dpkg --compare-versions "$(dpkg-query -W -f '$${Version}' ca-certificates)" ge "20250419~deb12u2" \
+    && dpkg --compare-versions "$(rustc --version | awk '{print $2}')" ge "1.96.1" \
+    && dpkg --compare-versions "$(dpkg-query -W -f '$${Version}' ca-certificates)" ge "20250419+deb13u1" \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
@@ -16,17 +18,20 @@ RUN cargo build \
     --manifest-path /workspace/campaign/Cargo.toml \
     --bin ndabi_v11
 
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends time \
+    && apt-get upgrade --yes \
+    && apt-get install --yes --no-install-recommends ca-certificates curl time \
+    && dpkg --compare-versions "$(dpkg-query -W -f '$${Version}' ca-certificates)" ge "20250419+deb13u1" \
+    && curl --fail --silent --show-error https://example.com --output /dev/null \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /workspace/campaign/target/release/ndabi_v11 /usr/local/bin/ndabi_v11
 
 LABEL org.opencontainers.image.title="NDABI showdown v1.3 local campaign"
 LABEL org.whitetree.ndabi.campaign="v1.3"
-LABEL org.whitetree.ndabi.rust="1.92"
+LABEL org.whitetree.ndabi.rust="1.99"
 
 USER 65532:65532
 ENTRYPOINT ["/usr/local/bin/ndabi_v11"]

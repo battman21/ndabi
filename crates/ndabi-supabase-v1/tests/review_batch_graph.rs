@@ -237,7 +237,9 @@ fn decode_result(bytes: &[u8]) -> Vec<(u32, u32, i64)> {
         4
     );
     bytes[6..]
-        .chunks_exact(16)
+        .as_chunks::<16>()
+        .0
+        .iter()
         .map(|item| {
             (
                 u32::from_le_bytes(item[0..4].try_into().expect("ordinal")),

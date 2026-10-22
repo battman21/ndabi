@@ -1017,8 +1017,16 @@ def main() -> int:
     smoke = sys.argv[1:] == ["--smoke"]
     if sys.argv[1:] not in ([], ["--smoke"]):
         raise SystemExit("use no argument for the formal campaign or --smoke")
-    if cryptography.__version__ != "49.0.0":
-        raise SystemExit(f"install the pinned {CAMPAIGN_LABEL} cryptography dependency")
+    parts = []
+    for piece in cryptography.__version__.split("."):
+        digits = "".join(character for character in piece if character.isdigit())
+        if not digits:
+            break
+        parts.append(int(digits))
+    while len(parts) < 3:
+        parts.append(0)
+    if tuple(parts[:3]) < (50, 0, 0):
+        raise SystemExit("cryptography must be >= 50.0.0")
     source_commit = None if smoke else committed_source()
     initial_source_sha256 = source_sha256()
     require_free_disk(RESULT_ROOT)
