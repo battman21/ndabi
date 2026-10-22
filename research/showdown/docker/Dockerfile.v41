@@ -1,8 +1,9 @@
 FROM rust:1.92-bookworm@sha256:e90e846de4124376164ddfbaab4b0774c7bdeef5e738866295e5a90a34a307a2 AS builder
 
-# CVE-2026-111943: bookworm-security drops the compromised eMudhra roots.
+# CVE-2026-111943: install the current Debian trust store, then require the bookworm-security fix or newer.
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ca-certificates=20250419~deb12u2 \
+    && apt-get install --yes --no-install-recommends ca-certificates \
+    && dpkg --compare-versions "$(dpkg-query -W -f '$${Version}' ca-certificates)" ge "20250419~deb12u2" \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace/campaign

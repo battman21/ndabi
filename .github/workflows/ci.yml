@@ -29,8 +29,10 @@ jobs:
           cache-dependency-path: conformance/go/go.sum
       - uses: actions/setup-node@v7
         with:
-          # 22.23.4 blocks the compromised eMudhra intermediates (CVE-2026-111943).
-          node-version: 22.23.4
+          node-version: 22.x
           cache: npm
           cache-dependency-path: conformance/typescript/package-lock.json
+      - name: Require Node.js 22.23.4 or newer
+        run: |
+          node -e 'const [major, minor, patch] = process.versions.node.split(".").map(Number); if (!(major > 22 || (major === 22 && (minor > 23 || (minor === 23 && patch >= 4))))) { console.error("Node.js " + process.versions.node + " is older than 22.23.4"); process.exit(1); }'
       - run: ./conformance/verify.sh

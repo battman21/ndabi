@@ -8,9 +8,9 @@
     "test": "npm run build && node --test test/*.test.mjs"
   },
   "dependencies": {
-    "@noble/hashes": "2.2.0"
+    "@noble/hashes": "^2.4.0"
   },
   "devDependencies": {
-    "typescript": "5.9.3"
+    "typescript": "^7.0.2"
   }
 }
