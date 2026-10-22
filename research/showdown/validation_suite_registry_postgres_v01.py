@@ -228,8 +228,16 @@ def refused_user_call(
 
 
 def main() -> int:
-    if cryptography.__version__ != "49.0.0":
-        raise SystemExit("install the pinned v6.7 cryptography dependency")
+    parts = []
+    for piece in cryptography.__version__.split("."):
+        digits = "".join(character for character in piece if character.isdigit())
+        if not digits:
+            break
+        parts.append(int(digits))
+    while len(parts) < 3:
+        parts.append(0)
+    if tuple(parts[:3]) < (50, 0, 0):
+        raise SystemExit("cryptography must be >= 50.0.0")
     latest = RESULT_ROOT / "latest.json"
     if latest.exists():
         raise SystemExit("the first registered PostgreSQL campaign already exists")

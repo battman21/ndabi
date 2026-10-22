@@ -7,10 +7,10 @@ use ndabi_postgres_v1::{
 };
 use ndabi_protocol::{Authority, AuthorityContext, Clock, ProtocolError};
 use ndabi_supabase_v1::{JwtVerifier, UserReviewBatchGraphBackend};
+use p256::elliptic_curve::Generate;
 use p256::pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
 use p256::SecretKey;
 use postgres::{Client, NoTls};
-use rand_core::OsRng;
 use serde_json::json;
 
 const REVIEW_BATCH_SQL: &str = "WITH inputs AS (SELECT start_id,item_count,minimum_score,ordinality::bigint AS ordinal FROM unnest($1::bigint[],$2::bigint[],$3::integer[]) WITH ORDINALITY AS input(start_id,item_count,minimum_score,ordinality)) SELECT ordinal,selected.row_count,selected.score_sum FROM inputs CROSS JOIN LATERAL (SELECT COUNT(*)::bigint AS row_count,COALESCE(SUM(score),0)::bigint AS score_sum FROM (SELECT score FROM supabase_items WHERE id >= inputs.start_id AND id < inputs.start_id + inputs.item_count AND score >= inputs.minimum_score ORDER BY id LIMIT inputs.item_count) AS bounded) AS selected ORDER BY ordinal";
@@ -200,7 +200,7 @@ fn prepare_fixture(database_url: &str) {
 }
 
 fn test_identity() -> (JwtVerifier, String) {
-    let secret = SecretKey::random(&mut OsRng);
+    let secret = SecretKey::generate();
     let private = secret.to_pkcs8_der().expect("private key");
     let public = secret
         .public_key()
@@ -237,7 +237,9 @@ fn decode_result(bytes: &[u8]) -> Vec<(u32, u32, i64)> {
         4
     );
     bytes[6..]
-        .chunks_exact(16)
+        .as_chunks::<16>()
+        .0
+        .iter()
         .map(|item| {
             (
                 u32::from_le_bytes(item[0..4].try_into().expect("ordinal")),

@@ -13,11 +13,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Require rustc 1.96.1 or newer
+        run: dpkg --compare-versions "$(rustc --version | awk '{print $2}')" ge 1.96.1
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo check --workspace --all-targets --locked
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
+      - name: Audit Rust dependencies
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit --deny warnings
 
   conformance:
     runs-on: ubuntu-latest
@@ -27,9 +34,49 @@ jobs:
         with:
           go-version-file: conformance/go/go.mod
           cache-dependency-path: conformance/go/go.sum
+      - name: Require Go 1.26.10 or newer
+        run: |
+          go version
+          dpkg --compare-versions "$(go env GOVERSION | sed 's/^go//')" ge 1.26.10
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24.x
+          check-latest: true
           cache: npm
           cache-dependency-path: conformance/typescript/package-lock.json
+      - name: Require a supported Node.js floor
+        run: node scripts/check-node-floor.mjs
+      - name: Audit npm production dependencies
+        working-directory: conformance/typescript
+        run: npm audit --omit=dev --audit-level=high
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          check-latest: true
+      - name: Require Python 3.13.17 or newer and current pip trust roots
+        run: |
+          python3 - <<'PY'
+          import sys
+          if sys.version_info < (3, 13, 17):
+              raise SystemExit(f"Python {sys.version} is below 3.13.17")
+          PY
+          python3 -m pip install --upgrade "pip>=26.2.2" "certifi>=2026.10.19"
+          python3 - <<'PY'
+          import certifi
+          def parse(version):
+              parts = []
+              for piece in version.split("."):
+                  digits = "".join(character for character in piece if character.isdigit())
+                  if not digits:
+                      break
+                  parts.append(int(digits))
+              return tuple(parts)
+          if parse(certifi.__version__) < parse("2026.10.19"):
+              raise SystemExit(f"certifi {certifi.__version__} is below 2026.10.19")
+          PY
+      - name: Scan the Go module
+        working-directory: conformance/go
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
       - run: ./conformance/verify.sh

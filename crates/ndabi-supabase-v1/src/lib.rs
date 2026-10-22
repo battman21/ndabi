@@ -259,9 +259,9 @@ impl Audience {
 #[cfg(test)]
 mod tests {
     use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+    use p256::elliptic_curve::Generate;
     use p256::pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
     use p256::SecretKey;
-    use rand_core::OsRng;
     use serde_json::{json, Value};
 
     use super::*;
@@ -276,7 +276,7 @@ mod tests {
     }
 
     fn keys() -> Keys {
-        let secret = SecretKey::random(&mut OsRng);
+        let secret = SecretKey::generate();
         let private = secret.to_pkcs8_der().expect("private key");
         let public_pem = secret
             .public_key()
